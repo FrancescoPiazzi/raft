@@ -5,7 +5,7 @@ version = 3
 [[package]]
 name = "actum"
 version = "0.1.0"
-source = "git+https://github.com/andreastedile/actum.git#a34b91a546c69e467bb9ded6f16909cdfc5c695c"
+source = "git+https://github.com/andreastedile/actum.git#b06f12e379865ecf743d129ab3eed020706aa96c"
 dependencies = [
  "futures",
  "tracing",

@@ -1,6 +1,6 @@
 use futures::StreamExt;
 use tracing::Instrument;
-use std::{any::Any, thread::{sleep, JoinHandle}};
+use std::{any::Any, iter::Rev, thread::{sleep, JoinHandle}};
 
 use actum::prelude::*;
 
@@ -21,31 +21,14 @@ where AB: ActorBounds<RaftMessage>
     tracing::trace!("Raft actor running");
     let mut npeers = 0;
     loop{
-        let msg = cell.recv().await;
-
-        match msg{
-            Some(RaftMessage::AddPeer(_peer)) => {
+        let msg = cell.recv().await.message().unwrap();
+        match msg {
+            RaftMessage::AddPeer(peer) => {
                 npeers += 1;
-                tracing::trace!("Adding peer, peers so far: {}", npeers);
+                tracing::info!("Peer added, total: {}", npeers);
             },
-            Some(RaftMessage::RemovePeer(_peer)) => {
-                tracing::trace!("Removing peer");
-            },
-            Some(RaftMessage::AppendEntry(entry)) => {
-                tracing::trace!("Appending entry: {}", entry);
-            },
-            Some(RaftMessage::AppendEntryResponse) => {
-                tracing::trace!("Append entry response");
-            },
-            Some(RaftMessage::RequestVote) => {
-                tracing::trace!("Requesting vote");
-            },
-            Some(RaftMessage::RequestVoteResponse) => {
-                tracing::trace!("Request vote response");
-            },
-            None => {
-                tracing::trace!("Raft actor received None, exiting");
-                break;
+            _ => {
+                tracing::info!("Received a message");
             }
         }
     }
@@ -213,6 +196,6 @@ async fn main() {
 
 
     // raft_1().await;
-    raft_1().await;
+    raft_2().await;
 }
 
