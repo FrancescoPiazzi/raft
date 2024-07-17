@@ -2,40 +2,8 @@ use tracing::{info_span, Instrument};
 
 use actum::prelude::*;
 
-pub enum RaftMessage {
-    AddPeer(ActorRef<RaftMessage>),
-    RemovePeer(ActorRef<RaftMessage>),
-    AppendEntry(String), // TODO: replace with any type that is Send + 'static
-    AppendEntryResponse,
-    RequestVote,
-    RequestVoteResponse,
-}
-
-async fn raft_actor<AB>(mut cell: AB, _me: ActorRef<RaftMessage>)
-where
-    AB: ActorBounds<RaftMessage>,
-{
-    tracing::trace!("Raft actor running");
-    let mut npeers = 0;
-    loop {
-        let msg = cell.recv().await.message();
-        match msg {
-            Some(raftmessage) => match raftmessage {
-                RaftMessage::AddPeer(_peer) => {
-                    npeers += 1;
-                    tracing::info!("Peer added, total: {}", npeers);
-                }
-                _ => {
-                    tracing::info!("Received a message");
-                }
-            },
-            None => {
-                tracing::info!("Received a None message, quitting");
-                break;
-            }
-        }
-    }
-}
+mod node;
+use node::{raft_actor, RaftMessage};
 
 async fn simulator<AB>(mut cell: ActorCell<(), AB>, server_count: usize)
 where
@@ -81,8 +49,9 @@ async fn main() {
         .init();
 
     // Note: guard must remain in scope
+    #[allow(unused_variables)]
     let Actor { task, guard, .. } = actum::<(), _, _>(|cell, _| async {
-        simulator(cell, 3).await;
+        simulator(cell, 5).await;
     });
     task.run_task().await;
 }
