@@ -1,0 +1,44 @@
+PART 1: pretend nothing will break
+- create an actum style state machine to describe a node
+- proper leader election: timers to start it and where the winner is the one who is supposed to win
+- make lead duplicate messages and follow to listen and make theyr copies
+- make lead keep track of who received a certain update and commit it when a majority has it
+- write dummy node to send messages to the leader
+
+completed when:
+- the right leader is elected
+- messages are received by the leader, duplicated, and committed
+- new nodes are able to join an active cluster
+
+
+PART 2: prepare for stuff to break
+- leader ping to check if it is alive, end of term and re-election if not
+- implement resolutions for cases of lead-follow conflicts
+- update dummy node to change server if instructed to do so because it ssent a request to a non leader
+- update dummy node to change server to another random one if requests are timing out
+
+completed when:
+- nodes are able to detect when the leader is dead and elect a new one
+- nodes are able to detect 
+- follow can update theyr log to match the leader's
+
+
+PART 3: make stuff break
+- figure out how to intercept messages and drop them
+- kill random nodes and restart them some time later
+
+completed when:
+- the system is able to recover from any of these situations
+
+
+PART 4: log compaction
+- get each node to take snapshots of the committed state and discard old logs
+- send snapshots to new nodes, and get the new nodes to catch up with the rest using them
+
+completed when:
+- each node can compact logs automatically
+- new nodes can join the cluster and catch up with the rest using snapshots
+
+
+AT SOME POINT
+- make it so messages can be anything that is Send + 'static, not just strings
