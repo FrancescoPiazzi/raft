@@ -19,6 +19,13 @@ pub enum RaftMessage {
     RequestVoteResponse,
 }
 
+#[derive(Debug)]
+enum RaftState {
+    Follower,
+    Candidate,
+    Leader,
+}
+
 pub async fn raft_actor<AB>(mut cell: AB, _me: ActorRef<RaftMessage>)
 where
     AB: ActorBounds<RaftMessage>,
@@ -33,19 +40,35 @@ where
     let mut current_term = 0;
     let mut voted_for: Option<ActorRef<RaftMessage>> = None;
 
+    let mut next_state: RaftState = RaftState::Follower;
+
     let peers = init(&mut cell, total_nodes).await;
 
     tracing::trace!("initialization done");
 
-    follower(
-        &mut cell,
-        &mut log,
-        &mut commit_index,
-        &mut last_applied,
-        &mut current_term,
-        &mut voted_for,
-    )
-    .await;
+    loop {
+        tracing::trace!("State: {:?}", next_state);
+        match next_state {
+            RaftState::Follower => {
+                follower(
+                    &mut cell,
+                    &mut log,
+                    &mut commit_index,
+                    &mut last_applied,
+                    &mut current_term,
+                    &mut voted_for,
+                    &mut next_state,
+                )
+                .await;
+            }
+            RaftState::Candidate => {
+                candidate().await;
+            }
+            RaftState::Leader => {
+                leader().await;
+            }
+        }
+    }
 }
 
 // this function is not part of the raft protocol,
@@ -75,7 +98,7 @@ where
             },
             None => {
                 tracing::info!("Received a None message, quitting");
-                break;
+                panic!("Received a None message");
             }
         }
     }
@@ -92,11 +115,12 @@ async fn follower<AB>(
     last_applied: &mut usize,
     current_term: &mut u64,
     voted_for: &mut Option<ActorRef<RaftMessage>>,
+    next_state: &mut RaftState,
 ) where
     AB: ActorBounds<RaftMessage>,
 {
-    let max_time_before_election = Duration::from_secs(10);
-    
+    let max_time_before_election = Duration::from_secs(5);
+
     loop {
         let wait_res = timeout(max_time_before_election, cell.recv()).await;
 
@@ -108,7 +132,9 @@ async fn follower<AB>(
                         log.append(&mut entries);
                     }
                     RaftMessage::RequestVote => {
-                        // TODO: check if we can vote for the candidate
+                        // check if the candidate log is at least as up-to-date as our log
+                        // if it is and we haven't voted for anyone yet, vote for the candidate
+                        // also check the term of the candidate, if it's higher, update our term
                     }
                     _ => {
                         tracing::warn!("❔ Received a message that is not AppendEntry or RequestVote while in follower mode, ignoring");
@@ -116,16 +142,28 @@ async fn follower<AB>(
                 },
                 None => {
                     tracing::info!("Received a None message, quitting");
-                    break;
+                    panic!("Received a None message");
                 }
             },
             Err(_) => {
-                tracing::info!("⏰ Timeout reached, starting an election (or at least pretending to)");
+                tracing::info!("⏰ Timeout reached, starting an election");
+                *next_state = RaftState::Candidate;
+                break;
             }
         }
     }
 }
 
-async fn candidate() {}
+async fn candidate() {
+    tracing::info!("🤵 Pretending to be a candidate");
+    loop{
 
-async fn leader() {}
+    }
+}
+
+async fn leader() {
+    tracing::info!("👑 Pretending to be a leader");
+    loop{
+
+    }
+}
