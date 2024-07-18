@@ -1,9 +1,9 @@
 # STEP 1: pretend nothing will break
 - [ ] Create an Actum style state machine to describe a node.
-- [ ] Proper leader election: timers to start it and where the winner is the one who is supposed to win.
+- [ ] Leader election.
 - [ ] Make lead duplicate messages and follow to listen and make their copies.
 - [ ] Make lead keep track of who received a certain update and commit it when a majority has it.
-- [ ] Write dummy node to send messages to the leader.
+- [ ] Write client node to send messages to the leader.
 
 **Completed when:**
 - [ ] The right leader is elected.
@@ -14,22 +14,20 @@
 # STEP 2: prepare for stuff to break
 - [ ] Leader ping to check if it is alive, end of term and re-election if not.
 - [ ] Implement resolutions for cases of lead-follow conflicts.
-- [ ] Update dummy node to change server if instructed to do so because it sent a request to a non-leader.
-- [ ] Update dummy node to change server to another random one if requests are timing out.
+- [ ] Update client node to change server if instructed to do so because it sent a request to a non-leader.
+- [ ] Update client node to change server to another random one if requests are timing out.
 
 **Completed when:**
 - [ ] Nodes are able to detect when the leader is dead and elect a new one.
-- [ ] Nodes are able to detect.
 - [ ] Follow can update their log to match the leader's.
-
+- [ ] Client node can figure out who is the leader and send messages only to it
 
 # STEP 3: make stuff break
 - [ ] figure out how to intercept messages and drop them
 - [ ] kill random nodes and restart them some time later
 
 completed when:
-- [ ] the system is able to recover from any of these situations
-
+- [ ] the system can keep running as long as at least half the nodes are working
 
 # STEP 4: log compaction
 - [ ] get each node to take snapshots of the committed state and discard old logs
