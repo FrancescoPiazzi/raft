@@ -9,14 +9,17 @@ type Message = String;
 pub enum RaftMessage {
     AddPeer(ActorRef<RaftMessage>),
 
+    // update, vec of length 0 is sent as hartbeat
     AppendEntries(Vec<Message>),
 
     // only failure that we will answer is if we are not the leader, so we send the address of the leader back
     AppendEntryResponse(Result<(), ActorRef<RaftMessage>>),
 
-    RequestVote,
+    // the candidate that initiared the vote, stuff about the vote
+    RequestVote(ActorRef<RaftMessage>, RequestVoteRPC),
 
-    RequestVoteResponse,
+    // true if the vote was granted, false otherwise
+    RequestVoteResponse(bool),
 }
 
 #[derive(Debug)]
@@ -26,49 +29,51 @@ enum RaftState {
     Leader,
 }
 
+struct RequestVoteRPC {
+    term: u64,
+    candidate_ref: ActorRef<RaftMessage>,
+    last_log_index: usize,
+    last_log_term: u64,
+}
+
+// data common to all states, used to avoid passing a million parameters to the state functions
+struct CommonData {
+    current_term: u64,
+    log: Vec<Message>,
+    commit_index: usize,
+    last_applied: usize,
+    voted_for: Option<ActorRef<RaftMessage>>,
+}
+
+
 pub async fn raft_actor<AB>(mut cell: AB, _me: ActorRef<RaftMessage>)
 where
     AB: ActorBounds<RaftMessage>,
 {
     let total_nodes = 5;
 
-    let mut log: Vec<Message> = Vec::new();
+    let mut common_data = CommonData {
+        current_term: 0,
+        log: Vec::new(),
+        commit_index: 0,
+        last_applied: 0,
+        voted_for: None,
+    };
 
-    let mut commit_index = 0;
-    let mut last_applied = 0;
+    let mut state: RaftState = RaftState::Follower;
 
-    let mut current_term = 0;
-    let mut voted_for: Option<ActorRef<RaftMessage>> = None;
-
-    let mut next_state: RaftState = RaftState::Follower;
-
-    let peers = init(&mut cell, total_nodes).await;
+    let peer_refs = init(&mut cell, total_nodes).await;
 
     tracing::trace!("initialization done");
 
     loop {
-        tracing::trace!("State: {:?}", next_state);
-        match next_state {
-            RaftState::Follower => {
-                follower(
-                    &mut cell,
-                    &mut log,
-                    &mut commit_index,
-                    &mut last_applied,
-                    &mut current_term,
-                    &mut voted_for,
-                    &mut next_state,
-                )
-                .await;
-            }
-            RaftState::Candidate => {
-                candidate().await;
-            }
-            RaftState::Leader => {
-                leader().await;
-            }
-        }
+        state = match state {
+            RaftState::Follower => follower(&mut cell, &mut common_data).await,
+            RaftState::Candidate => candidate(&mut cell, &mut common_data).await,
+            RaftState::Leader => leader(&mut cell, &mut common_data).await,
+        };
     }
+
 }
 
 // this function is not part of the raft protocol,
@@ -110,15 +115,11 @@ where
 // they ping the leader to see if it's still alive, if it isn't, they start an election
 async fn follower<AB>(
     cell: &mut AB,
-    log: &mut Vec<Message>,
-    commit_index: &mut usize,
-    last_applied: &mut usize,
-    current_term: &mut u64,
-    voted_for: &mut Option<ActorRef<RaftMessage>>,
-    next_state: &mut RaftState,
-) where
+    common_data: &mut CommonData,
+) -> RaftState where
     AB: ActorBounds<RaftMessage>,
 {
+    tracing::info!("👂 State is follower");
     let max_time_before_election = Duration::from_secs(5);
 
     loop {
@@ -128,13 +129,21 @@ async fn follower<AB>(
             Ok(received_message) => match received_message.message() {
                 Some(raftmessage) => match raftmessage {
                     RaftMessage::AppendEntries(mut entries) => {
-                        tracing::info!("✏️ Received an AppendEntries message, adding them to the log");
-                        log.append(&mut entries);
+                        tracing::trace!("✏️ Received an AppendEntries message, adding them to the log");
+                        common_data.log.append(&mut entries);
                     }
-                    RaftMessage::RequestVote => {
+                    RaftMessage::RequestVote(mut candidate, request_vote_rpc) => {
                         // check if the candidate log is at least as up-to-date as our log
                         // if it is and we haven't voted for anyone yet, vote for the candidate
                         // also check the term of the candidate, if it's higher, update our term
+                        // TODO: figure out how to compare two nodes using actum because partialEq is implemented but the compiler refuses to acknowledge it
+                        if request_vote_rpc.term >= common_data.current_term &&
+                        (common_data.voted_for.is_none() || std::ptr::eq(common_data.voted_for.as_ref().unwrap(), &request_vote_rpc.candidate_ref)) {
+                            let _ = candidate.try_send(RaftMessage::RequestVoteResponse(true));
+                            common_data.voted_for = Some(request_vote_rpc.candidate_ref);
+                        } else {
+                            let _ = candidate.try_send(RaftMessage::RequestVoteResponse(false));
+                        }
                     }
                     _ => {
                         tracing::warn!("❔ Received a message that is not AppendEntry or RequestVote while in follower mode, ignoring");
@@ -147,23 +156,36 @@ async fn follower<AB>(
             },
             Err(_) => {
                 tracing::info!("⏰ Timeout reached, starting an election");
-                *next_state = RaftState::Candidate;
                 break;
             }
         }
     }
+
+    return RaftState::Candidate;
 }
 
-async fn candidate() {
-    tracing::info!("🤵 Pretending to be a candidate");
+async fn candidate<AB>(
+    cell: &mut AB,
+    common_data: &mut CommonData,
+) -> RaftState where
+    AB: ActorBounds<RaftMessage>,
+{
+    tracing::info!("🤵 State is candidate");
     loop{
 
     }
 }
 
-async fn leader() {
-    tracing::info!("👑 Pretending to be a leader");
+async fn leader<AB>(
+    cell: &mut AB,
+    common_data: &mut CommonData,
+) -> RaftState where
+    AB: ActorBounds<RaftMessage>,
+{
+    tracing::info!("👑 State is leader");
     loop{
 
     }
+
+    return RaftState::Follower;
 }
