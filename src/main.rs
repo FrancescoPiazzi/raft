@@ -1,21 +1,26 @@
+
+use tokio::task::JoinHandle;
 use tracing::{info_span, Instrument};
 
-use actum::prelude::*;
+use actum::{drop_guard::ActorDropGuard, prelude::*};
 
 mod node;
 use node::{raft_actor, RaftMessage};
 
-async fn simulator<AB>(mut cell: ActorCell<(), AB>, server_count: usize)
+
+async fn simulator<AB>(mut cell: ActorCell<(), AB>, server_count: usize) -> ActorCell<(), AB>
 where
     ActorCell<(), AB>: ActorBounds<()>,
 {
-    let mut refs = Vec::with_capacity(server_count);
-    let mut guards = Vec::with_capacity(server_count);
-    let mut handles = Vec::with_capacity(server_count);
+    let mut refs: Vec<ActorRef<RaftMessage>> = Vec::with_capacity(server_count);
+    let mut guards: Vec<ActorDropGuard> = Vec::with_capacity(server_count);
+    let mut handles: Vec<JoinHandle<()>>  = Vec::with_capacity(server_count);
 
     for id in 0..server_count {
         let Actor { task, guard, m_ref } = cell.spawn(raft_actor).await.unwrap();
+
         let handle = tokio::spawn(task.run_task().instrument(info_span!("server", id)));
+
         refs.push(m_ref);
         guards.push(guard);
         handles.push(handle);
@@ -35,6 +40,8 @@ where
     for handle in handles {
         let _ = handle.await;
     }
+
+    cell
 }
 
 #[tokio::main]
@@ -49,9 +56,6 @@ async fn main() {
         .init();
 
     // Note: guard must remain in scope
-    #[allow(unused_variables)]
-    let Actor { task, guard, .. } = actum::<(), _, _>(|cell, _| async {
-        simulator(cell, 5).await;
-    });
+    let Actor { task, guard, .. } = actum(|cell, me| simulator(cell, 5));
     task.run_task().await;
 }

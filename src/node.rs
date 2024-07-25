@@ -46,7 +46,7 @@ struct CommonData {
 }
 
 
-pub async fn raft_actor<AB>(mut cell: AB, _me: ActorRef<RaftMessage>)
+pub async fn raft_actor<AB>(mut cell: AB, _me: ActorRef<RaftMessage>) -> AB
 where
     AB: ActorBounds<RaftMessage>,
 {
@@ -74,6 +74,8 @@ where
         };
     }
 
+    #[allow(unreachable_code)]
+    cell
 }
 
 // this function is not part of the raft protocol,

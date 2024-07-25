@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-actum = { git = "https://github.com/andreastedile/actum.git" }
+actum = { git = "https://github.com/andreastedile/actum.git", rev="0e35afeb943eede4badbf2802c258737b0435da8" }
 futures = "0.3.30"
 tracing = { version = "0.1.40", default-features = false }
 tokio = { version = "1.37.0", features = ["rt-multi-thread", "macros", "time"] }
