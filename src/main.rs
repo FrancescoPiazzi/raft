@@ -52,10 +52,11 @@ async fn main() {
         )
         .with_target(false)
         .with_line_number(true)
-        .with_max_level(tracing::Level::INFO)
+        .with_max_level(tracing::Level::TRACE)
         .init();
 
     // Note: guard must remain in scope
+    #[allow(unused_variables)]
     let Actor { task, guard, .. } = actum(|cell, me| simulator(cell, 5));
     task.run_task().await;
 }
