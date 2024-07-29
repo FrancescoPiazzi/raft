@@ -1,6 +1,6 @@
 # STEP 1: pretend nothing will break
 - [x] Create an Actum style state machine to describe a node.
-- [ ] Leader election.
+- [x] Leader election.
 - [x] Make lead duplicate messages and follow to listen and make their copies.
 - [ ] Make lead keep track of who received a certain update and commit it when a majority has it.
 - [ ] Write client node to send messages to the leader.
