@@ -1,10 +1,12 @@
 use std::time::Duration;
+use std::time::Instant;
+use rand::random;
 use tokio::time::timeout;
 use rand::Rng;
 
 use actum::prelude::*;
 
-// TODO: replace with any type that is Send + 'static
+// TODO: replace with a more generic type
 type Message = String;
 
 pub enum RaftMessage {
@@ -15,7 +17,7 @@ pub enum RaftMessage {
     AppendEntryResponse(u64, bool),     // term, success
 
     // the candidate that initiared the vote, stuff about the vote
-    RequestVote(ActorRef<RaftMessage>, RequestVoteRPC),
+    RequestVote(RequestVoteRPC),
 
     // true if the vote was granted, false otherwise
     RequestVoteResponse(bool),
@@ -74,10 +76,11 @@ where
 
     tracing::trace!("initialization done");
 
+    // this should iterate not less than once per term
     loop {
         state = match state {
             RaftState::Follower => follower(&mut cell, &mut common_data).await,
-            RaftState::Candidate => candidate(&mut cell, &mut common_data).await,
+            RaftState::Candidate => candidate(&mut cell, &me, &mut common_data, &mut peer_refs).await,
             RaftState::Leader => leader(&mut cell, &mut common_data, &mut peer_refs, &me).await,
         };
     }
@@ -131,10 +134,11 @@ async fn follower<AB>(
     AB: ActorBounds<RaftMessage>,
 {
     tracing::info!("👂 State is follower");
-    let max_time_before_election = Duration::from_secs(5);
+    let mut rng = rand::thread_rng();
+    let election_timeout = Duration::from_millis(rng.gen_range(1500..=3000));
 
     loop {
-        let wait_res = timeout(max_time_before_election, cell.recv()).await;
+        let wait_res = timeout(election_timeout, cell.recv()).await;
 
         match wait_res {
             Ok(received_message) => match received_message.message() {
@@ -143,17 +147,17 @@ async fn follower<AB>(
                         tracing::trace!("✏️ Received an AppendEntries message, adding them to the log");
                         common_data.log.append(&mut append_entries_rpc.entries);
                     }
-                    RaftMessage::RequestVote(mut candidate, request_vote_rpc) => {
+                    RaftMessage::RequestVote(mut request_vote_rpc) => {
                         // check if the candidate log is at least as up-to-date as our log
                         // if it is and we haven't voted for anyone yet, vote for the candidate
                         // also check the term of the candidate, if it's higher, update our term
                         // TODO: figure out how to compare two nodes using actum because partialEq is implemented but the compiler refuses to acknowledge it
                         if request_vote_rpc.term >= common_data.current_term &&
                         (common_data.voted_for.is_none() || std::ptr::eq(common_data.voted_for.as_ref().unwrap(), &request_vote_rpc.candidate_ref)) {
-                            let _ = candidate.try_send(RaftMessage::RequestVoteResponse(true));
+                            let _ = request_vote_rpc.candidate_ref.try_send(RaftMessage::RequestVoteResponse(true));
                             common_data.voted_for = Some(request_vote_rpc.candidate_ref);
                         } else {
-                            let _ = candidate.try_send(RaftMessage::RequestVoteResponse(false));
+                            let _ = request_vote_rpc.candidate_ref.try_send(RaftMessage::RequestVoteResponse(false));
                         }
                     }
                     _ => {
@@ -176,25 +180,66 @@ async fn follower<AB>(
 }
 
 async fn candidate<AB>(
-    _cell: &mut AB,
-    _common_data: &mut CommonData,
+    cell: &mut AB,
+    me: &ActorRef<RaftMessage>,
+    common_data: &mut CommonData,
+    peer_refs: &mut Vec<ActorRef<RaftMessage>>
 ) -> RaftState where
     AB: ActorBounds<RaftMessage>,
 {
     tracing::info!("🤵 State is candidate");
-    // loop{
+    let mut votes = 1;
+    let new_term = common_data.current_term + 1;
 
-    // }
-
-    // absurd leader election
-    let mut rng = rand::thread_rng();
-    let random_number: f64 = rng.gen();
-
-    if random_number < 0.2 {
-        RaftState::Leader
-    } else {
-        RaftState::Follower
+    for peer in peer_refs.iter_mut() {
+        let _ = peer.try_send(RaftMessage::RequestVote(
+            RequestVoteRPC{
+                term: new_term,
+                candidate_ref: me.clone(),
+                last_log_index: common_data.last_applied,
+                last_log_term: 0,
+            }
+        ));
     }
+
+    let mut rng = rand::thread_rng();
+    let mut time_left = Duration::from_millis(rng.gen_range(150..=300));
+    
+    loop {
+        let start_wait_time = Instant::now();
+        let wait_res = timeout(time_left, cell.recv()).await;
+        time_left -= start_wait_time.elapsed();
+
+        match wait_res {
+            Ok(received_message) => match received_message.message() {
+                Some(raftmessage) => match raftmessage {
+                    RaftMessage::RequestVoteResponse(vote_granted) => {
+                        if vote_granted{
+                            votes += 1;
+                        }
+                    }
+                    RaftMessage::AppendEntries(append_entry_rpc) => {
+                        if append_entry_rpc.term >= common_data.current_term {
+                            tracing::info!("There is another leader with an higher term, going back to follower");
+                            return RaftState::Follower;
+                        }
+                    }
+                    _ => {}
+                },
+                None => {
+                    tracing::info!("Received a None message, quitting");
+                    panic!("Received a None message");
+                }
+            },
+            Err(_) => {
+                tracing::info!("⏰ Timeout reached, starting an election");
+                break;
+            }
+        }
+    }
+
+    
+    return RaftState::Candidate;
 }
 
 
@@ -210,6 +255,7 @@ async fn leader<AB>(
     AB: ActorBounds<RaftMessage>,
 {
     tracing::info!("👑 State is leader");
+    // TODO: send heartbeat to everyone to terminate election
 
     // remove when leader will listen to clients instead of sending random stuff
     let interval_between_messages = Duration::from_millis(1000);
@@ -257,16 +303,16 @@ async fn leader<AB>(
                             let _ = append_entries_rpc.leader_ref.try_send(RaftMessage::RequestVoteResponse(false));
                         }
                     }
-                    RaftMessage::RequestVote(mut candidate, request_vote_rpc) => {
+                    RaftMessage::RequestVote(mut request_vote_rpc) => {
                         tracing::trace!("Received a request vote message as the leader, somone dared challenge me, are they right?");
                         if request_vote_rpc.term >= common_data.current_term {
                             tracing::trace!("They are right, I'm stepping down");
-                            let _ = candidate.try_send(RaftMessage::RequestVoteResponse(true));
+                            let _ = request_vote_rpc.candidate_ref.try_send(RaftMessage::RequestVoteResponse(true));
                             common_data.voted_for = Some(request_vote_rpc.candidate_ref);
                             break;
                         } else {
                             tracing::trace!("They are wrong, long live the king!");
-                            let _ = candidate.try_send(RaftMessage::RequestVoteResponse(false));
+                            let _ = request_vote_rpc.candidate_ref.try_send(RaftMessage::RequestVoteResponse(false));
                         }
                     }
                     RaftMessage::AppendEntryResponse(_term, _success) => {

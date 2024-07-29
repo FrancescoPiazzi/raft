@@ -1,7 +1,7 @@
 # STEP 1: pretend nothing will break
-- [ ] Create an Actum style state machine to describe a node.
+- [x] Create an Actum style state machine to describe a node.
 - [ ] Leader election.
-- [ ] Make lead duplicate messages and follow to listen and make their copies.
+- [x] Make lead duplicate messages and follow to listen and make their copies.
 - [ ] Make lead keep track of who received a certain update and commit it when a majority has it.
 - [ ] Write client node to send messages to the leader.
 
@@ -22,12 +22,14 @@
 - [ ] Follow can update their log to match the leader's.
 - [ ] Client node can figure out who is the leader and send messages only to it
 
+
 # STEP 3: make stuff break
 - [ ] figure out how to intercept messages and drop them
 - [ ] kill random nodes and restart them some time later
 
 completed when:
 - [ ] the system can keep running as long as at least half the nodes are working
+
 
 # STEP 4: log compaction
 - [ ] get each node to take snapshots of the committed state and discard old logs
@@ -39,4 +41,4 @@ completed when:
 
 
 AT SOME POINT
-- [ ] make it so messages can be anything that is Send + 'static, not just strings
+- [ ] use a more generic type for log entries (maybe)
