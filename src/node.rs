@@ -8,6 +8,7 @@ use actum::prelude::*;
 // TODO: replace with a more generic type
 type Message = String;
 
+#[allow(private_interfaces)]    // I need this to be public only to create a node of RaftMessage
 pub enum RaftMessage {
     AddPeer(ActorRef<RaftMessage>),
 
@@ -106,7 +107,7 @@ where
                 RaftMessage::AddPeer(peer) => {
                     npeers += 1;
                     peers.push(peer);
-                    tracing::trace!("🙆‍♂️ Peer added, total: {}", npeers);
+                    tracing::trace!("🙆 Peer added, total: {}", npeers);
                 }
                 _ => {
                     tracing::warn!("❔ Received a message that is not AddPeer, ignoring, this should not happen");
