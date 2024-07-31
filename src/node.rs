@@ -5,8 +5,6 @@ use tokio::time::timeout;
 
 use actum::prelude::*;
 
-// trait LogEntry: Send + Clone + 'static {}
-
 #[allow(private_interfaces)] // I need this to be public only to create a node of RaftMessage
 pub enum RaftMessage<LogEntry> {
     AddPeer(ActorRef<RaftMessage<LogEntry>>),
@@ -37,12 +35,12 @@ struct RequestVoteRPC<LogEntry> {
 }
 
 struct AppendEntriesRPC<LogEntry> {
-    term: u64,                         // leader's term
+    term: u64,                                   // leader's term
     leader_ref: ActorRef<RaftMessage<LogEntry>>, // the leader's address, followers should store it to redirect clients that talk to them
-    prev_log_index: u64,               // the index of the log entry immediately preceding the new ones
-    prev_log_term: u64,                // the term of the entry at prev_log_index
-    entries: Vec<LogEntry>,             // stuff to add, empty for heartbeat
-    leader_commit: u64,                // the leader's commit index
+    prev_log_index: u64,                         // the index of the log entry immediately preceding the new ones
+    prev_log_term: u64,                          // the term of the entry at prev_log_index
+    entries: Vec<LogEntry>,                      // stuff to add, empty for heartbeat
+    leader_commit: u64,                          // the leader's commit index
 }
 
 // data common to all states, used to avoid passing a million parameters to the state functions
@@ -162,6 +160,11 @@ where
             RaftMessage::AppendEntries(mut append_entries_rpc) => {
                 tracing::trace!("✏️ Received an AppendEntries message, adding them to the log");
                 common_data.log.append(&mut append_entries_rpc.entries);
+
+                // send append entry response
+                let _ = append_entries_rpc
+                    .leader_ref
+                    .try_send(RaftMessage::AppendEntryResponse(common_data.current_term, true));
             }
             RaftMessage::RequestVote(mut request_vote_rpc) => {
                 // check if the candidate log is at least as up-to-date as our log
@@ -255,7 +258,6 @@ where
             None => return RaftState::Candidate,
         }
     }
-
 }
 
 // the leader is the interface of the system to the external world
@@ -327,37 +329,18 @@ where
         };
 
         match raftmessage {
-            // TODO: condense AppendEntries and RequestVote cases in a function
             RaftMessage::AppendEntries(mut append_entries_rpc) => {
-                tracing::trace!("Received an AppendEntries message as the leader, somone dared challenge me, are they right?");
-                if append_entries_rpc.term >= common_data.current_term {
-                    tracing::trace!("They are right, I'm stepping down");
-                    let _ = append_entries_rpc
-                        .leader_ref
-                        .try_send(RaftMessage::RequestVoteResponse(true));
-                    common_data.voted_for = Some(append_entries_rpc.leader_ref);
-                    break;
-                } else {
-                    tracing::trace!("They are wrong, long live the king!");
-                    let _ = append_entries_rpc
-                        .leader_ref
-                        .try_send(RaftMessage::RequestVoteResponse(false));
+                tracing::trace!("Other leader detected");
+                if resolve_challenge(common_data, append_entries_rpc.term, &mut append_entries_rpc.leader_ref){
+                    tracing::trace!("They are the right leader, stepping down");
+                    return RaftState::Follower;
                 }
             }
             RaftMessage::RequestVote(mut request_vote_rpc) => {
-                tracing::trace!("Received a request vote message as the leader, somone dared challenge me, are they right?");
-                if request_vote_rpc.term >= common_data.current_term {
-                    tracing::trace!("They are right, I'm stepping down");
-                    let _ = request_vote_rpc
-                        .candidate_ref
-                        .try_send(RaftMessage::RequestVoteResponse(true));
-                    common_data.voted_for = Some(request_vote_rpc.candidate_ref);
-                    break;
-                } else {
-                    tracing::trace!("They are wrong, long live the king!");
-                    let _ = request_vote_rpc
-                        .candidate_ref
-                        .try_send(RaftMessage::RequestVoteResponse(false));
+                tracing::trace!("Candidate detected");
+                if resolve_challenge(common_data, request_vote_rpc.term, &mut request_vote_rpc.candidate_ref){
+                    tracing::trace!("They are the right candidate, stepping down");
+                    return RaftState::Follower;
                 }
             }
             RaftMessage::AppendEntryResponse(_term, _success) => {
@@ -366,6 +349,23 @@ where
             _ => {}
         }
     }
+}
 
-    return RaftState::Follower;
+
+// function to tell whether we have to step down from the leader position or not
+// returns true if we have to step down, false otherwise
+fn resolve_challenge<LogEntry>(common_data: &mut CommonData<LogEntry>, challenger_term: u64, challenger_ref: &mut ActorRef<RaftMessage<LogEntry>>) -> bool 
+    where LogEntry: Send + 'static
+{
+    if challenger_term >= common_data.current_term {
+        let _ = challenger_ref
+            .try_send(RaftMessage::RequestVoteResponse(true));
+        common_data.voted_for = Some(challenger_ref.clone());
+        
+        true
+    } else {
+        let _ = challenger_ref
+            .try_send(RaftMessage::RequestVoteResponse(false));
+        false
+    }
 }
