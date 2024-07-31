@@ -37,8 +37,7 @@ completed when:
 
 completed when:
 - [ ] each node can compact logs automatically
-- [ ] new nodes can join the cluster and catch up with the rest using snapshots
 
 
 AT SOME POINT
-- [ ] use a more generic type for log entries (maybe)
+- [x] use a more generic type for log entries

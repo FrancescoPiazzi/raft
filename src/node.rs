@@ -329,18 +329,33 @@ where
         };
 
         match raftmessage {
-            RaftMessage::AppendEntries(mut append_entries_rpc) => {
-                tracing::trace!("Other leader detected");
-                if resolve_challenge(common_data, append_entries_rpc.term, &mut append_entries_rpc.leader_ref){
-                    tracing::trace!("They are the right leader, stepping down");
+            RaftMessage::AppendEntries(append_entries_rpc) => {
+                tracing::trace!(
+                    "Received an AppendEntries message as the leader, somone dared challenge me, are they right?"
+                );
+                if append_entries_rpc.term >= common_data.current_term {
+                    tracing::trace!("They are right, I'm stepping down");
                     return RaftState::Follower;
+                } else {
+                    tracing::trace!("They are wrong, long live the king!");
                 }
             }
             RaftMessage::RequestVote(mut request_vote_rpc) => {
-                tracing::trace!("Candidate detected");
-                if resolve_challenge(common_data, request_vote_rpc.term, &mut request_vote_rpc.candidate_ref){
-                    tracing::trace!("They are the right candidate, stepping down");
+                tracing::trace!(
+                    "Received a request vote message as the leader, somone dared challenge me, are they right?"
+                );
+                if request_vote_rpc.term >= common_data.current_term {
+                    tracing::trace!("They are right, I'm stepping down");
+                    let _ = request_vote_rpc
+                        .candidate_ref
+                        .try_send(RaftMessage::RequestVoteResponse(true));
+                    common_data.voted_for = Some(request_vote_rpc.candidate_ref);
                     return RaftState::Follower;
+                } else {
+                    tracing::trace!("They are wrong, long live the king!");
+                    let _ = request_vote_rpc
+                        .candidate_ref
+                        .try_send(RaftMessage::RequestVoteResponse(false));
                 }
             }
             RaftMessage::AppendEntryResponse(_term, _success) => {
@@ -348,24 +363,5 @@ where
             }
             _ => {}
         }
-    }
-}
-
-
-// function to tell whether we have to step down from the leader position or not
-// returns true if we have to step down, false otherwise
-fn resolve_challenge<LogEntry>(common_data: &mut CommonData<LogEntry>, challenger_term: u64, challenger_ref: &mut ActorRef<RaftMessage<LogEntry>>) -> bool 
-    where LogEntry: Send + 'static
-{
-    if challenger_term >= common_data.current_term {
-        let _ = challenger_ref
-            .try_send(RaftMessage::RequestVoteResponse(true));
-        common_data.voted_for = Some(challenger_ref.clone());
-        
-        true
-    } else {
-        let _ = challenger_ref
-            .try_send(RaftMessage::RequestVoteResponse(false));
-        false
     }
 }
