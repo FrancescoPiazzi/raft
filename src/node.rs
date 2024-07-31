@@ -89,7 +89,7 @@ where
 }
 
 // this function is not part of the raft protocol,
-// however it is needed to receive the references of the other servers
+// however it is needed to receive the references of the other servers,
 // since they are memory addresses, we can't know them in advance,
 // when actum will switch to a different type of actor reference like a network address,
 // this function can be made to read from a file the addresses of the other servers instead
@@ -142,45 +142,45 @@ where
     loop {
         let wait_res = timeout(election_timeout, cell.recv()).await;
 
-        match wait_res {
-            Ok(received_message) => match received_message.message() {
-                Some(raftmessage) => match raftmessage {
-                    RaftMessage::AppendEntries(mut append_entries_rpc) => {
-                        tracing::trace!("✏️ Received an AppendEntries message, adding them to the log");
-                        common_data.log.append(&mut append_entries_rpc.entries);
-                    }
-                    RaftMessage::RequestVote(mut request_vote_rpc) => {
-                        // check if the candidate log is at least as up-to-date as our log
-                        // if it is and we haven't voted for anyone yet, vote for the candidate
-                        if request_vote_rpc.term >= common_data.current_term
-                            && (common_data.voted_for.is_none()
-                                || *common_data.voted_for.as_ref().unwrap() == request_vote_rpc.candidate_ref)
-                        {
-                            let _ = request_vote_rpc
-                                .candidate_ref
-                                .try_send(RaftMessage::RequestVoteResponse(true));
-                            common_data.voted_for = Some(request_vote_rpc.candidate_ref);
-                        } else {
-                            let _ = request_vote_rpc
-                                .candidate_ref
-                                .try_send(RaftMessage::RequestVoteResponse(false));
-                        }
-                    }
-                    _ => {}
-                },
-                None => {
-                    tracing::info!("Received a None message, quitting");
-                    panic!("Received a None message");
-                }
-            },
-            Err(_) => {
-                tracing::info!("⏰ Timeout reached, starting an election");
-                break;
+        let received_message = if let Ok(message) = wait_res {
+            message
+        } else {
+            tracing::info!("⏰ Timeout reached, starting an election");
+            return RaftState::Candidate;
+        };
+
+        let raftmessage = if let Some(raftmessage) = received_message.message() {
+            raftmessage
+        } else {
+            tracing::info!("Received a None message, quitting");
+            panic!("Received a None message");
+        };
+
+        match raftmessage {
+            RaftMessage::AppendEntries(mut append_entries_rpc) => {
+                tracing::trace!("✏️ Received an AppendEntries message, adding them to the log");
+                common_data.log.append(&mut append_entries_rpc.entries);
             }
+            RaftMessage::RequestVote(mut request_vote_rpc) => {
+                // check if the candidate log is at least as up-to-date as our log
+                // if it is and we haven't voted for anyone yet, vote for the candidate
+                if request_vote_rpc.term >= common_data.current_term
+                    && (common_data.voted_for.is_none()
+                        || *common_data.voted_for.as_ref().unwrap() == request_vote_rpc.candidate_ref)
+                {
+                    let _ = request_vote_rpc
+                        .candidate_ref
+                        .try_send(RaftMessage::RequestVoteResponse(true));
+                    common_data.voted_for = Some(request_vote_rpc.candidate_ref);
+                } else {
+                    let _ = request_vote_rpc
+                        .candidate_ref
+                        .try_send(RaftMessage::RequestVoteResponse(false));
+                }
+            }
+            _ => {}
         }
     }
-
-    return RaftState::Candidate;
 }
 
 async fn candidate<AB>(
@@ -214,35 +214,37 @@ where
         let start_wait_time = Instant::now();
         let wait_res = timeout(time_left, cell.recv()).await;
 
-        match wait_res {
-            Ok(received_message) => match received_message.message() {
-                Some(raftmessage) => match raftmessage {
-                    RaftMessage::RequestVoteResponse(vote_granted) => {
-                        if vote_granted {
-                            tracing::trace!("Got a vote");
-                            votes += 1;
-                            if votes > peer_refs.len() / 2 + 1 {
-                                return RaftState::Leader;
-                            }
-                        }
+        let received_message = if let Ok(message) = wait_res {
+            message
+        } else {
+            tracing::info!("⏰ Timeout reached, starting an election");
+            return RaftState::Candidate;
+        };
+
+        let raftmessage = if let Some(raftmessage) = received_message.message() {
+            raftmessage
+        } else {
+            tracing::info!("Received a None message, quitting");
+            panic!("Received a None message");
+        };
+
+        match raftmessage {
+            RaftMessage::RequestVoteResponse(vote_granted) => {
+                if vote_granted {
+                    tracing::trace!("Got a vote");
+                    votes += 1;
+                    if votes > peer_refs.len() / 2 + 1 {
+                        return RaftState::Leader;
                     }
-                    RaftMessage::AppendEntries(append_entry_rpc) => {
-                        if append_entry_rpc.term >= common_data.current_term {
-                            tracing::info!("There is another leader with an higher term, going back to follower");
-                            return RaftState::Follower;
-                        }
-                    }
-                    _ => {}
-                },
-                None => {
-                    tracing::info!("Received a None message, quitting");
-                    panic!("Received a None message");
                 }
-            },
-            Err(_) => {
-                tracing::info!("⏰ Timeout reached, starting an election");
-                break;
             }
+            RaftMessage::AppendEntries(append_entry_rpc) => {
+                if append_entry_rpc.term >= common_data.current_term {
+                    tracing::info!("There is another leader with an higher term, going back to follower");
+                    return RaftState::Follower;
+                }
+            }
+            _ => {}
         }
 
         match time_left.checked_sub(start_wait_time.elapsed()) {
@@ -251,7 +253,6 @@ where
         }
     }
 
-    return RaftState::Candidate;
 }
 
 // the leader is the interface of the system to the external world
@@ -309,56 +310,57 @@ where
         // or see if we can only check whether there is a message in the queue or not
         let wait_res = timeout(Duration::from_millis(10), cell.recv()).await;
 
-        match wait_res {
-            Ok(received_message) => {
-                match received_message.message() {
-                    Some(raftmessage) => match raftmessage {
-                        // TODO: condense these two cases in a function
-                        RaftMessage::AppendEntries(mut append_entries_rpc) => {
-                            tracing::trace!("Received an AppendEntries message as the leader, somone dared challenge me, are they right?");
-                            if append_entries_rpc.term >= common_data.current_term {
-                                tracing::trace!("They are right, I'm stepping down");
-                                let _ = append_entries_rpc
-                                    .leader_ref
-                                    .try_send(RaftMessage::RequestVoteResponse(true));
-                                common_data.voted_for = Some(append_entries_rpc.leader_ref);
-                                break;
-                            } else {
-                                tracing::trace!("They are wrong, long live the king!");
-                                let _ = append_entries_rpc
-                                    .leader_ref
-                                    .try_send(RaftMessage::RequestVoteResponse(false));
-                            }
-                        }
-                        RaftMessage::RequestVote(mut request_vote_rpc) => {
-                            tracing::trace!("Received a request vote message as the leader, somone dared challenge me, are they right?");
-                            if request_vote_rpc.term >= common_data.current_term {
-                                tracing::trace!("They are right, I'm stepping down");
-                                let _ = request_vote_rpc
-                                    .candidate_ref
-                                    .try_send(RaftMessage::RequestVoteResponse(true));
-                                common_data.voted_for = Some(request_vote_rpc.candidate_ref);
-                                break;
-                            } else {
-                                tracing::trace!("They are wrong, long live the king!");
-                                let _ = request_vote_rpc
-                                    .candidate_ref
-                                    .try_send(RaftMessage::RequestVoteResponse(false));
-                            }
-                        }
-                        RaftMessage::AppendEntryResponse(_term, _success) => {
-                            tracing::trace!("Received an AppendEntryResponse message");
-                        }
-                        _ => {}
-                    },
-                    None => {
-                        tracing::info!("Received a None message, quitting");
-                        panic!("Received a None message");
-                    }
+        let received_message = if let Ok(message) = wait_res {
+            message
+        } else {
+            continue;
+        };
+
+        let raftmessage = if let Some(raftmessage) = received_message.message() {
+            raftmessage
+        } else {
+            tracing::info!("Received a None message, quitting");
+            panic!("Received a None message");
+        };
+
+        match raftmessage {
+            // TODO: condense AppendEntries and RequestVote cases in a function
+            RaftMessage::AppendEntries(mut append_entries_rpc) => {
+                tracing::trace!("Received an AppendEntries message as the leader, somone dared challenge me, are they right?");
+                if append_entries_rpc.term >= common_data.current_term {
+                    tracing::trace!("They are right, I'm stepping down");
+                    let _ = append_entries_rpc
+                        .leader_ref
+                        .try_send(RaftMessage::RequestVoteResponse(true));
+                    common_data.voted_for = Some(append_entries_rpc.leader_ref);
+                    break;
+                } else {
+                    tracing::trace!("They are wrong, long live the king!");
+                    let _ = append_entries_rpc
+                        .leader_ref
+                        .try_send(RaftMessage::RequestVoteResponse(false));
                 }
             }
-            // no messages received, nothing to do
-            Err(_) => {}
+            RaftMessage::RequestVote(mut request_vote_rpc) => {
+                tracing::trace!("Received a request vote message as the leader, somone dared challenge me, are they right?");
+                if request_vote_rpc.term >= common_data.current_term {
+                    tracing::trace!("They are right, I'm stepping down");
+                    let _ = request_vote_rpc
+                        .candidate_ref
+                        .try_send(RaftMessage::RequestVoteResponse(true));
+                    common_data.voted_for = Some(request_vote_rpc.candidate_ref);
+                    break;
+                } else {
+                    tracing::trace!("They are wrong, long live the king!");
+                    let _ = request_vote_rpc
+                        .candidate_ref
+                        .try_send(RaftMessage::RequestVoteResponse(false));
+                }
+            }
+            RaftMessage::AppendEntryResponse(_term, _success) => {
+                tracing::trace!("Received an AppendEntryResponse message");
+            }
+            _ => {}
         }
     }
 
