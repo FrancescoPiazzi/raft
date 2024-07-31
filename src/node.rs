@@ -5,19 +5,18 @@ use tokio::time::timeout;
 
 use actum::prelude::*;
 
-// TODO: replace with a more generic type
-type Message = String;
+// trait LogEntry: Send + Clone + 'static {}
 
 #[allow(private_interfaces)] // I need this to be public only to create a node of RaftMessage
-pub enum RaftMessage {
-    AddPeer(ActorRef<RaftMessage>),
+pub enum RaftMessage<LogEntry> {
+    AddPeer(ActorRef<RaftMessage<LogEntry>>),
 
-    AppendEntries(AppendEntriesRPC),
+    AppendEntries(AppendEntriesRPC<LogEntry>),
 
     AppendEntryResponse(u64, bool), // term, success
 
     // the candidate that initiared the vote, stuff about the vote
-    RequestVote(RequestVoteRPC),
+    RequestVote(RequestVoteRPC<LogEntry>),
 
     // true if the vote was granted, false otherwise
     RequestVoteResponse(bool),
@@ -30,34 +29,35 @@ enum RaftState {
     Leader,
 }
 
-struct RequestVoteRPC {
+struct RequestVoteRPC<LogEntry> {
     term: u64,
-    candidate_ref: ActorRef<RaftMessage>,
+    candidate_ref: ActorRef<RaftMessage<LogEntry>>,
     last_log_index: usize,
     last_log_term: u64,
 }
 
-struct AppendEntriesRPC {
+struct AppendEntriesRPC<LogEntry> {
     term: u64,                         // leader's term
-    leader_ref: ActorRef<RaftMessage>, // the leader's address, followers should store it to redirect clients that talk to them
+    leader_ref: ActorRef<RaftMessage<LogEntry>>, // the leader's address, followers should store it to redirect clients that talk to them
     prev_log_index: u64,               // the index of the log entry immediately preceding the new ones
     prev_log_term: u64,                // the term of the entry at prev_log_index
-    entries: Vec<Message>,             // stuff to add, empty for heartbeat
+    entries: Vec<LogEntry>,             // stuff to add, empty for heartbeat
     leader_commit: u64,                // the leader's commit index
 }
 
 // data common to all states, used to avoid passing a million parameters to the state functions
-struct CommonData {
+struct CommonData<LogEntry> {
     current_term: u64,
-    log: Vec<Message>,
+    log: Vec<LogEntry>,
     commit_index: usize,
     last_applied: usize,
-    voted_for: Option<ActorRef<RaftMessage>>,
+    voted_for: Option<ActorRef<RaftMessage<LogEntry>>>,
 }
 
-pub async fn raft_actor<AB>(mut cell: AB, me: ActorRef<RaftMessage>) -> AB
+pub async fn raft_actor<AB, LogEntry>(mut cell: AB, me: ActorRef<RaftMessage<LogEntry>>) -> AB
 where
-    AB: ActorBounds<RaftMessage>,
+    AB: ActorBounds<RaftMessage<LogEntry>>,
+    LogEntry: Send + Clone + 'static,
 {
     let total_nodes = 5;
 
@@ -93,11 +93,12 @@ where
 // since they are memory addresses, we can't know them in advance,
 // when actum will switch to a different type of actor reference like a network address,
 // this function can be made to read from a file the addresses of the other servers instead
-async fn init<AB>(cell: &mut AB, total_nodes: usize) -> Vec<ActorRef<RaftMessage>>
+async fn init<AB, LogEntry>(cell: &mut AB, total_nodes: usize) -> Vec<ActorRef<RaftMessage<LogEntry>>>
 where
-    AB: ActorBounds<RaftMessage>,
+    AB: ActorBounds<RaftMessage<LogEntry>>,
+    LogEntry: Send + 'static,
 {
-    let mut peers: Vec<ActorRef<RaftMessage>> = Vec::with_capacity(total_nodes - 1);
+    let mut peers: Vec<ActorRef<RaftMessage<LogEntry>>> = Vec::with_capacity(total_nodes - 1);
 
     let mut npeers = 0;
     while npeers < total_nodes - 1 {
@@ -126,9 +127,10 @@ where
 // follower nodes receive AppendEntry messages from the leader and execute them
 // they ping the leader to see if it's still alive, if it isn't, they start an election
 // TODO: store leader address to redirect clients
-async fn follower<AB>(cell: &mut AB, common_data: &mut CommonData) -> RaftState
+async fn follower<AB, LogEntry>(cell: &mut AB, common_data: &mut CommonData<LogEntry>) -> RaftState
 where
-    AB: ActorBounds<RaftMessage>,
+    AB: ActorBounds<RaftMessage<LogEntry>>,
+    LogEntry: Send + 'static,
 {
     tracing::info!("👂 State is follower");
 
@@ -183,14 +185,15 @@ where
     }
 }
 
-async fn candidate<AB>(
+async fn candidate<AB, LogEntry>(
     cell: &mut AB,
-    me: &ActorRef<RaftMessage>,
-    common_data: &mut CommonData,
-    peer_refs: &mut Vec<ActorRef<RaftMessage>>,
+    me: &ActorRef<RaftMessage<LogEntry>>,
+    common_data: &mut CommonData<LogEntry>,
+    peer_refs: &mut Vec<ActorRef<RaftMessage<LogEntry>>>,
 ) -> RaftState
 where
-    AB: ActorBounds<RaftMessage>,
+    AB: ActorBounds<RaftMessage<LogEntry>>,
+    LogEntry: Send + 'static,
 {
     tracing::info!("🤵 State is candidate");
     let min_timeout_ms = 150;
@@ -258,14 +261,15 @@ where
 // the leader is the interface of the system to the external world
 // clients send messages to the leader, which is responsible for replicating them to the other nodes
 // after receiving confirmation from the majority of the nodes, the leader commits the message as agreed
-async fn leader<AB>(
+async fn leader<AB, LogEntry>(
     cell: &mut AB,
-    common_data: &mut CommonData,
-    peer_refs: &mut Vec<ActorRef<RaftMessage>>,
-    me: &ActorRef<RaftMessage>,
+    common_data: &mut CommonData<LogEntry>,
+    peer_refs: &mut Vec<ActorRef<RaftMessage<LogEntry>>>,
+    me: &ActorRef<RaftMessage<LogEntry>>,
 ) -> RaftState
 where
-    AB: ActorBounds<RaftMessage>,
+    AB: ActorBounds<RaftMessage<LogEntry>>,
+    LogEntry: Send + Clone + 'static,
 {
     tracing::info!("👑 State is leader");
     // send heartbeat to everyone to make other candidates switch back to followers
@@ -281,9 +285,10 @@ where
         }));
     }
 
+    let msg: Vec<LogEntry> = Vec::new();
+
     // remove when leader will listen to clients instead of sending random stuff
     let interval_between_messages = Duration::from_millis(1000);
-
     loop {
         // send random stuff to all peers
         // TODO: listen on something and replay instead of the random stuff
@@ -292,8 +297,6 @@ where
         // pretend checking the queue took no time since this is temporary anyway
         tokio::time::sleep(interval_between_messages).await;
 
-        let mut msg: Vec<Message> = Vec::new();
-        msg.push("--message totally from the client and not the leader--".to_string());
         for peer in peer_refs.iter_mut() {
             let _ = peer.try_send(RaftMessage::AppendEntries(AppendEntriesRPC {
                 term: common_data.current_term,

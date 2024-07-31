@@ -1,16 +1,17 @@
 use tokio::task::JoinHandle;
 use tracing::{info_span, Instrument};
 
-use actum::{drop_guard::ActorDropGuard, prelude::*};
+use actum::{actor_cell::standard_actor::StandardBounds, drop_guard::ActorDropGuard, prelude::*};
 
 mod node;
 use node::{raft_actor, RaftMessage};
 
-async fn simulator<AB>(mut cell: ActorCell<(), AB>, server_count: usize) -> ActorCell<(), AB>
+async fn simulator<AB, LogEntry>(mut cell: ActorCell<(), AB>, server_count: usize) -> ActorCell<(), AB>
 where
     ActorCell<(), AB>: ActorBounds<()>,
+    LogEntry: Clone + Send + 'static,
 {
-    let mut refs: Vec<ActorRef<RaftMessage>> = Vec::with_capacity(server_count);
+    let mut refs: Vec<ActorRef<RaftMessage<LogEntry>>> = Vec::with_capacity(server_count);
     let mut guards: Vec<ActorDropGuard> = Vec::with_capacity(server_count);
     let mut handles: Vec<JoinHandle<()>> = Vec::with_capacity(server_count);
 
@@ -56,6 +57,6 @@ async fn main() {
 
     // Note: guard must remain in scope
     #[allow(unused_variables)]
-    let Actor { task, guard, .. } = actum(|cell, me| simulator(cell, 5));
+    let Actor { task, guard, .. } = actum(|cell, me| simulator::<StandardBounds, String>(cell, 5));
     task.run_task().await;
 }
