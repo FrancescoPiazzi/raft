@@ -8,7 +8,7 @@ use actum::prelude::*;
 // TODO: replace with a more generic type
 type Message = String;
 
-#[allow(private_interfaces)]    // I need this to be public only to create a node of RaftMessage
+#[allow(private_interfaces)] // I need this to be public only to create a node of RaftMessage
 pub enum RaftMessage {
     AddPeer(ActorRef<RaftMessage>),
 
@@ -152,14 +152,9 @@ where
                     RaftMessage::RequestVote(mut request_vote_rpc) => {
                         // check if the candidate log is at least as up-to-date as our log
                         // if it is and we haven't voted for anyone yet, vote for the candidate
-                        // also check the term of the candidate, if it's higher, update our term
-                        // TODO: figure out how to compare two nodes using actum because partialEq is implemented but the compiler refuses to acknowledge it
                         if request_vote_rpc.term >= common_data.current_term
                             && (common_data.voted_for.is_none()
-                                || std::ptr::eq(
-                                    common_data.voted_for.as_ref().unwrap(),
-                                    &request_vote_rpc.candidate_ref,
-                                ))
+                                || *common_data.voted_for.as_ref().unwrap() == request_vote_rpc.candidate_ref)
                         {
                             let _ = request_vote_rpc
                                 .candidate_ref
@@ -213,9 +208,7 @@ where
         }));
     }
 
-    let mut time_left = Duration::from_millis(
-        random::<u64>() % (max_timeout_ms - min_timeout_ms) + min_timeout_ms,
-    );
+    let mut time_left = Duration::from_millis(random::<u64>() % (max_timeout_ms - min_timeout_ms) + min_timeout_ms);
 
     loop {
         let start_wait_time = Instant::now();
@@ -356,7 +349,7 @@ where
                         RaftMessage::AppendEntryResponse(_term, _success) => {
                             tracing::trace!("Received an AppendEntryResponse message");
                         }
-                        _ => {  }
+                        _ => {}
                     },
                     None => {
                         tracing::info!("Received a None message, quitting");
