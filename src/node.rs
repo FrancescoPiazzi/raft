@@ -1,8 +1,8 @@
 use rand::random;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::time::timeout;
 
 use actum::prelude::*;
@@ -14,6 +14,8 @@ pub enum RaftMessage<LogEntry> {
     AppendEntries(AppendEntriesRPC<LogEntry>),
 
     AppendEntryResponse(u64, bool), // term, success
+
+    InitMessage(Vec<LogEntry>), // used only by the simulator to initialize the message the client will replay forever
 
     AppendEntriesClient(AppendEntriesClientRPC<LogEntry>),
 
@@ -170,7 +172,7 @@ where
 
         match raftmessage {
             RaftMessage::AppendEntries(mut append_entries_rpc) => {
-                if append_entries_rpc.entries.len() == 0{
+                if append_entries_rpc.entries.len() == 0 {
                     tracing::trace!("❤️ Received heartbeat");
                 } else {
                     tracing::info!("✏️ Received an AppendEntries message, adding them to the log");
@@ -309,21 +311,22 @@ where
         let me = me.clone();
         let stop_flag = stop_flag.clone();
         move || {
-        while !stop_flag.load(Ordering::Relaxed) {
-            let empty_msg = Vec::new();
-            for peer in peer_refs.iter_mut() {
-                let _ = peer.try_send(RaftMessage::AppendEntries(AppendEntriesRPC {
-                    term: current_term,
-                    leader_ref: me.clone(),
-                    prev_log_index: 0,
-                    prev_log_term: 0,
-                    entries: empty_msg.clone(),
-                    leader_commit: 0,
-                }));
+            while !stop_flag.load(Ordering::Relaxed) {
+                let empty_msg = Vec::new();
+                for peer in peer_refs.iter_mut() {
+                    let _ = peer.try_send(RaftMessage::AppendEntries(AppendEntriesRPC {
+                        term: current_term,
+                        leader_ref: me.clone(),
+                        prev_log_index: 0,
+                        prev_log_term: 0,
+                        entries: empty_msg.clone(),
+                        leader_commit: 0,
+                    }));
+                }
+                std::thread::sleep(std::time::Duration::from_millis(heartbeat_period_ms));
             }
-            std::thread::sleep(std::time::Duration::from_millis(heartbeat_period_ms));
         }
-    }});
+    });
 
     loop {
         // no timeouts when we are leaders
@@ -336,7 +339,7 @@ where
 
         match raftmessage {
             RaftMessage::AppendEntriesClient(mut append_entries_client_rpc) => {
-                tracing::info!("Received a message from a client, replicating it to the other nodes");
+                tracing::info!("⏭️ Received a message from a client, replicating it to the other nodes");
                 for peer in peer_refs.iter_mut() {
                     let _ = peer.try_send(RaftMessage::AppendEntries(AppendEntriesRPC {
                         term: common_data.current_term,
@@ -356,7 +359,8 @@ where
                 tracing::trace!(
                     "Received an AppendEntries message as the leader, somone dared challenge me, are they right?"
                 );
-                if append_entries_rpc.term > common_data.current_term {     // TOASK: should it be >= ?
+                if append_entries_rpc.term > common_data.current_term {
+                    // TOASK: should it be >= ?
                     tracing::trace!("They are right, I'm stepping down");
                     break;
                 } else {
@@ -367,7 +371,8 @@ where
                 tracing::trace!(
                     "Received a request vote message as the leader, somone dared challenge me, are they right?"
                 );
-                if request_vote_rpc.term > common_data.current_term {     // TOASK: should it be >= ?
+                if request_vote_rpc.term > common_data.current_term {
+                    // TOASK: should it be >= ?
                     tracing::trace!("They are right, I'm stepping down");
                     let _ = request_vote_rpc
                         .candidate_ref
@@ -389,7 +394,6 @@ where
     }
 
     stop_flag.store(true, Ordering::Relaxed);
-
     heartbeat_handle.join().unwrap();
 
     RaftState::Follower

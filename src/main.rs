@@ -9,7 +9,11 @@ use node::{raft_actor, RaftMessage};
 mod client;
 use client::client;
 
-async fn simulator<AB, LogEntry>(mut cell: ActorCell<(), AB>, server_count: usize) -> ActorCell<(), AB>
+async fn simulator<AB, LogEntry>(
+    mut cell: ActorCell<(), AB>,
+    server_count: usize,
+    client_message: Vec<LogEntry>,
+) -> ActorCell<(), AB>
 where
     ActorCell<(), AB>: ActorBounds<()>,
     LogEntry: Clone + Send + 'static,
@@ -46,6 +50,7 @@ where
     for server_ref in &refs {
         let _ = client_actor.m_ref.try_send(RaftMessage::AddPeer(server_ref.clone()));
     }
+    client_actor.m_ref.try_send(RaftMessage::InitMessage(client_message));
 
     for handle in handles {
         let _ = handle.await;
@@ -63,11 +68,12 @@ async fn main() {
         )
         .with_target(false)
         .with_line_number(true)
-        .with_max_level(tracing::Level::INFO)
+        .with_max_level(tracing::Level::TRACE)
         .init();
 
     // Note: guard must remain in scope
     #[allow(unused_variables)]
-    let Actor { task, guard, .. } = actum(|cell, me| simulator::<StandardBounds, String>(cell, 5));
+    let Actor { task, guard, .. } =
+        actum(|cell, me| simulator::<StandardBounds, String>(cell, 5, vec!["Hello".to_string(), " raft!".to_string()]));
     task.run_task().await;
 }
