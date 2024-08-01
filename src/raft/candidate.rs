@@ -6,7 +6,7 @@ use actum::prelude::*;
 
 use crate::raft::model::*;
 
-pub(crate) async fn candidate<AB, LogEntry>(
+pub async fn candidate<AB, LogEntry>(
     cell: &mut AB,
     me: &ActorRef<RaftMessage<LogEntry>>,
     common_data: &mut CommonData<LogEntry>,
