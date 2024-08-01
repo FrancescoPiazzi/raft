@@ -3,8 +3,9 @@ use tracing::{info_span, Instrument};
 
 use actum::{actor_cell::standard_actor::StandardBounds, drop_guard::ActorDropGuard, prelude::*};
 
-mod node;
-use node::{raft_actor, RaftMessage};
+mod raft;
+use raft::model::RaftMessage;
+use raft::raft::raft_actor;
 
 mod client;
 use client::client;
