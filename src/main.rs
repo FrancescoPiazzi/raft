@@ -6,6 +6,9 @@ use actum::{actor_cell::standard_actor::StandardBounds, drop_guard::ActorDropGua
 mod node;
 use node::{raft_actor, RaftMessage};
 
+mod client;
+use client::client;
+
 async fn simulator<AB, LogEntry>(mut cell: ActorCell<(), AB>, server_count: usize) -> ActorCell<(), AB>
 where
     ActorCell<(), AB>: ActorBounds<()>,
@@ -37,9 +40,17 @@ where
 
     tracing::info!("Neighbors initialized");
 
+    let mut client_actor: Actor<RaftMessage<LogEntry>, _> = cell.spawn(client).await.unwrap();
+    let client_handle = tokio::spawn(client_actor.task.run_task().instrument(info_span!("client")));
+
+    for server_ref in &refs {
+        let _ = client_actor.m_ref.try_send(RaftMessage::AddPeer(server_ref.clone()));
+    }
+
     for handle in handles {
         let _ = handle.await;
     }
+    let _ = client_handle.await;
 
     cell
 }
@@ -52,7 +63,7 @@ async fn main() {
         )
         .with_target(false)
         .with_line_number(true)
-        .with_max_level(tracing::Level::TRACE)
+        .with_max_level(tracing::Level::INFO)
         .init();
 
     // Note: guard must remain in scope

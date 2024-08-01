@@ -2,8 +2,9 @@
 - [x] Create an Actum style state machine to describe a node.
 - [x] Leader election.
 - [x] Make lead duplicate messages and follow to listen and make their copies.
+- [x] Write client node to send messages to the leader.
+- [x] Followers tell client who the leader is if they recieve a message from a client.
 - [ ] Make lead keep track of who received a certain update and commit it when a majority has it.
-- [ ] Write client node to send messages to the leader.
 
 **Completed when:**
 - [ ] The right leader is elected.
@@ -41,3 +42,4 @@ completed when:
 
 AT SOME POINT
 - [x] use a more generic type for log entries
+- [ ] the maximum number of nodes is written in three different places but it must be the same in all of them, put them in a single place
