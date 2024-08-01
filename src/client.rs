@@ -4,13 +4,12 @@ use crate::node::AppendEntriesClientRPC;
 use crate::node::RaftMessage;
 
 // example of a raft client requesting the replication of entries
-// as this is under a simulation, the client will first recieve a message from the simulator,
-// then replay that to the raft nodes forever
+// the client will first recieve a message from the simulator, then replay that to the raft nodes forever
 // this allows to not make any assumptions about the type of the message,
-// at the expense of the client not being completly decoupled from the simulator
+// at the expense of the client not being decoupled from the simulator
 // creating a client that sends messages of a specific type i.e. ActorRef<RaftMessage<String>> will make the compiler
 // complain because it's a different type from ActorRef<RaftMessage<LogEntry>> that is used in the raft_nodes
-// TOASK: is there a way to get it to work? since String repects all the traits of LogEntry?
+// TOASK: is there a way to get it to work? String repects all the traits of LogEntry
 pub async fn client<AB, LogEntry>(mut cell: AB, me: ActorRef<RaftMessage<LogEntry>>) -> AB
 where
     AB: ActorBounds<RaftMessage<LogEntry>>,
@@ -58,6 +57,7 @@ where
     }
 }
 
+// recieve the messages from the simulator to get the raft nodes refs
 async fn init_raft_nodes<AB, LogEntry>(cell: &mut AB, n_nodes: usize) -> Vec<ActorRef<RaftMessage<LogEntry>>>
 where
     AB: ActorBounds<RaftMessage<LogEntry>>,

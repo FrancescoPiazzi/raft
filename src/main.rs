@@ -50,7 +50,7 @@ where
     for server_ref in &refs {
         let _ = client_actor.m_ref.try_send(RaftMessage::AddPeer(server_ref.clone()));
     }
-    client_actor.m_ref.try_send(RaftMessage::InitMessage(client_message));
+    let _ = client_actor.m_ref.try_send(RaftMessage::InitMessage(client_message));
 
     for handle in handles {
         let _ = handle.await;
