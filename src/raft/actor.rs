@@ -53,13 +53,10 @@ where
     while npeers < total_nodes - 1 {
         let msg = cell.recv().await.message();
         match msg {
-            Some(raftmessage) => match raftmessage {
-                RaftMessage::AddPeer(peer) => {
-                    npeers += 1;
-                    peers.push(peer);
-                    tracing::trace!("🙆 Peer added, total: {}", npeers);
-                }
-                _ => {}
+            Some(raftmessage) => if let RaftMessage::AddPeer(peer) = raftmessage {
+                npeers += 1;
+                peers.push(peer);
+                tracing::trace!("🙆 Peer added, total: {}", npeers);
             },
             None => {
                 tracing::info!("Received a None message, quitting");

@@ -10,7 +10,7 @@ pub(crate) async fn candidate<AB, LogEntry>(
     cell: &mut AB,
     me: &ActorRef<RaftMessage<LogEntry>>,
     common_data: &mut CommonData<LogEntry>,
-    peer_refs: &mut Vec<ActorRef<RaftMessage<LogEntry>>>,
+    peer_refs: &mut [ActorRef<RaftMessage<LogEntry>>],
 ) -> RaftState
 where
     AB: ActorBounds<RaftMessage<LogEntry>>,
@@ -45,12 +45,7 @@ where
             return RaftState::Candidate;
         };
 
-        let raftmessage = if let Some(raftmessage) = received_message.message() {
-            raftmessage
-        } else {
-            tracing::info!("Received a None message, quitting");
-            panic!("Received a None message");
-        };
+        let raftmessage = received_message.message().expect("Received a None message, quitting");
 
         match raftmessage {
             RaftMessage::RequestVoteResponse(vote_granted) => {

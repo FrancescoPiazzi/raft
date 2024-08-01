@@ -34,16 +34,11 @@ where
             return RaftState::Candidate;
         };
 
-        let raftmessage = if let Some(raftmessage) = received_message.message() {
-            raftmessage
-        } else {
-            tracing::info!("Received a None message, quitting");
-            panic!("Received a None message");
-        };
+        let raftmessage = received_message.message().expect("Received a None message, quitting");
 
         match raftmessage {
             RaftMessage::AppendEntries(mut append_entries_rpc) => {
-                if append_entries_rpc.entries.len() == 0 {
+                if append_entries_rpc.entries.is_empty() {
                     tracing::trace!("❤️ Received heartbeat");
                 } else {
                     tracing::info!("✏️ Received an AppendEntries message, adding them to the log");

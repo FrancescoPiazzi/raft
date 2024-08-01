@@ -35,12 +35,7 @@ where
             client_ref: me.clone(),
         }));
 
-        let raftmessage = if let Some(raftmessage) = cell.recv().await.message() {
-            raftmessage
-        } else {
-            tracing::info!("Received a None message, quitting");
-            panic!("Received a None message");
-        };
+        let raftmessage = cell.recv().await.message().expect("Received a None message, quitting");
 
         match raftmessage {
             RaftMessage::AppendEntriesClientResponse(response) => {
@@ -65,17 +60,9 @@ where
     let mut raft_nodes: Vec<ActorRef<RaftMessage<LogEntry>>> = Vec::new();
 
     while raft_nodes.len() < n_nodes {
-        let raftmessage = if let Some(raftmessage) = cell.recv().await.message() {
-            raftmessage
-        } else {
-            tracing::info!("Received a None message, quitting");
-            panic!("Received a None message");
-        };
-        match raftmessage {
-            RaftMessage::AddPeer(peer) => {
-                raft_nodes.push(peer);
-            }
-            _ => {}
+        let raftmessage = cell.recv().await.message().expect("Received a None message, quitting");
+        if let RaftMessage::AddPeer(peer) = raftmessage{
+            raft_nodes.push(peer);
         }
     }
 
@@ -89,18 +76,11 @@ where
     AB: ActorBounds<RaftMessage<LogEntry>>,
     LogEntry: Clone + Send + 'static,
 {
-    let raftmessage = if let Some(raftmessage) = cell.recv().await.message() {
-        raftmessage
+    let raftmessage = cell.recv().await.message().expect("Received a None message, quitting");
+
+    if let RaftMessage::InitMessage(message) = raftmessage{
+        message
     } else {
-        tracing::info!("Received a None message, quitting");
-        panic!("Received a None message");
-    };
-    match raftmessage {
-        RaftMessage::InitMessage(message) => {
-            return message.clone();
-        }
-        _ => {
-            panic!("Received a message that was not a ClientMessage");
-        }
+        panic!("Received a message that was not a ClientMessage");
     }
 }

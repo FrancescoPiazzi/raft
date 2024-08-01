@@ -1,5 +1,5 @@
 pub mod model;
-pub mod raft;
+pub mod actor;
 
 mod candidate;
 mod follower;

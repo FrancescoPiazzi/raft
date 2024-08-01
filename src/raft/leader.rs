@@ -8,7 +8,7 @@ use crate::raft::model::*;
 // the leader is the interface of the system to the external world
 // clients send messages to the leader, which is responsible for replicating them to the other nodes
 // after receiving confirmation from the majority of the nodes, the leader commits the message as agreed
-pub(crate) async fn leader<AB, LogEntry>(
+pub async fn leader<AB, LogEntry>(
     cell: &mut AB,
     common_data: &mut CommonData<LogEntry>,
     peer_refs: &mut Vec<ActorRef<RaftMessage<LogEntry>>>,
@@ -51,12 +51,8 @@ where
 
     loop {
         // no timeouts when we are leaders
-        let raftmessage = if let Some(raftmessage) = cell.recv().await.message() {
-            raftmessage
-        } else {
-            tracing::info!("Received a None message, quitting");
-            panic!("Received a None message");
-        };
+        let raftmessage = cell.recv().await.message().expect("Received a None message, quitting");
+
 
         match raftmessage {
             RaftMessage::AppendEntriesClient(mut append_entries_client_rpc) => {
