@@ -1,7 +1,8 @@
-#![allow(dead_code)]    // remove when algorithm is done and all fields should be used
+#![allow(dead_code)] // remove when algorithm is done and all fields should be used
 
 use actum::prelude::ActorRef;
 
+#[derive(Clone)]
 pub enum RaftMessage<LogEntry> {
     AddPeer(ActorRef<RaftMessage<LogEntry>>),
 
@@ -17,6 +18,7 @@ pub enum RaftMessage<LogEntry> {
     InitMessage(Vec<LogEntry>), // used only by the simulator to initialize the message the client will replay forever
 }
 
+#[derive(Clone)]
 pub(crate) struct RequestVoteRPC<LogEntry> {
     pub(crate) term: u64,
     pub(crate) candidate_ref: ActorRef<RaftMessage<LogEntry>>,
@@ -24,6 +26,7 @@ pub(crate) struct RequestVoteRPC<LogEntry> {
     pub(crate) last_log_term: u64,
 }
 
+#[derive(Clone)]
 pub(crate) struct AppendEntriesRPC<LogEntry> {
     pub(crate) term: u64,                                   // leader's term
     pub(crate) leader_ref: ActorRef<RaftMessage<LogEntry>>, // the leader's address, followers should store it to redirect clients that talk to them
@@ -33,6 +36,12 @@ pub(crate) struct AppendEntriesRPC<LogEntry> {
     pub(crate) leader_commit: u64,  // the leader's commit index
 }
 
+#[derive(Clone)]
+pub(crate) struct AppendEntriesClientRPC<LogEntry> {
+    pub(crate) client_ref: ActorRef<RaftMessage<LogEntry>>,
+    pub(crate) entries: Vec<LogEntry>,
+}
+
 // data common to all states, used to avoid passing a million parameters to the state functions
 pub(crate) struct CommonData<LogEntry> {
     pub(crate) current_term: u64,
@@ -40,9 +49,4 @@ pub(crate) struct CommonData<LogEntry> {
     pub(crate) commit_index: usize,
     pub(crate) last_applied: usize,
     pub(crate) voted_for: Option<ActorRef<RaftMessage<LogEntry>>>,
-}
-
-pub(crate) struct AppendEntriesClientRPC<LogEntry> {
-    pub(crate) client_ref: ActorRef<RaftMessage<LogEntry>>,
-    pub(crate) entries: Vec<LogEntry>,
 }

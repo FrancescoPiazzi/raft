@@ -6,7 +6,6 @@ use actum::prelude::*;
 
 use crate::raft::model::*;
 
-
 // candidate nodes start an election by sending RequestVote messages to the other nodes
 // if they receive a majority of votes, they become the leader
 // if they receive a message from a node with a higher term, they become a follower
@@ -19,7 +18,7 @@ pub async fn candidate<AB, LogEntry>(
 ) -> bool
 where
     AB: ActorBounds<RaftMessage<LogEntry>>,
-    LogEntry: Send + 'static,
+    LogEntry: Send + Clone + 'static,
 {
     tracing::info!("🤵 State is candidate");
     let min_timeout_ms = 150;
@@ -29,13 +28,16 @@ where
     let mut votes = 1;
     let new_term = common_data.current_term + 1;
 
+    let request_vote_msg = RaftMessage::RequestVote(RequestVoteRPC {
+        term: new_term,
+        candidate_ref: me.clone(),
+        last_log_index: common_data.last_applied,
+        last_log_term: 0,
+    });
     for peer in peer_refs.iter_mut() {
-        let _ = peer.try_send(RaftMessage::RequestVote(RequestVoteRPC {
-            term: new_term,
-            candidate_ref: me.clone(),
-            last_log_index: common_data.last_applied,
-            last_log_term: 0,
-        }));
+        // instantiationg a new one every time because RaftMessage is not clone
+        // TODO: perhaps make it clone
+        let _ = peer.try_send(request_vote_msg.clone());
     }
 
     let mut time_left = Duration::from_millis(random::<u64>() % (max_timeout_ms - min_timeout_ms) + min_timeout_ms);
@@ -46,14 +48,14 @@ where
         'election: loop {
             let start_wait_time = Instant::now();
             let wait_res = timeout(time_left, cell.recv()).await;
-    
+
             let Ok(message) = wait_res else {
                 tracing::info!("⏰ Timeout reached");
                 break 'election;
             };
-    
+
             let message = message.message().expect("Received a None message, quitting");
-    
+
             match message {
                 RaftMessage::RequestVoteResponse(vote_granted) => {
                     if vote_granted {
@@ -75,7 +77,7 @@ where
                 }
                 _ => {}
             }
-    
+
             match time_left.checked_sub(start_wait_time.elapsed()) {
                 Some(time) => time_left = time,
                 None => break 'election,

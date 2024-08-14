@@ -4,8 +4,8 @@ use tracing::{info_span, Instrument};
 use actum::{actor_cell::standard_actor::StandardBounds, drop_guard::ActorDropGuard, prelude::*};
 
 mod raft;
-use raft::model::RaftMessage;
 use raft::actor::raft_actor;
+use raft::model::RaftMessage;
 
 mod client;
 use client::client;
@@ -20,7 +20,7 @@ where
     LogEntry: Clone + Send + 'static,
 {
     let mut refs: Vec<ActorRef<RaftMessage<LogEntry>>> = Vec::with_capacity(server_count);
-    #[allow(clippy::collection_is_never_read)]  // we only need to store these 'cause otherwise the actors are dropped
+    #[allow(clippy::collection_is_never_read)] // we only need to store these 'cause otherwise the actors are dropped
     let mut guards: Vec<ActorDropGuard> = Vec::with_capacity(server_count);
     let mut handles: Vec<JoinHandle<()>> = Vec::with_capacity(server_count);
 

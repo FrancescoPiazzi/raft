@@ -30,10 +30,11 @@ where
     loop {
         tokio::time::sleep(interval_between_messages).await;
 
-        let _ = leader.try_send(RaftMessage::AppendEntriesClient(AppendEntriesClientRPC {
+        let msg = RaftMessage::AppendEntriesClient(AppendEntriesClientRPC {
             entries: message_to_send.clone(),
             client_ref: me.clone(),
-        }));
+        });
+        let _ = leader.try_send(msg);
 
         let message = cell.recv().await.message().expect("Received a None message, quitting");
 
@@ -61,7 +62,7 @@ where
 
     while raft_nodes.len() < n_nodes {
         let message = cell.recv().await.message().expect("Received a None message, quitting");
-        if let RaftMessage::AddPeer(peer) = message{
+        if let RaftMessage::AddPeer(peer) = message {
             raft_nodes.push(peer);
         }
     }
@@ -76,7 +77,8 @@ where
     AB: ActorBounds<RaftMessage<LogEntry>>,
     LogEntry: Clone + Send + 'static,
 {
-    let RaftMessage::InitMessage(message) = cell.recv().await.message().expect("Received a None message, quitting") else {
+    let RaftMessage::InitMessage(message) = cell.recv().await.message().expect("Received a None message, quitting")
+    else {
         panic!("Received an unexpected message");
     };
 

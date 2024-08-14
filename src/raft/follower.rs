@@ -44,32 +44,22 @@ where
                 common_data.log.append(&mut append_entries_rpc.entries);
                 leader_ref = Some(append_entries_rpc.leader_ref.clone());
 
-                // send append entry response
-                let _ = append_entries_rpc
-                    .leader_ref
-                    .try_send(RaftMessage::AppendEntryResponse(common_data.current_term, true));
+                let msg = RaftMessage::AppendEntryResponse(common_data.current_term, true);
+                let _ = append_entries_rpc.leader_ref.try_send(msg);
             }
             RaftMessage::RequestVote(mut request_vote_rpc) => {
-                // check if the candidate log is at least as up-to-date as our log
-                // if it is and we haven't voted for anyone yet, vote for the candidate
-                if request_vote_rpc.term >= common_data.current_term
+                // grant the vote if the candidate's term is greater than or equal to the current term,
+                // and either we haven't voted for anyone yet or we have voted for that candidate
+                tracing::trace!("🗳️ Received a RequestVote message");
+                let grant_vote = request_vote_rpc.term >= common_data.current_term
                     && (common_data.voted_for.is_none()
-                        || *common_data.voted_for.as_ref().unwrap() == request_vote_rpc.candidate_ref)
-                {
-                    let _ = request_vote_rpc
-                        .candidate_ref
-                        .try_send(RaftMessage::RequestVoteResponse(true));
-                    common_data.voted_for = Some(request_vote_rpc.candidate_ref);
-                } else {
-                    let _ = request_vote_rpc
-                        .candidate_ref
-                        .try_send(RaftMessage::RequestVoteResponse(false));
-                }
+                        || *common_data.voted_for.as_ref().unwrap() == request_vote_rpc.candidate_ref.clone());
+                let msg = RaftMessage::RequestVoteResponse(grant_vote);
+                let _ = request_vote_rpc.candidate_ref.try_send(msg);
             }
             RaftMessage::AppendEntriesClient(mut append_entries_client_rpc) => {
-                let _ = append_entries_client_rpc
-                    .client_ref
-                    .try_send(RaftMessage::AppendEntriesClientResponse(Err(leader_ref.clone())));
+                let msg = RaftMessage::AppendEntriesClientResponse(Err(leader_ref.clone()));
+                let _ = append_entries_client_rpc.client_ref.try_send(msg);
             }
             _ => {}
         }

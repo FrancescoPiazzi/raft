@@ -1,5 +1,5 @@
-pub mod model;
 pub mod actor;
+pub mod model;
 
 mod candidate;
 mod follower;
