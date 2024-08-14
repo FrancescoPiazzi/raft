@@ -51,9 +51,9 @@ where
 
     loop {
         // no timeouts when we are leaders
-        let raftmessage = cell.recv().await.message().expect("Received a None message, quitting");
+        let message = cell.recv().await.message().expect("Received a None message, quitting");
 
-        match raftmessage {
+        match message {
             RaftMessage::AppendEntriesClient(mut append_entries_client_rpc) => {
                 tracing::info!("⏭️ Received a message from a client, replicating it to the other nodes");
                 for peer in peer_refs.iter_mut() {

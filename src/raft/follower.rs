@@ -27,16 +27,14 @@ where
     loop {
         let wait_res = timeout(election_timeout, cell.recv()).await;
 
-        let received_message = if let Ok(message) = wait_res {
-            message
-        } else {
+        let Ok(message) = wait_res else {
             tracing::info!("⏰ Timeout reached");
             return;
         };
 
-        let raftmessage = received_message.message().expect("Received a None message, quitting");
+        let message = message.message().expect("Received a None message, quitting");
 
-        match raftmessage {
+        match message {
             RaftMessage::AppendEntries(mut append_entries_rpc) => {
                 if append_entries_rpc.entries.is_empty() {
                     tracing::trace!("❤️ Received heartbeat");

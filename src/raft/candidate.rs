@@ -41,20 +41,20 @@ where
     let mut time_left = Duration::from_millis(random::<u64>() % (max_timeout_ms - min_timeout_ms) + min_timeout_ms);
 
     'candidate: loop {
+        tracing::info!("📦 Starting an election");
+
         'election: loop {
             let start_wait_time = Instant::now();
             let wait_res = timeout(time_left, cell.recv()).await;
     
-            let received_message = if let Ok(message) = wait_res {
-                message
-            } else {
+            let Ok(message) = wait_res else {
                 tracing::info!("⏰ Timeout reached");
                 break 'election;
             };
     
-            let raftmessage = received_message.message().expect("Received a None message, quitting");
+            let message = message.message().expect("Received a None message, quitting");
     
-            match raftmessage {
+            match message {
                 RaftMessage::RequestVoteResponse(vote_granted) => {
                     if vote_granted {
                         tracing::trace!("Got a vote");
