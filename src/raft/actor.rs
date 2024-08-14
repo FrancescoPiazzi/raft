@@ -21,19 +21,16 @@ where
         voted_for: None,
     };
 
-    let mut state: RaftState = RaftState::Follower;
-
     let mut peer_refs = init(&mut cell, total_nodes).await;
 
     tracing::trace!("initialization done");
 
-    // this should iterate not less than once per term
     loop {
-        state = match state {
-            RaftState::Follower => follower(&mut cell, &mut common_data).await,
-            RaftState::Candidate => candidate(&mut cell, &me, &mut common_data, &mut peer_refs).await,
-            RaftState::Leader => leader(&mut cell, &mut common_data, &mut peer_refs, &me).await,
-        };
+        follower(&mut cell, &mut common_data).await;
+        let election_won = candidate(&mut cell, &me, &mut common_data, &mut peer_refs).await;
+        if election_won {
+            leader(&mut cell, &mut common_data, &mut peer_refs, &me).await;
+        }
     }
 }
 

@@ -17,13 +17,6 @@ pub enum RaftMessage<LogEntry> {
     InitMessage(Vec<LogEntry>), // used only by the simulator to initialize the message the client will replay forever
 }
 
-#[derive(Debug, PartialEq)]
-pub(crate) enum RaftState {
-    Follower,
-    Candidate,
-    Leader,
-}
-
 pub(crate) struct RequestVoteRPC<LogEntry> {
     pub(crate) term: u64,
     pub(crate) candidate_ref: ActorRef<RaftMessage<LogEntry>>,

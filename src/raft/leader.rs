@@ -13,7 +13,7 @@ pub async fn leader<AB, LogEntry>(
     common_data: &mut CommonData<LogEntry>,
     peer_refs: &mut Vec<ActorRef<RaftMessage<LogEntry>>>,
     me: &ActorRef<RaftMessage<LogEntry>>,
-) -> RaftState
+)
 where
     AB: ActorBounds<RaftMessage<LogEntry>>,
     LogEntry: Send + Clone + 'static,
@@ -52,7 +52,6 @@ where
     loop {
         // no timeouts when we are leaders
         let raftmessage = cell.recv().await.message().expect("Received a None message, quitting");
-
 
         match raftmessage {
             RaftMessage::AppendEntriesClient(mut append_entries_client_rpc) => {
@@ -112,6 +111,4 @@ where
 
     stop_flag.store(true, Ordering::Relaxed);
     heartbeat_handle.join().unwrap();
-
-    RaftState::Follower
 }

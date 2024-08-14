@@ -8,7 +8,7 @@ use crate::raft::model::*;
 
 // follower nodes receive AppendEntry messages from the leader and execute them
 // they ping the leader to see if it's still alive, if it isn't, they start an election
-pub async fn follower<AB, LogEntry>(cell: &mut AB, common_data: &mut CommonData<LogEntry>) -> RaftState
+pub async fn follower<AB, LogEntry>(cell: &mut AB, common_data: &mut CommonData<LogEntry>)
 where
     AB: ActorBounds<RaftMessage<LogEntry>>,
     LogEntry: Send + 'static,
@@ -30,8 +30,8 @@ where
         let received_message = if let Ok(message) = wait_res {
             message
         } else {
-            tracing::info!("⏰ Timeout reached, starting an election");
-            return RaftState::Candidate;
+            tracing::info!("⏰ Timeout reached");
+            return;
         };
 
         let raftmessage = received_message.message().expect("Received a None message, quitting");
