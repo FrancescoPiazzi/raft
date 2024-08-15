@@ -1,5 +1,5 @@
-use rand::random;
-use std::time::Duration;
+use rand::{thread_rng, Rng};
+use std::{ops::Range, time::Duration};
 use tokio::time::timeout;
 
 use actum::prelude::*;
@@ -15,12 +15,9 @@ where
 {
     tracing::info!("👂 State is follower");
 
-    let min_election_timeout_ms = 1500;
-    let max_election_timeout_ms = 3000;
+    pub const DEFAULT_ELECTION_TIMEOUT: Range<Duration> = Duration::from_millis(1500)..Duration::from_millis(3000);
 
-    let election_timeout = Duration::from_millis(
-        random::<u64>() % (max_election_timeout_ms - min_election_timeout_ms) + min_election_timeout_ms,
-    );
+    let election_timeout = thread_rng().gen_range(DEFAULT_ELECTION_TIMEOUT);
 
     let mut leader_ref: Option<ActorRef<RaftMessage<LogEntry>>> = None;
 

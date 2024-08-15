@@ -1,5 +1,5 @@
-use rand::random;
-use std::time::{Duration, Instant};
+use rand::{thread_rng, Rng};
+use std::{ops::Range, time::{Duration, Instant}};
 use tokio::time::timeout;
 
 use actum::prelude::*;
@@ -21,8 +21,7 @@ where
     LogEntry: Send + Clone + 'static,
 {
     tracing::info!("🤵 State is candidate");
-    let min_timeout_ms = 150;
-    let max_timeout_ms = 300;
+    pub const DEFAULT_ELECTION_TIMEOUT: Range<Duration> = Duration::from_millis(150)..Duration::from_millis(300);
 
     let election_won;
     let mut votes = 1;
@@ -35,12 +34,10 @@ where
         last_log_term: 0,
     });
     for peer in peer_refs.iter_mut() {
-        // instantiationg a new one every time because RaftMessage is not clone
-        // TODO: perhaps make it clone
         let _ = peer.try_send(request_vote_msg.clone());
     }
 
-    let mut time_left = Duration::from_millis(random::<u64>() % (max_timeout_ms - min_timeout_ms) + min_timeout_ms);
+    let mut time_left = thread_rng().gen_range(DEFAULT_ELECTION_TIMEOUT);
 
     'candidate: loop {
         tracing::info!("📦 Starting an election");
