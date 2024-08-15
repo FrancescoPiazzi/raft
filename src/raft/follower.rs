@@ -6,8 +6,8 @@ use actum::prelude::*;
 
 use crate::raft::model::*;
 
-// follower nodes receive AppendEntry messages from the leader and execute them
-// they ping the leader to see if it's still alive, if it isn't, they start an election
+// follower nodes receive AppendEntry messages from the leader and duplicate them
+// returns when no message is received from the leader after some time
 pub async fn follower<AB, LogEntry>(cell: &mut AB, common_data: &mut CommonData<LogEntry>)
 where
     AB: ActorBounds<RaftMessage<LogEntry>>,
@@ -16,7 +16,6 @@ where
     tracing::info!("👂 State is follower");
 
     pub const DEFAULT_ELECTION_TIMEOUT: Range<Duration> = Duration::from_millis(1500)..Duration::from_millis(3000);
-
     let election_timeout = thread_rng().gen_range(DEFAULT_ELECTION_TIMEOUT);
 
     let mut leader_ref: Option<ActorRef<RaftMessage<LogEntry>>> = None;

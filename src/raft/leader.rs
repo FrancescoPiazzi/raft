@@ -8,6 +8,7 @@ use crate::raft::model::*;
 // the leader is the interface of the system to the external world
 // clients send messages to the leader, which is responsible for replicating them to the other nodes
 // after receiving confirmation from the majority of the nodes, the leader commits the message as agreed
+// returns when another leader or candidate with a higher term is detected
 pub async fn leader<AB, LogEntry>(
     cell: &mut AB,
     common_data: &mut CommonData<LogEntry>,
