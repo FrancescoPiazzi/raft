@@ -1,5 +1,8 @@
 use rand::{thread_rng, Rng};
-use std::{ops::Range, time::{Duration, Instant}};
+use std::{
+    ops::Range,
+    time::{Duration, Instant},
+};
 use tokio::time::timeout;
 
 use actum::prelude::*;

@@ -1,5 +1,4 @@
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::time::Duration;
 
 use actum::prelude::*;
 
@@ -19,38 +18,57 @@ pub async fn leader<AB, LogEntry>(
     LogEntry: Send + Clone + 'static,
 {
     tracing::info!("👑 State is leader");
+    
+    // TODO: this can definetly be done better, expecially the part where I have to clone
+    // random stuff and pass the original variable to a branch, and the clone to the other
+    // and also maybe get rid of some of the weird "_ = async { ... } => {}," syntax
+    let current_term = common_data.current_term;
+    let mut peer_refs_clone = peer_refs.clone();
 
-    let heartbeat_period_ms = 1000;
-    let stop_flag = Arc::new(AtomicBool::new(false));
+    tokio::select! {
+        _ = async {
+            message_handler(cell, common_data, peer_refs, me).await;
+        } => {},
+        _ = async {
+            heartbeat_sender(Duration::from_millis(1000), current_term, &mut peer_refs_clone, me).await;
+        } => {},
+    };
+}
 
-    // spawn a separate thread to send heartbeats every 1000 milliseconds
-    // TOASK: maybe this should be a separate actor? But the followers shouldn't be able to tell the difference
-    // as the heartbeats should come from the leader, would they be able to?
-    let heartbeat_handle = std::thread::spawn({
-        let current_term = common_data.current_term;
-        let mut peer_refs = peer_refs.clone();
-        let me = me.clone();
-        let stop_flag = stop_flag.clone();
-        move || {
-            while !stop_flag.load(Ordering::Relaxed) {
-                let heartbeat_msg = RaftMessage::AppendEntries(AppendEntriesRPC {
-                    term: current_term,
-                    leader_ref: me.clone(),
-                    prev_log_index: 0,
-                    prev_log_term: 0,
-                    entries: Vec::new(),
-                    leader_commit: 0,
-                });
-                for peer in peer_refs.iter_mut() {
-                    let _ = peer.try_send(heartbeat_msg.clone());
-                }
-                std::thread::sleep(std::time::Duration::from_millis(heartbeat_period_ms));
-            }
-        }
+async fn heartbeat_sender<LogEntry>(
+    heartbeat_period: Duration,
+    current_term: u64,
+    peer_refs: &mut Vec<ActorRef<RaftMessage<LogEntry>>>,
+    me: &ActorRef<RaftMessage<LogEntry>>,
+) where
+    LogEntry: Send + Clone + 'static,
+{
+    let heartbeat_msg = RaftMessage::AppendEntries(AppendEntriesRPC {
+        term: current_term,
+        leader_ref: me.clone(),
+        prev_log_index: 0,
+        prev_log_term: 0,
+        entries: Vec::new(),
+        leader_commit: 0,
     });
-
     loop {
-        // no timeouts when we are leaders
+        for peer in peer_refs.iter_mut() {
+            let _ = peer.try_send(heartbeat_msg.clone());
+        }
+        tokio::time::sleep(heartbeat_period).await;
+    }
+}
+
+async fn message_handler<AB, LogEntry>(
+    cell: &mut AB,
+    common_data: &mut CommonData<LogEntry>,
+    peer_refs: &mut Vec<ActorRef<RaftMessage<LogEntry>>>,
+    me: &ActorRef<RaftMessage<LogEntry>>,
+) where
+    AB: ActorBounds<RaftMessage<LogEntry>>,
+    LogEntry: Send + Clone + 'static,
+{
+    loop {
         let message = cell.recv().await.message().expect("Received a None message, quitting");
 
         match message {
@@ -67,14 +85,13 @@ pub async fn leader<AB, LogEntry>(
                 for peer in peer_refs.iter_mut() {
                     let _ = peer.try_send(append_entries_msg.clone());
                 }
-                // TOASK: send the confirmation here or when it's committed? (sending it here for now as there is no commit yet)
+                // TOASK: send the confirmation here or when it's committed?
+                // (sending it here for now as there is no commit yet)
                 let msg = RaftMessage::AppendEntriesClientResponse(Ok(()));
                 let _ = append_entries_client_rpc.client_ref.try_send(msg);
             }
             RaftMessage::AppendEntries(append_entries_rpc) => {
-                tracing::trace!(
-                    "Received an AppendEntries message as the leader, somone challenged me"
-                );
+                tracing::trace!("Received an AppendEntries message as the leader, somone challenged me");
                 // TOASK: should it be >= ?
                 if append_entries_rpc.term > common_data.current_term {
                     tracing::trace!("They are right, I'm stepping down");
@@ -84,9 +101,7 @@ pub async fn leader<AB, LogEntry>(
                 }
             }
             RaftMessage::RequestVote(mut request_vote_rpc) => {
-                tracing::trace!(
-                    "Received a request vote message as the leader, somone challenged me"
-                );
+                tracing::trace!("Received a request vote message as the leader, somone challenged me");
                 // TOASK: should it be >= ?
                 let step_down_from_lead = request_vote_rpc.term > common_data.current_term;
                 let msg = RaftMessage::RequestVoteResponse(step_down_from_lead);
@@ -98,7 +113,6 @@ pub async fn leader<AB, LogEntry>(
                 } else {
                     tracing::trace!("They are wrong, long live the king!");
                 }
-
             }
             RaftMessage::AppendEntryResponse(_term, _success) => {
                 tracing::trace!("✔️ Received an AppendEntryResponse message");
@@ -106,7 +120,4 @@ pub async fn leader<AB, LogEntry>(
             _ => {}
         }
     }
-
-    stop_flag.store(true, Ordering::Relaxed);
-    heartbeat_handle.join().unwrap();
 }
