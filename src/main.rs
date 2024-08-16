@@ -70,7 +70,7 @@ async fn main() {
         )
         .with_target(false)
         .with_line_number(true)
-        .with_max_level(tracing::Level::TRACE)
+        .with_max_level(tracing::Level::INFO)
         .init();
 
     // Note: guard must remain in scope

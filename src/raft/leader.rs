@@ -117,6 +117,8 @@ async fn message_handler<AB, LogEntry>(
             RaftMessage::AppendEntryResponse(_term, _success) => {
                 tracing::trace!("✔️ Received an AppendEntryResponse message");
             }
+            // normal to recieve some extra votes if we just got elected but we don't care
+            RaftMessage::RequestVoteResponse(_) => { }
             _ => {
                 tracing::warn!("Received an unexpected message: {:?}", message);
             }
