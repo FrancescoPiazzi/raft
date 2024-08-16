@@ -43,6 +43,7 @@ pub(crate) struct AppendEntriesClientRPC<LogEntry> {
 }
 
 // data common to all states, used to avoid passing a million parameters to the state functions
+#[derive(Clone)]
 pub(crate) struct CommonData<LogEntry> {
     pub(crate) current_term: u64,
     pub(crate) log: Vec<LogEntry>,
