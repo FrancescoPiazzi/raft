@@ -1,5 +1,6 @@
 #![allow(dead_code)] // remove when algorithm is done and all fields should be used
 
+use std::fmt::{self, Debug, Formatter};
 use actum::prelude::ActorRef;
 
 #[derive(Clone)]
@@ -50,4 +51,31 @@ pub(crate) struct CommonData<LogEntry> {
     pub(crate) commit_index: usize,
     pub(crate) last_applied: usize,
     pub(crate) voted_for: Option<ActorRef<RaftMessage<LogEntry>>>,
+}
+
+impl<LogEntry> Debug for RaftMessage<LogEntry>{
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            RaftMessage::AddPeer(_) => "Add peer".fmt(f),
+            RaftMessage::AppendEntries(_) => "Append entries".fmt(f),
+            RaftMessage::AppendEntryResponse(_, _) => "Append entry response".fmt(f),
+            RaftMessage::RequestVote(_) => "Request vote".fmt(f),
+            RaftMessage::RequestVoteResponse(_) => "Request vote response".fmt(f),
+            RaftMessage::AppendEntriesClient(_) => "Append entries client".fmt(f),
+            RaftMessage::AppendEntriesClientResponse(_) => "Append entries client response".fmt(f),
+            RaftMessage::InitMessage(_) => "Init message".fmt(f),
+        }
+    }
+}
+
+impl<LogEntry> Debug for CommonData<LogEntry> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CommonData")
+            .field("current_term", &self.current_term)
+            .field("log length", &self.log.len())
+            .field("commit_index", &self.commit_index)
+            .field("last_applied", &self.last_applied)
+            .field("voted_for", if self.voted_for.is_some() { &"Somebody" } else { &"Nobody" })
+            .finish()
+    }
 }

@@ -57,7 +57,9 @@ where
                 let msg = RaftMessage::AppendEntriesClientResponse(Err(leader_ref.clone()));
                 let _ = append_entries_client_rpc.client_ref.try_send(msg);
             }
-            _ => {}
+            _ => {
+                tracing::warn!("Received an unexpected message: {:?}", message);
+            }
         }
     }
 }

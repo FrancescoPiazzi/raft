@@ -75,7 +75,9 @@ where
                         break 'candidate;
                     }
                 }
-                _ => {}
+                _ => {
+                    tracing::warn!("Received an unexpected message: {:?}", message);
+                }
             }
 
             match time_left.checked_sub(start_wait_time.elapsed()) {

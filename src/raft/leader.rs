@@ -117,7 +117,9 @@ async fn message_handler<AB, LogEntry>(
             RaftMessage::AppendEntryResponse(_term, _success) => {
                 tracing::trace!("✔️ Received an AppendEntryResponse message");
             }
-            _ => {}
+            _ => {
+                tracing::warn!("Received an unexpected message: {:?}", message);
+            }
         }
     }
 }
