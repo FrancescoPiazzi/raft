@@ -56,14 +56,14 @@ pub(crate) struct CommonData<LogEntry> {
 impl<LogEntry> Debug for RaftMessage<LogEntry>{
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            RaftMessage::AddPeer(_) => "Add peer".fmt(f),
-            RaftMessage::AppendEntries(_) => "Append entries".fmt(f),
-            RaftMessage::AppendEntryResponse(_, _) => "Append entry response".fmt(f),
-            RaftMessage::RequestVote(_) => "Request vote".fmt(f),
-            RaftMessage::RequestVoteResponse(_) => "Request vote response".fmt(f),
-            RaftMessage::AppendEntriesClient(_) => "Append entries client".fmt(f),
-            RaftMessage::AppendEntriesClientResponse(_) => "Append entries client response".fmt(f),
-            RaftMessage::InitMessage(_) => "Init message".fmt(f),
+            Self::AddPeer(_) => "Add peer".fmt(f),
+            Self::AppendEntries(_) => "Append entries".fmt(f),
+            Self::AppendEntryResponse(_, _) => "Append entry response".fmt(f),
+            Self::RequestVote(_) => "Request vote".fmt(f),
+            Self::RequestVoteResponse(_) => "Request vote response".fmt(f),
+            Self::AppendEntriesClient(_) => "Append entries client".fmt(f),
+            Self::AppendEntriesClientResponse(_) => "Append entries client response".fmt(f),
+            Self::InitMessage(_) => "Init message".fmt(f),
         }
     }
 }

@@ -38,7 +38,7 @@ pub async fn leader<AB, LogEntry>(
 async fn heartbeat_sender<LogEntry>(
     heartbeat_period: Duration,
     current_term: u64,
-    peer_refs: &mut Vec<ActorRef<RaftMessage<LogEntry>>>,
+    peer_refs: &mut [ActorRef<RaftMessage<LogEntry>>],
     me: &ActorRef<RaftMessage<LogEntry>>,
 ) where
     LogEntry: Send + Clone + 'static,
@@ -62,7 +62,7 @@ async fn heartbeat_sender<LogEntry>(
 async fn message_handler<AB, LogEntry>(
     cell: &mut AB,
     common_data: &mut CommonData<LogEntry>,
-    peer_refs: &mut Vec<ActorRef<RaftMessage<LogEntry>>>,
+    peer_refs: &mut [ActorRef<RaftMessage<LogEntry>>],
     me: &ActorRef<RaftMessage<LogEntry>>,
 ) where
     AB: ActorBounds<RaftMessage<LogEntry>>,
