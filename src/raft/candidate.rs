@@ -39,21 +39,18 @@ where
         let _ = peer.try_send(request_vote_msg.clone());
     }
 
-    let mut time_left = thread_rng().gen_range(DEFAULT_ELECTION_TIMEOUT);
+    let mut remaining_time_to_wait = thread_rng().gen_range(DEFAULT_ELECTION_TIMEOUT);
 
     'candidate: loop {
         tracing::info!("📦 Starting an election");
 
         'election: loop {
-            let start_wait_time = Instant::now();
-            let wait_res = timeout(time_left, cell.recv()).await;
-
-            let Ok(message) = wait_res else {
-                tracing::info!("⏰ Timeout reached");
+            let Ok(message) = timeout(remaining_time_to_wait, cell.recv()).await else {
+                tracing::info!("election timeout");
                 break 'election;
             };
 
-            let message = message.message().expect("Received a None message, quitting");
+            let message = message.message().expect("raft runs indefinitely");
 
             match message {
                 RaftMessage::RequestVoteResponse(vote_granted) => {
@@ -79,9 +76,10 @@ where
                 }
             }
 
-            match time_left.checked_sub(start_wait_time.elapsed()) {
-                Some(time) => time_left = time,
-                None => break 'election,
+            if let Some(new_remaining_time_to_wait) = remaining_time_to_wait.checked_sub(Instant::now().elapsed()) {
+                remaining_time_to_wait = new_remaining_time_to_wait;
+            } else {
+                break 'election;
             }
         }
     }

@@ -67,7 +67,7 @@ async fn message_handler<AB, LogEntry>(
     LogEntry: Send + Clone + 'static,
 {
     loop {
-        let message = cell.recv().await.message().expect("Received a None message, quitting");
+        let message = cell.recv().await.message().expect("raft runs indefinitely");
 
         match message {
             RaftMessage::AppendEntriesClient(mut append_entries_client_rpc) => {

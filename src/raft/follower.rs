@@ -19,14 +19,12 @@ where
     let mut leader_ref: Option<ActorRef<RaftMessage<LogEntry>>> = None;
 
     loop {
-        let wait_res = timeout(election_timeout, cell.recv()).await;
-
-        let Ok(message) = wait_res else {
-            tracing::info!("⏰ Timeout reached");
+        let Ok(message) = timeout(election_timeout, cell.recv()).await else {
+            tracing::info!("election timeout");
             return;
         };
 
-        let message = message.message().expect("Received a None message, quitting");
+        let message = message.message().expect("raft runs indefinitely");
 
         match message {
             RaftMessage::AppendEntries(mut append_entries_rpc) => {
