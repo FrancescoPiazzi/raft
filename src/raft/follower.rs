@@ -13,8 +13,6 @@ where
     AB: ActorBounds<RaftMessage<LogEntry>>,
     LogEntry: Send + 'static,
 {
-    tracing::info!("👂 State is follower");
-
     pub const DEFAULT_ELECTION_TIMEOUT: Range<Duration> = Duration::from_millis(1500)..Duration::from_millis(3000);
     let election_timeout = thread_rng().gen_range(DEFAULT_ELECTION_TIMEOUT);
 

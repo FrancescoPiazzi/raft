@@ -17,8 +17,6 @@ pub async fn leader<AB, LogEntry>(
     AB: ActorBounds<RaftMessage<LogEntry>>,
     LogEntry: Send + Clone + 'static,
 {
-    tracing::info!("👑 State is leader");
-    
     // TODO: this can definetly be done better, expecially the part where I have to clone
     // random stuff and pass the original variable to a branch, and the clone to the other
     // and also maybe get rid of some of the weird "_ = async { ... } => {}," syntax
@@ -118,7 +116,7 @@ async fn message_handler<AB, LogEntry>(
                 tracing::trace!("✔️ Received an AppendEntryResponse message");
             }
             // normal to recieve some extra votes if we just got elected but we don't care
-            RaftMessage::RequestVoteResponse(_) => { }
+            RaftMessage::RequestVoteResponse(_) => {}
             _ => {
                 tracing::warn!("Received an unexpected message: {:?}", message);
             }

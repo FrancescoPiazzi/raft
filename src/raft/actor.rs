@@ -1,6 +1,6 @@
-use actum::prelude::*;
-
 use crate::raft::model::*;
+use actum::prelude::*;
+use tracing::{info_span, Instrument};
 
 use crate::raft::candidate::candidate;
 use crate::raft::follower::follower;
@@ -26,10 +26,16 @@ where
     tracing::trace!("initialization done");
 
     loop {
-        follower(&mut cell, &mut common_data).await;
-        let election_won = candidate(&mut cell, &me, &mut common_data, &mut peer_refs).await;
+        follower(&mut cell, &mut common_data)
+            .instrument(info_span!("follower"))
+            .await;
+        let election_won = candidate(&mut cell, &me, &mut common_data, &mut peer_refs)
+            .instrument(info_span!("candidate"))
+            .await;
         if election_won {
-            leader(&mut cell, &mut common_data, &mut peer_refs, &me).await;
+            leader(&mut cell, &mut common_data, &mut peer_refs, &me)
+                .instrument(info_span!("leader👑"))
+                .await;
         }
     }
 }

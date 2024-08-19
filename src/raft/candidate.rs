@@ -23,7 +23,6 @@ where
     AB: ActorBounds<RaftMessage<LogEntry>>,
     LogEntry: Send + Clone + 'static,
 {
-    tracing::info!("🤵 State is candidate");
     pub const DEFAULT_ELECTION_TIMEOUT: Range<Duration> = Duration::from_millis(150)..Duration::from_millis(300);
 
     let election_won;
