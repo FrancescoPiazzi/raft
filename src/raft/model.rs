@@ -1,7 +1,7 @@
 #![allow(dead_code)] // remove when algorithm is done and all fields should be used
 
-use std::fmt::{self, Debug, Formatter};
 use actum::prelude::ActorRef;
+use std::fmt::{self, Debug, Formatter};
 
 #[derive(Clone)]
 pub enum RaftMessage<LogEntry> {
@@ -43,17 +43,7 @@ pub(crate) struct AppendEntriesClientRPC<LogEntry> {
     pub(crate) entries: Vec<LogEntry>,
 }
 
-// data common to all states, used to avoid passing a million parameters to the state functions
-#[derive(Clone)]
-pub(crate) struct CommonData<LogEntry> {
-    pub(crate) current_term: u64,
-    pub(crate) log: Vec<LogEntry>,
-    pub(crate) commit_index: usize,
-    pub(crate) last_applied: usize,
-    pub(crate) voted_for: Option<ActorRef<RaftMessage<LogEntry>>>,
-}
-
-impl<LogEntry> Debug for RaftMessage<LogEntry>{
+impl<LogEntry> Debug for RaftMessage<LogEntry> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::AddPeer(_) => "Add peer".fmt(f),
@@ -65,17 +55,5 @@ impl<LogEntry> Debug for RaftMessage<LogEntry>{
             Self::AppendEntriesClientResponse(_) => "Append entries client response".fmt(f),
             Self::InitMessage(_) => "Init message".fmt(f),
         }
-    }
-}
-
-impl<LogEntry> Debug for CommonData<LogEntry> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.debug_struct("CommonData")
-            .field("current_term", &self.current_term)
-            .field("log length", &self.log.len())
-            .field("commit_index", &self.commit_index)
-            .field("last_applied", &self.last_applied)
-            .field("voted_for", if self.voted_for.is_some() { &"Somebody" } else { &"Nobody" })
-            .finish()
     }
 }

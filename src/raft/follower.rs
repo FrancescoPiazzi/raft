@@ -4,10 +4,11 @@ use tokio::time::timeout;
 use crate::raft::config::DEFAULT_ELECTION_TIMEOUT;
 use crate::raft::model::*;
 use actum::prelude::*;
+use crate::raft::common_state::CommonState;
 
 // follower nodes receive AppendEntry messages from the leader and duplicate them
 // returns when no message is received from the leader after some time
-pub async fn follower<AB, LogEntry>(cell: &mut AB, common_data: &mut CommonData<LogEntry>)
+pub async fn follower<AB, LogEntry>(cell: &mut AB, common_data: &mut CommonState<LogEntry>)
 where
     AB: ActorBounds<RaftMessage<LogEntry>>,
     LogEntry: Send + 'static,

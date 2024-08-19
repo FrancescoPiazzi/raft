@@ -5,6 +5,7 @@ use tokio::time::timeout;
 use crate::raft::config::DEFAULT_ELECTION_TIMEOUT;
 use crate::raft::model::*;
 use actum::prelude::*;
+use crate::raft::common_state::CommonState;
 
 // candidate nodes start an election by sending RequestVote messages to the other nodes
 // if they receive a majority of votes, they become the leader
@@ -13,7 +14,7 @@ use actum::prelude::*;
 pub async fn candidate<AB, LogEntry>(
     cell: &mut AB,
     me: &ActorRef<RaftMessage<LogEntry>>,
-    common_data: &mut CommonData<LogEntry>,
+    common_data: &mut CommonState<LogEntry>,
     peer_refs: &mut [ActorRef<RaftMessage<LogEntry>>],
 ) -> bool
 where

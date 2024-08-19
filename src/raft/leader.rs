@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use actum::prelude::*;
-
+use crate::raft::common_state::CommonState;
 use crate::raft::model::*;
 
 // the leader is the interface of the system to the external world
@@ -10,7 +10,7 @@ use crate::raft::model::*;
 // returns when another leader or candidate with a higher term is detected
 pub async fn leader<AB, LogEntry>(
     cell: &mut AB,
-    common_data: &mut CommonData<LogEntry>,
+    common_data: &mut CommonState<LogEntry>,
     peer_refs: &mut Vec<ActorRef<RaftMessage<LogEntry>>>,
     me: &ActorRef<RaftMessage<LogEntry>>,
 ) where
@@ -59,7 +59,7 @@ async fn heartbeat_sender<LogEntry>(
 
 async fn message_handler<AB, LogEntry>(
     cell: &mut AB,
-    common_data: &mut CommonData<LogEntry>,
+    common_data: &mut CommonState<LogEntry>,
     peer_refs: &mut [ActorRef<RaftMessage<LogEntry>>],
     me: &ActorRef<RaftMessage<LogEntry>>,
 ) where

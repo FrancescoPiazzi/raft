@@ -3,6 +3,7 @@ use actum::prelude::*;
 use tracing::{info_span, Instrument};
 
 use crate::raft::candidate::candidate;
+use crate::raft::common_state::CommonState;
 use crate::raft::follower::follower;
 use crate::raft::leader::leader;
 
@@ -13,7 +14,7 @@ where
 {
     let total_nodes = 5;
 
-    let mut common_data = CommonData {
+    let mut common_data = CommonState {
         current_term: 0,
         log: Vec::new(),
         commit_index: 0,
