@@ -1,13 +1,10 @@
 use rand::{thread_rng, Rng};
-use std::{
-    ops::Range,
-    time::{Duration, Instant},
-};
+use std::time::Instant;
 use tokio::time::timeout;
 
-use actum::prelude::*;
-
+use crate::raft::config::DEFAULT_ELECTION_TIMEOUT;
 use crate::raft::model::*;
+use actum::prelude::*;
 
 // candidate nodes start an election by sending RequestVote messages to the other nodes
 // if they receive a majority of votes, they become the leader
@@ -23,8 +20,6 @@ where
     AB: ActorBounds<RaftMessage<LogEntry>>,
     LogEntry: Send + Clone + 'static,
 {
-    pub const DEFAULT_ELECTION_TIMEOUT: Range<Duration> = Duration::from_millis(150)..Duration::from_millis(300);
-
     let election_won;
     let mut votes = 1;
     let new_term = common_data.current_term + 1;

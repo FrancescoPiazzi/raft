@@ -1,10 +1,9 @@
 use rand::{thread_rng, Rng};
-use std::{ops::Range, time::Duration};
 use tokio::time::timeout;
 
-use actum::prelude::*;
-
+use crate::raft::config::DEFAULT_ELECTION_TIMEOUT;
 use crate::raft::model::*;
+use actum::prelude::*;
 
 // follower nodes receive AppendEntry messages from the leader and duplicate them
 // returns when no message is received from the leader after some time
@@ -13,7 +12,6 @@ where
     AB: ActorBounds<RaftMessage<LogEntry>>,
     LogEntry: Send + 'static,
 {
-    pub const DEFAULT_ELECTION_TIMEOUT: Range<Duration> = Duration::from_millis(150)..Duration::from_millis(300);
     let election_timeout = thread_rng().gen_range(DEFAULT_ELECTION_TIMEOUT);
 
     let mut leader_ref: Option<ActorRef<RaftMessage<LogEntry>>> = None;
