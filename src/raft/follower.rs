@@ -13,7 +13,7 @@ where
     AB: ActorBounds<RaftMessage<LogEntry>>,
     LogEntry: Send + 'static,
 {
-    pub const DEFAULT_ELECTION_TIMEOUT: Range<Duration> = Duration::from_millis(1500)..Duration::from_millis(3000);
+    pub const DEFAULT_ELECTION_TIMEOUT: Range<Duration> = Duration::from_millis(150)..Duration::from_millis(300);
     let election_timeout = thread_rng().gen_range(DEFAULT_ELECTION_TIMEOUT);
 
     let mut leader_ref: Option<ActorRef<RaftMessage<LogEntry>>> = None;
