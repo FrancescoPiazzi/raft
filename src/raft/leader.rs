@@ -1,8 +1,8 @@
 use std::time::Duration;
 
-use actum::prelude::*;
 use crate::raft::common_state::CommonState;
 use crate::raft::messages::*;
+use actum::prelude::*;
 
 // the leader is the interface of the system to the external world
 // clients send messages to the leader, which is responsible for replicating them to the other nodes
@@ -19,18 +19,13 @@ pub async fn leader<AB, LogEntry>(
 {
     // TODO: this can definetly be done better, expecially the part where I have to clone
     // random stuff and pass the original variable to a branch, and the clone to the other
-    // and also maybe get rid of some of the weird "_ = async { ... } => {}," syntax
     let current_term = common_data.current_term;
     let mut peer_refs_clone = peer_refs.clone();
 
     tokio::select! {
-        _ = async {
-            message_handler(cell, common_data, peer_refs, me).await;
-        } => {},
-        _ = async {
-            heartbeat_sender(Duration::from_millis(1000), current_term, &mut peer_refs_clone, me).await;
-        } => {},
-    };
+        _ = message_handler(cell, common_data, peer_refs, me) => {},
+        _ = heartbeat_sender(Duration::from_millis(1000), current_term, &mut peer_refs_clone, me) => {},
+    }
 }
 
 async fn heartbeat_sender<LogEntry>(
