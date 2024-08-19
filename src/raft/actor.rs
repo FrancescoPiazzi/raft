@@ -23,19 +23,25 @@ where
 
     let mut peer_refs = init(&mut cell, total_nodes).await;
 
-    tracing::trace!("initialization done");
+    tracing::trace!("starting as follower");
 
     loop {
         follower(&mut cell, &mut common_data)
             .instrument(info_span!("follower"))
             .await;
+
+        tracing::trace!("transition: follower → candidate");
         let election_won = candidate(&mut cell, &me, &mut common_data, &mut peer_refs)
             .instrument(info_span!("candidate"))
             .await;
+
         if election_won {
+            tracing::trace!("transition: candidate → leader");
             leader(&mut cell, &mut common_data, &mut peer_refs, &me)
                 .instrument(info_span!("leader👑"))
                 .await;
+        } else {
+            tracing::trace!("transition: candidate → follower");
         }
     }
 }
