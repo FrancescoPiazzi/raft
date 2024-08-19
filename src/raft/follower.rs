@@ -1,10 +1,10 @@
 use rand::{thread_rng, Rng};
 use tokio::time::timeout;
 
+use crate::raft::common_state::CommonState;
 use crate::raft::config::DEFAULT_ELECTION_TIMEOUT;
 use crate::raft::messages::*;
 use actum::prelude::*;
-use crate::raft::common_state::CommonState;
 
 // follower nodes receive AppendEntry messages from the leader and duplicate them
 // returns when no message is received from the leader after some time
@@ -53,7 +53,7 @@ where
                 let _ = append_entries_client_rpc.client_ref.try_send(msg);
             }
             _ => {
-                tracing::warn!("Received an unexpected message: {:?}", message);
+                tracing::trace!(unhandled = message);
             }
         }
     }

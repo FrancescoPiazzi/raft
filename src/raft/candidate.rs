@@ -2,10 +2,10 @@ use rand::{thread_rng, Rng};
 use std::time::Instant;
 use tokio::time::timeout;
 
+use crate::raft::common_state::CommonState;
 use crate::raft::config::DEFAULT_ELECTION_TIMEOUT;
 use crate::raft::messages::*;
 use actum::prelude::*;
-use crate::raft::common_state::CommonState;
 
 // candidate nodes start an election by sending RequestVote messages to the other nodes
 // if they receive a majority of votes, they become the leader
@@ -68,7 +68,7 @@ where
                     }
                 }
                 _ => {
-                    tracing::warn!("Received an unexpected message: {:?}", message);
+                    tracing::trace!(unhandled = message);
                 }
             }
 
