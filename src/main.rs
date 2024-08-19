@@ -5,7 +5,7 @@ use actum::{actor_cell::standard_actor::StandardBounds, drop_guard::ActorDropGua
 
 mod raft;
 use raft::actor::raft_actor;
-use raft::model::RaftMessage;
+use raft::messages::RaftMessage;
 
 mod client;
 use client::client;

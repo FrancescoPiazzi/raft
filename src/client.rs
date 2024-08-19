@@ -1,6 +1,6 @@
 use actum::prelude::*;
 
-use crate::raft::model::{AppendEntriesClientRPC, RaftMessage};
+use crate::raft::messages::{AppendEntriesClientRPC, RaftMessage};
 
 // example of a raft client requesting the replication of entries
 // the client will first recieve a message from the simulator, then replay that to the raft nodes forever

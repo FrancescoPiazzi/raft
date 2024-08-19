@@ -2,7 +2,7 @@ use rand::{thread_rng, Rng};
 use tokio::time::timeout;
 
 use crate::raft::config::DEFAULT_ELECTION_TIMEOUT;
-use crate::raft::model::*;
+use crate::raft::messages::*;
 use actum::prelude::*;
 use crate::raft::common_state::CommonState;
 

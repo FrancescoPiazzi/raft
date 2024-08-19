@@ -1,4 +1,4 @@
-use crate::raft::model::*;
+use crate::raft::messages::*;
 use actum::prelude::*;
 use tracing::{info_span, Instrument};
 

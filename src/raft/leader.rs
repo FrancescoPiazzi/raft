@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use actum::prelude::*;
 use crate::raft::common_state::CommonState;
-use crate::raft::model::*;
+use crate::raft::messages::*;
 
 // the leader is the interface of the system to the external world
 // clients send messages to the leader, which is responsible for replicating them to the other nodes

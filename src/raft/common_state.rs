@@ -1,4 +1,4 @@
-use crate::raft::model::RaftMessage;
+use crate::raft::messages::RaftMessage;
 use actum::actor_ref::ActorRef;
 use std::fmt;
 use std::fmt::{Debug, Formatter};
