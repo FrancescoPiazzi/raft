@@ -68,7 +68,7 @@ where
                     }
                 }
                 _ => {
-                    tracing::trace!(unhandled = message);
+                    tracing::trace!(unhandled = ?message);
                 }
             }
 

@@ -113,7 +113,7 @@ async fn message_handler<AB, LogEntry>(
             // normal to recieve some extra votes if we just got elected but we don't care
             RaftMessage::RequestVoteResponse(_) => {}
             _ => {
-                tracing::trace!(unhandled = message);
+                tracing::trace!(unhandled = ?message);
             }
         }
     }

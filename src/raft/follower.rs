@@ -53,7 +53,7 @@ where
                 let _ = append_entries_client_rpc.client_ref.try_send(msg);
             }
             _ => {
-                tracing::trace!(unhandled = message);
+                tracing::trace!(unhandled = ?message);
             }
         }
     }
