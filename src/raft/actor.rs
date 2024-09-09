@@ -1,11 +1,17 @@
+#[allow(unused_imports)]
+use std::time::Duration;
+
+#[allow(unused_imports)]
+use crate::raft::config::DEFAULT_ELECTION_TIMEOUT;
 use crate::raft::messages::*;
-use actum::prelude::*;
 use tracing::{info_span, Instrument};
 
 use crate::raft::candidate::candidate;
 use crate::raft::common_state::CommonState;
 use crate::raft::follower::follower;
 use crate::raft::leader::leader;
+
+use actum::prelude::*;
 
 pub async fn raft_actor<AB, LogEntry>(mut cell: AB, me: ActorRef<RaftMessage<LogEntry>>) -> AB
 where
@@ -24,21 +30,35 @@ where
 
     let mut peer_refs = init(&mut cell, total_nodes).await;
 
+    let election_timeout = {
+        #[cfg(test)]{
+            Duration::from_millis(1000)..Duration::from_millis(1000)
+        }
+        #[cfg(not(test))]{
+            DEFAULT_ELECTION_TIMEOUT
+        }
+    };
+
+    // worst case scenario, we send 3/4 heartbeats before followers time out, 
+    // meaning 2 can get lost without the follower thinking we are down
+    // TOASK: is there a specific number of heartbeats/min_timeout in the paper?
+    let hartbeat_period = election_timeout.start/4;
+
     tracing::trace!("starting as follower");
 
     loop {
-        follower(&mut cell, &mut common_data)
+        follower(&mut cell, &mut common_data, election_timeout.clone())
             .instrument(info_span!("follower"))
             .await;
 
         tracing::trace!("transition: follower → candidate");
-        let election_won = candidate(&mut cell, &me, &mut common_data, &mut peer_refs)
+        let election_won = candidate(&mut cell, &me, &mut common_data, &mut peer_refs, election_timeout.clone())
             .instrument(info_span!("candidate"))
             .await;
 
         if election_won {
             tracing::trace!("transition: candidate → leader");
-            leader(&mut cell, &mut common_data, &mut peer_refs, &me)
+            leader(&mut cell, &mut common_data, &mut peer_refs, &me, hartbeat_period)
                 .instrument(info_span!("leader👑"))
                 .await;
         } else {

@@ -4,7 +4,7 @@ use crate::raft::common_state::CommonState;
 use crate::raft::messages::*;
 use actum::prelude::*;
 
-// the leader is the interface of the system to the external world
+// the leader is the interface of the cluster to the external world
 // clients send messages to the leader, which is responsible for replicating them to the other nodes
 // after receiving confirmation from the majority of the nodes, the leader commits the message as agreed
 // returns when another leader or candidate with a higher term is detected
@@ -13,18 +13,19 @@ pub async fn leader<AB, LogEntry>(
     common_data: &mut CommonState<LogEntry>,
     peer_refs: &mut Vec<ActorRef<RaftMessage<LogEntry>>>,
     me: &ActorRef<RaftMessage<LogEntry>>,
+    heartbeat_period: Duration,
 ) where
     AB: ActorBounds<RaftMessage<LogEntry>>,
     LogEntry: Send + Clone + 'static,
 {
-    // TODO: this can definetly be done better, expecially the part where I have to clone
-    // random stuff and pass the original variable to a branch, and the clone to the other
+    // TODO: figure out how to not clone random stuff to pass the original variable to a branch, 
+    // and the clone to the other
     let current_term = common_data.current_term;
     let mut peer_refs_clone = peer_refs.clone();
 
     tokio::select! {
         _ = message_handler(cell, common_data, peer_refs, me) => {},
-        _ = heartbeat_sender(Duration::from_millis(1000), current_term, &mut peer_refs_clone, me) => {},
+        _ = heartbeat_sender(heartbeat_period, current_term, &mut peer_refs_clone, me) => {},
     }
 }
 

@@ -1,19 +1,21 @@
+use std::ops::Range;
+use std::time::Duration;
+
 use rand::{thread_rng, Rng};
 use tokio::time::timeout;
 
 use crate::raft::common_state::CommonState;
-use crate::raft::config::DEFAULT_ELECTION_TIMEOUT;
 use crate::raft::messages::*;
 use actum::prelude::*;
 
 // follower nodes receive AppendEntry messages from the leader and duplicate them
 // returns when no message is received from the leader after some time
-pub async fn follower<AB, LogEntry>(cell: &mut AB, common_data: &mut CommonState<LogEntry>)
+pub async fn follower<AB, LogEntry>(cell: &mut AB, common_data: &mut CommonState<LogEntry>, election_timeout: Range<Duration>)
 where
     AB: ActorBounds<RaftMessage<LogEntry>>,
     LogEntry: Send + 'static,
 {
-    let election_timeout = thread_rng().gen_range(DEFAULT_ELECTION_TIMEOUT);
+    let election_timeout = thread_rng().gen_range(election_timeout);
 
     let mut leader_ref: Option<ActorRef<RaftMessage<LogEntry>>> = None;
 
