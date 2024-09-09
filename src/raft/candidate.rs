@@ -68,6 +68,14 @@ where
                         break 'candidate;
                     }
                 }
+                // TOASK: >= or > ?
+                RaftMessage::RequestVote(request_vote_rpc) => {
+                    if request_vote_rpc.term >= common_data.current_term {
+                        tracing::info!("🟥 There is another candidate with an higher or equal term, election lost");
+                        election_won = false;
+                        break 'candidate;
+                    }
+                }
                 _ => {
                     tracing::trace!(unhandled = ?message);
                 }
