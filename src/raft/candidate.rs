@@ -1,10 +1,13 @@
 use rand::{thread_rng, Rng};
-use std::time::Instant;
+use std::ops::Range;
+use std::time::{Duration, Instant};
 use tokio::time::timeout;
 
 use crate::raft::common_state::CommonState;
+#[allow(unused)]
 use crate::raft::config::DEFAULT_ELECTION_TIMEOUT;
 use crate::raft::messages::*;
+
 use actum::prelude::*;
 
 // candidate nodes start an election by sending RequestVote messages to the other nodes
@@ -16,6 +19,7 @@ pub async fn candidate<AB, LogEntry>(
     me: &ActorRef<RaftMessage<LogEntry>>,
     common_data: &mut CommonState<LogEntry>,
     peer_refs: &mut [ActorRef<RaftMessage<LogEntry>>],
+    _election_timeout: Range<Duration>,
 ) -> bool
 where
     AB: ActorBounds<RaftMessage<LogEntry>>,
@@ -35,7 +39,16 @@ where
         let _ = peer.try_send(request_vote_msg.clone());
     }
 
-    let mut remaining_time_to_wait = thread_rng().gen_range(DEFAULT_ELECTION_TIMEOUT);
+    let mut remaining_time_to_wait = thread_rng().gen_range({
+        #[cfg(test)]
+        {
+            _election_timeout
+        }
+        #[cfg(not(test))]
+        {
+            DEFAULT_ELECTION_TIMEOUT
+        }
+    });
 
     'candidate: loop {
         tracing::info!("📦 Starting an election");

@@ -1,13 +1,20 @@
-use crate::raft::messages::*;
-use actum::prelude::*;
+use std::ops::Range;
+use std::time::Duration;
 use tracing::{info_span, Instrument};
 
 use crate::raft::candidate::candidate;
 use crate::raft::common_state::CommonState;
 use crate::raft::follower::follower;
 use crate::raft::leader::leader;
+use crate::raft::messages::*;
 
-pub async fn raft_actor<AB, LogEntry>(mut cell: AB, me: ActorRef<RaftMessage<LogEntry>>) -> AB
+use actum::prelude::*;
+
+pub async fn raft_actor<AB, LogEntry>(
+    mut cell: AB,
+    me: ActorRef<RaftMessage<LogEntry>>,
+    election_timeout: Range<Duration>,
+) -> AB
 where
     AB: ActorBounds<RaftMessage<LogEntry>>,
     LogEntry: Send + Clone + 'static,
@@ -32,9 +39,15 @@ where
             .await;
 
         tracing::trace!("transition: follower → candidate");
-        let election_won = candidate(&mut cell, &me, &mut common_data, &mut peer_refs)
-            .instrument(info_span!("candidate"))
-            .await;
+        let election_won = candidate(
+            &mut cell,
+            &me,
+            &mut common_data,
+            &mut peer_refs,
+            election_timeout.clone(),
+        )
+        .instrument(info_span!("candidate"))
+        .await;
 
         if election_won {
             tracing::trace!("transition: candidate → leader");

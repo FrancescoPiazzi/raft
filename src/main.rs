@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use tokio::task::JoinHandle;
 use tracing::{info_span, Instrument};
 
@@ -25,7 +27,12 @@ where
     let mut handles: Vec<JoinHandle<()>> = Vec::with_capacity(server_count);
 
     for id in 0..server_count {
-        let Actor { task, guard, m_ref } = cell.spawn(raft_actor).await.unwrap();
+        let Actor { task, guard, m_ref } = cell
+            .spawn(move |cell, me| async move {
+                raft_actor(cell, me, Duration::from_millis(1000)..Duration::from_millis(1000)).await
+            })
+            .await
+            .unwrap();
 
         let handle = tokio::spawn(task.run_task().instrument(info_span!("server", id)));
 
