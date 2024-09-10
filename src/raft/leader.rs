@@ -1,5 +1,7 @@
 use std::time::Duration;
 
+use tokio::time::{self, MissedTickBehavior};
+
 use crate::raft::common_state::CommonState;
 use crate::raft::messages::*;
 use actum::prelude::*;
@@ -45,11 +47,25 @@ async fn heartbeat_sender<LogEntry>(
         entries: Vec::new(),
         leader_commit: 0,
     });
-    loop {
-        for peer in peer_refs.iter_mut() {
-            let _ = peer.try_send(heartbeat_msg.clone());
-        }
-        tokio::time::sleep(heartbeat_period).await;
+    
+    let mut handles = Vec::with_capacity(peer_refs.len());
+    for peer in peer_refs.iter_mut() {
+        let heartbeat_msg = heartbeat_msg.clone();  // clone the message to move it into the closure
+        let mut peer = peer.clone();
+        let mut interval = time::interval(heartbeat_period);
+        // no point in catching up if we miss a tick, just keep sending them at the same rate
+        interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+        let handle = tokio::spawn(async move {
+            loop {
+                let _ = peer.try_send(heartbeat_msg.clone());   // clone the message every time we send it
+                interval.tick().await;
+            }
+        });
+        handles.push(handle);
+    };
+
+    for handle in handles {
+        let _ = handle.await;
     }
 }
 
