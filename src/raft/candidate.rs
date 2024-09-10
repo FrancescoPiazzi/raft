@@ -1,5 +1,5 @@
-use std::ops::Range;
 use rand::{thread_rng, Rng};
+use std::ops::Range;
 use std::time::{Duration, Instant};
 use tokio::time::timeout;
 
