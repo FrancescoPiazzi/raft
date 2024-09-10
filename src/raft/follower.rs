@@ -10,8 +10,11 @@ use actum::prelude::*;
 
 // follower nodes receive AppendEntry messages from the leader and duplicate them
 // returns when no message is received from the leader after some time
-pub async fn follower<AB, LogEntry>(cell: &mut AB, common_data: &mut CommonState<LogEntry>, election_timeout: Range<Duration>)
-where
+pub async fn follower<AB, LogEntry>(
+    cell: &mut AB,
+    common_data: &mut CommonState<LogEntry>,
+    election_timeout: Range<Duration>,
+) where
     AB: ActorBounds<RaftMessage<LogEntry>>,
     LogEntry: Send + 'static,
 {
