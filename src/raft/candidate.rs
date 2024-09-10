@@ -69,6 +69,7 @@ where
                     }
                 }
                 // TOASK: >= or > ?
+                // reminder: candidates never vote for others, as they have already voted for themselves
                 RaftMessage::RequestVote(request_vote_rpc) => {
                     if request_vote_rpc.term >= common_data.current_term {
                         tracing::info!("🟥 There is another candidate with an higher or equal term, election lost");
