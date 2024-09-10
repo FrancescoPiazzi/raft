@@ -13,9 +13,9 @@
 
 
 # STEP 2: prepare for stuff to break
-- [ ] Leader ping to check if it is alive, end of term and re-election if not.
+- [x] Leader ping to check if it is alive, end of term and re-election if not.
 - [ ] Implement resolutions for cases of lead-follow conflicts.
-- [ ] Update client node to change server if instructed to do so because it sent a request to a non-leader.
+- [x] Update client node to change server if instructed to do so because it sent a request to a non-leader.
 - [ ] Update client node to change server to another random one if requests are timing out.
 
 **Completed when:**

@@ -5,6 +5,7 @@ use actum::{actor_cell::standard_actor::StandardBounds, drop_guard::ActorDropGua
 
 mod raft;
 use raft::actor::raft_actor;
+use raft::config::N_NODES;
 use raft::messages::RaftMessage;
 
 mod client;
@@ -25,7 +26,10 @@ where
     let mut handles: Vec<JoinHandle<()>> = Vec::with_capacity(server_count);
 
     for id in 0..server_count {
-        let Actor { task, guard, m_ref } = cell.spawn(raft_actor).await.unwrap();
+        let Actor { task, guard, m_ref } = cell
+            .spawn(move |cell, me| async move { raft_actor(cell, me, server_count).await })
+            .await
+            .unwrap();
 
         let handle = tokio::spawn(task.run_task().instrument(info_span!("server", id)));
 
@@ -46,7 +50,10 @@ where
 
     tracing::info!("Neighbors initialized");
 
-    let mut client_actor: Actor<RaftMessage<LogEntry>, _> = cell.spawn(client).await.unwrap();
+    let mut client_actor: Actor<RaftMessage<LogEntry>, _> = cell
+        .spawn(move |cell, me| async move { client(cell, me, server_count).await })
+        .await
+        .unwrap();
     let client_handle = tokio::spawn(client_actor.task.run_task().instrument(info_span!("client")));
 
     for server_ref in &refs {
@@ -75,7 +82,8 @@ async fn main() {
 
     // Note: guard must remain in scope
     #[allow(unused_variables)]
-    let Actor { task, guard, .. } =
-        actum(|cell, me| simulator::<StandardBounds, String>(cell, 5, vec!["Hello".to_string(), " raft!".to_string()]));
+    let Actor { task, guard, .. } = actum(|cell, me| {
+        simulator::<StandardBounds, String>(cell, N_NODES, vec!["Hello".to_string(), " raft!".to_string()])
+    });
     task.run_task().await;
 }

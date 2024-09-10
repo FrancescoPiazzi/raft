@@ -9,19 +9,17 @@ use crate::raft::messages::{AppendEntriesClientRPC, RaftMessage};
 // creating a client that sends messages of a specific type i.e. ActorRef<RaftMessage<String>> will make the compiler
 // complain because it's a different type from ActorRef<RaftMessage<LogEntry>> that is used in the raft_nodes
 // TOASK: is there a way to get it to work? String repects all the traits of LogEntry
-pub async fn client<AB, LogEntry>(mut cell: AB, me: ActorRef<RaftMessage<LogEntry>>) -> AB
+pub async fn client<AB, LogEntry>(mut cell: AB, me: ActorRef<RaftMessage<LogEntry>>, server_count: usize) -> AB
 where
     AB: ActorBounds<RaftMessage<LogEntry>>,
     LogEntry: Clone + Send + 'static,
 {
-    let n_raft_nodes = 5;
-
-    let initial_wait = std::time::Duration::from_secs(5);
+    let initial_wait = std::time::Duration::from_secs(3);
     let interval_between_messages = std::time::Duration::from_millis(2345);
 
     tokio::time::sleep(initial_wait).await;
 
-    let raft_nodes = init_raft_nodes(&mut cell, n_raft_nodes).await;
+    let raft_nodes = init_raft_nodes(&mut cell, server_count).await;
     let message_to_send = get_message_to_send(&mut cell).await;
     let mut leader = raft_nodes[0].clone();
 

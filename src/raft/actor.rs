@@ -13,13 +13,11 @@ use crate::raft::leader::leader;
 
 use actum::prelude::*;
 
-pub async fn raft_actor<AB, LogEntry>(mut cell: AB, me: ActorRef<RaftMessage<LogEntry>>) -> AB
+pub async fn raft_actor<AB, LogEntry>(mut cell: AB, me: ActorRef<RaftMessage<LogEntry>>, total_nodes: usize) -> AB
 where
     AB: ActorBounds<RaftMessage<LogEntry>>,
     LogEntry: Send + Clone + 'static,
 {
-    let total_nodes = 5;
-
     let mut common_data = CommonState {
         current_term: 0,
         log: Vec::new(),
@@ -31,18 +29,20 @@ where
     let mut peer_refs = init(&mut cell, total_nodes).await;
 
     let election_timeout = {
-        #[cfg(test)]{
+        #[cfg(test)]
+        {
             Duration::from_millis(1000)..Duration::from_millis(1000)
         }
-        #[cfg(not(test))]{
+        #[cfg(not(test))]
+        {
             DEFAULT_ELECTION_TIMEOUT
         }
     };
 
-    // worst case scenario, we send 3/4 heartbeats before followers time out, 
+    // worst case scenario, we send 3/4 heartbeats before followers time out,
     // meaning 2 can get lost without the follower thinking we are down
     // TOASK: is there a specific number of heartbeats/min_timeout in the paper?
-    let hartbeat_period = election_timeout.start/4;
+    let hartbeat_period = election_timeout.start / 4;
 
     tracing::trace!("starting as follower");
 
@@ -52,9 +52,15 @@ where
             .await;
 
         tracing::trace!("transition: follower → candidate");
-        let election_won = candidate(&mut cell, &me, &mut common_data, &mut peer_refs, election_timeout.clone())
-            .instrument(info_span!("candidate"))
-            .await;
+        let election_won = candidate(
+            &mut cell,
+            &me,
+            &mut common_data,
+            &mut peer_refs,
+            election_timeout.clone(),
+        )
+        .instrument(info_span!("candidate"))
+        .await;
 
         if election_won {
             tracing::trace!("transition: candidate → leader");
