@@ -23,23 +23,24 @@ where
     LogEntry: Send + Clone + 'static,
 {
     let election_won;
-    let mut votes = 1;
-    let new_term = common_data.current_term + 1;
-
-    let request_vote_msg = RaftMessage::RequestVote(RequestVoteRPC {
-        term: new_term,
-        candidate_ref: me.clone(),
-        last_log_index: common_data.last_applied,
-        last_log_term: 0,
-    });
-    for peer in peer_refs.iter_mut() {
-        let _ = peer.try_send(request_vote_msg.clone());
-    }
-
-    let mut remaining_time_to_wait = thread_rng().gen_range(election_timeout);
 
     'candidate: loop {
         tracing::info!("📦 Starting an election");
+
+        let mut votes = 1;
+
+        let mut remaining_time_to_wait = thread_rng().gen_range(election_timeout.clone());
+
+        common_data.current_term += 1;
+        let request_vote_msg = RaftMessage::RequestVote(RequestVoteRPC {
+            term: common_data.current_term,
+            candidate_ref: me.clone(),
+            last_log_index: common_data.last_applied,
+            last_log_term: 0,
+        });
+        for peer in peer_refs.iter_mut() {
+            let _ = peer.try_send(request_vote_msg.clone());
+        }
 
         'election: loop {
             let Ok(message) = timeout(remaining_time_to_wait, cell.recv()).await else {
@@ -85,6 +86,7 @@ where
             if let Some(new_remaining_time_to_wait) = remaining_time_to_wait.checked_sub(Instant::now().elapsed()) {
                 remaining_time_to_wait = new_remaining_time_to_wait;
             } else {
+                tracing::info!("⏰ Election timeout");
                 break 'election;
             }
         }
