@@ -1,27 +1,27 @@
 # STEP 1: pretend nothing will break
-- [x] Create an Actum style state machine to describe a node.
-- [x] Leader election.
-- [x] Make lead duplicate messages and follow to listen and make their copies.
-- [x] Write client node to send messages to the leader.
-- [x] Followers tell client who the leader is if they recieve a message from a client.
-- [ ] Make lead keep track of who received a certain update and commit it when a majority has it.
+- [x] Create an Actum style state machine to describe a node
+- [x] Leader election
+- [x] Make lead duplicate messages and follow to listen and make their copies
+- [x] Write client node to send messages to the leader
+- [x] Followers tell client who the leader is if they recieve a message from a client
+- [ ] Make lead keep track of who received a certain update and commit it when a majority has it
 
 **Completed when:**
-- [ ] The right leader is elected.
-- [ ] Messages are received by the leader, duplicated, and committed.
-- [ ] New nodes are able to join an active cluster.
+- [x] The right leader is elected
+- [ ] Messages are received by the leader, duplicated, and committed
 
 
 # STEP 2: prepare for stuff to break
-- [x] Leader ping to check if it is alive, end of term and re-election if not.
-- [ ] Implement resolutions for cases of lead-follow conflicts.
-- [x] Update client node to change server if instructed to do so because it sent a request to a non-leader.
-- [ ] Update client node to change server to another random one if requests are timing out.
+- [x] Leader ping to check if it is alive, end of term and re-election if not
+- [ ] Implement resolutions for cases of lead-follow conflicts
+- [x] Update client node to change server if instructed to do so because it sent a request to a non-leader
+- [ ] Update client node to change server to another random one if requests are timing out
 
 **Completed when:**
-- [ ] Nodes are able to detect when the leader is dead and elect a new one.
-- [ ] Follow can update their log to match the leader's.
-- [ ] Client node can figure out who is the leader and send messages only to it
+- [x] Nodes are able to detect when the leader is dead and elect a new one
+- [ ] Follow can update their log to match the leader's
+- [x] Client node can figure out who is the leader and send messages only to it
+- [ ] Client node changes server if the current one is not responding
 
 
 # STEP 3: make stuff break
@@ -29,7 +29,7 @@
 - [ ] kill random nodes and restart them some time later
 
 completed when:
-- [ ] the system can keep running as long as at least half the nodes are working
+- [ ] the system can keep running as long as at least half the nodes are working, and leader doesn't do anything when there are exactly or fewer than half the nodes
 
 
 # STEP 4: log compaction
@@ -38,8 +38,9 @@ completed when:
 
 completed when:
 - [ ] each node can compact logs automatically
+- [ ] nodes that are really far behind can still catch up
 
 
 AT SOME POINT
 - [x] use a more generic type for log entries
-- [ ] the maximum number of nodes is written in three different places but it must be the same in all of them, put them in a single place
+- [x] the maximum number of nodes is written in three different places but it must be the same in all of them, put them in a single place
