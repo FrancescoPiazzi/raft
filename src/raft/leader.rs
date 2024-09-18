@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use tokio::time::{self, MissedTickBehavior};
+use tokio::task::JoinSet;
 
 use crate::raft::common_state::CommonState;
 use crate::raft::messages::*;
@@ -22,13 +23,27 @@ pub async fn leader<AB, LogEntry>(
     AB: ActorBounds<RaftMessage<LogEntry>>,
     LogEntry: Send + Clone + 'static,
 {
-    // let current_term = common_data.current_term;
-    // let mut peer_refs_clone = peer_refs.clone();
 
-    // tokio::select! {
-    //     _ = message_handler(cell, common_data, peer_refs, me) => {},
-    //     _ = heartbeat_sender(heartbeat_period, current_term, &mut peer_refs_clone, me) => {},
-    // }
+    let mut js = JoinSet::new();
+    let mut peer_intervals = Vec::new();
+
+    for peer in peer_refs.iter_mut() {
+        let mut interval = time::interval(heartbeat_period);
+        interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+        peer_intervals.push((peer, interval));
+    }
+
+    for (peer, mut interval) in peer_intervals {
+        let mut peer = peer.clone();
+        let me = me.clone();
+        let current_term = common_data.current_term;
+        js.spawn(async move {
+            loop {
+                interval.tick().await;
+                send_heartbeat(current_term, &mut peer, &me);
+            }
+        });
+    }
 
     loop {
         tokio::select! {
@@ -39,11 +54,28 @@ pub async fn leader<AB, LogEntry>(
                     break;
                 }
             },
-            _ = tokio::time::sleep(heartbeat_period) => {
-                send_heartbeats(common_data.current_term, peer_refs, me);
-            },
+            _ = js.join_next() => {},
         }
     }
+}
+
+// send a heartbeat to a single follower
+fn send_heartbeat<LogEntry>(
+    current_term: u64,
+    peer: &mut ActorRef<RaftMessage<LogEntry>>,
+    me: &ActorRef<RaftMessage<LogEntry>>,
+) where
+    LogEntry: Send + Clone + 'static,
+{
+    let heartbeat_msg = RaftMessage::AppendEntries(AppendEntriesRPC {
+        term: current_term,
+        leader_ref: me.clone(),
+        prev_log_index: 0,
+        prev_log_term: 0,
+        entries: Vec::new(),
+        leader_commit: 0,
+    });
+    let _ = peer.try_send(heartbeat_msg.clone());
 }
 
 // sends one round of heartbeats to all followers
