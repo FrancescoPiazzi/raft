@@ -32,12 +32,22 @@ pub async fn follower<AB, LogEntry>(
 
         match message {
             RaftMessage::AppendEntries(mut append_entries_rpc) => {
+                if append_entries_rpc.term < common_data.current_term {
+                    tracing::trace!("🚫 Received an AppendEntries message with an outdated term, ignoring");
+                    let msg = RaftMessage::AppendEntryResponse(common_data.current_term, false);
+                    let _ = append_entries_rpc.leader_ref.try_send(msg);
+                    continue;
+                }
+
                 if append_entries_rpc.entries.is_empty() {
                     tracing::trace!("❤️ Received heartbeat");
                 } else {
                     tracing::info!("✏️ Received an AppendEntries message, adding them to the log");
                 }
-                common_data.log.append(&mut append_entries_rpc.entries);
+
+                let mut entries = append_entries_rpc.entries.into_iter().map(|entry| (entry, append_entries_rpc.term)).collect();
+
+                common_data.log.append(&mut entries);
                 leader_ref = Some(append_entries_rpc.leader_ref.clone());
 
                 let msg = RaftMessage::AppendEntryResponse(common_data.current_term, true);

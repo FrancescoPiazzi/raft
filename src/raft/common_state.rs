@@ -1,20 +1,19 @@
 use crate::raft::messages::RaftMessage;
 use actum::actor_ref::ActorRef;
-use std::fmt;
-use std::fmt::{Debug, Formatter};
+use std::fmt::{Debug, Formatter, Result};
 
 // data common to all states, used to avoid passing a million parameters to the state functions
 #[derive(Clone)]
 pub(crate) struct CommonState<LogEntry> {
     pub(crate) current_term: u64,
-    pub(crate) log: Vec<LogEntry>,
+    pub(crate) log: Vec<(LogEntry, u64)>,
     pub(crate) commit_index: usize,
     pub(crate) last_applied: usize,
     pub(crate) voted_for: Option<ActorRef<RaftMessage<LogEntry>>>,
 }
 
 impl<LogEntry> Debug for CommonState<LogEntry> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         f.debug_struct("CommonState")
             .field("current_term", &self.current_term)
             .field("log length", &self.log.len())

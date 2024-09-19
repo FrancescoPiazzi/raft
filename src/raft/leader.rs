@@ -17,6 +17,7 @@ pub async fn leader<AB, LogEntry>(
     peer_refs: &mut [ActorRef<RaftMessage<LogEntry>>],
     me: &ActorRef<RaftMessage<LogEntry>>,
     heartbeat_period: Duration,
+    replication_period: Duration,
 ) where
     AB: ActorBounds<RaftMessage<LogEntry>>,
     LogEntry: Send + Clone + 'static,
@@ -30,14 +31,14 @@ pub async fn leader<AB, LogEntry>(
         tokio::select! {
             message = cell.recv() => {
                 let message = message.message().expect("raft runs indefinitely");
-                let become_follow = handle_message(common_data, peer_refs, me, message);
+                let become_follow = handle_message(common_data, peer_refs, me, message, replication_period);
                 if become_follow {
                     break;
                 }
             },
             peer = peer_timeouts.join_next() => {
                 let mut peer = peer.expect("leaders must have at least one follower").unwrap();
-                send_heartbeat(common_data.current_term, &mut peer, me);
+                send_heartbeat(common_data, &mut peer, me);
                 peer_timeouts.spawn(wait_and_return(peer, heartbeat_period));
             },
         }
@@ -54,14 +55,14 @@ where LogEntry: Send + Clone + 'static
 
 // send a heartbeat to a single follower
 fn send_heartbeat<LogEntry>(
-    current_term: u64,
+    common_data: &mut CommonState<LogEntry>,
     peer: &mut ActorRef<RaftMessage<LogEntry>>,
     me: &ActorRef<RaftMessage<LogEntry>>,
 ) where
     LogEntry: Send + Clone + 'static,
 {
     let heartbeat_msg = RaftMessage::AppendEntries(AppendEntriesRPC {
-        term: current_term,
+        term: common_data.current_term,
         leader_ref: me.clone(),
         prev_log_index: 0,
         prev_log_term: 0,
@@ -79,6 +80,7 @@ fn handle_message<LogEntry>(
     peer_refs: &mut [ActorRef<RaftMessage<LogEntry>>],
     me: &ActorRef<RaftMessage<LogEntry>>,
     message: RaftMessage<LogEntry>,
+    replication_period: Duration,
 )-> bool
 where
     LogEntry: Send + Clone + 'static,
@@ -86,19 +88,24 @@ where
     match message {
         RaftMessage::AppendEntriesClient(mut append_entries_client_rpc) => {
             tracing::info!("⏭️ Received a message from a client, replicating it to the other nodes");
+
+            let mut entries = append_entries_client_rpc.entries.clone().into_iter().map(|entry| (entry, common_data.current_term)).collect();
+            common_data.log.append(&mut entries);
+
             let append_entries_msg = RaftMessage::AppendEntries(AppendEntriesRPC {
                 term: common_data.current_term,
                 leader_ref: me.clone(),
-                prev_log_index: 0,
+                prev_log_index: common_data.log.len() as u64,   // log entries are 1-indexed, 0 means no log entries yet
                 prev_log_term: 0,
                 entries: append_entries_client_rpc.entries.clone(),
                 leader_commit: 0,
             });
+
             for peer in peer_refs.iter_mut() {
                 let _ = peer.try_send(append_entries_msg.clone());
             }
-            // TOASK: send the confirmation here or when it's committed?
-            // (sending it here for now as there is no commit yet)
+
+            // TODO: send the confirmation when it's committed instead of here
             let msg = RaftMessage::AppendEntriesClientResponse(Ok(()));
             let _ = append_entries_client_rpc.client_ref.try_send(msg);
         }
@@ -128,6 +135,8 @@ where
         }
         RaftMessage::AppendEntryResponse(_term, _success) => {
             tracing::trace!("✔️ Received an AppendEntryResponse message");
+            // TODO: check if we have a majority of the nodes and commit the message if so
+            // otherwise increment the number of nodes that have added the entry
         }
         // normal to recieve some extra votes if we just got elected but we don't care
         RaftMessage::RequestVoteResponse(_) => {}
@@ -136,4 +145,29 @@ where
         }
     }
     false
+}
+
+
+// this is an actum node that manages one peer, it replays the AppendEntriesRPCs from the leader until 
+// it recieves a response, which is then replayed back to the leader, it also keeps track of when was the last time
+// the peer recieved a message, and sends an heartbeat if needed
+pub async fn peer_manager<AB, LogEntry>(mut cell: AB, me: ActorRef<RaftMessage<LogEntry>>, total_nodes: usize) -> AB
+where
+    AB: ActorBounds<RaftMessage<LogEntry>>,
+    LogEntry: Send + Clone + 'static
+{
+    cell
+}
+
+
+// sends a message to a peer at a constant rate forever, used to replicate log entries, must be canceled from the outside
+async fn send_log_entry<LogEntry>(mut peer: ActorRef<RaftMessage<LogEntry>>, message: RaftMessage<LogEntry>, period: Duration) 
+where LogEntry: Send + Clone + 'static
+{
+    let mut interval = tokio::time::interval(period);
+    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    loop {
+        interval.tick().await;
+        let _ = peer.try_send(message.clone());
+    }
 }

@@ -2,7 +2,7 @@
 use std::time::Duration;
 
 #[allow(unused_imports)]
-use crate::raft::config::DEFAULT_ELECTION_TIMEOUT;
+use crate::raft::config::{DEFAULT_ELECTION_TIMEOUT, REPLICATION_PERIOD};
 use crate::raft::messages::*;
 use tracing::{info_span, Instrument};
 
@@ -64,7 +64,7 @@ where
 
         if election_won {
             tracing::trace!("transition: candidate → leader");
-            leader(&mut cell, &mut common_data, &mut peer_refs, &me, hartbeat_period)
+            leader(&mut cell, &mut common_data, &mut peer_refs, &me, hartbeat_period, REPLICATION_PERIOD)
                 .instrument(info_span!("leader👑"))
                 .await;
         } else {
