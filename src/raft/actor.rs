@@ -47,7 +47,7 @@ where
     tracing::trace!("starting as follower");
 
     loop {
-        follower(&me,&mut cell, &mut common_data, election_timeout.clone())
+        follower(&me, &mut cell, &mut common_data, election_timeout.clone())
             .instrument(info_span!("follower"))
             .await;
 
@@ -64,9 +64,16 @@ where
 
         if election_won {
             tracing::trace!("transition: candidate → leader");
-            leader(&mut cell, &mut common_data, &mut peer_refs, &me, hartbeat_period, REPLICATION_PERIOD)
-                .instrument(info_span!("leader👑"))
-                .await;
+            leader(
+                &mut cell,
+                &mut common_data,
+                &peer_refs,
+                &me,
+                hartbeat_period,
+                REPLICATION_PERIOD,
+            )
+            .instrument(info_span!("leader👑"))
+            .await;
         } else {
             tracing::trace!("transition: candidate → follower");
         }

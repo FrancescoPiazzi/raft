@@ -7,7 +7,7 @@ use crate::raft::messages::*;
 use actum::prelude::*;
 
 #[derive(Clone)]
-struct Follower<LogEntry>{
+struct Follower<LogEntry> {
     actor_ref: ActorRef<RaftMessage<LogEntry>>,
     next_index: u64,
     match_index: u64,
@@ -20,7 +20,7 @@ struct Follower<LogEntry>{
 pub async fn leader<AB, LogEntry>(
     cell: &mut AB,
     common_data: &mut CommonState<LogEntry>,
-    peer_refs: &mut [ActorRef<RaftMessage<LogEntry>>],
+    peer_refs: &[ActorRef<RaftMessage<LogEntry>>],
     me: &ActorRef<RaftMessage<LogEntry>>,
     heartbeat_period: Duration,
     _replication_period: Duration,
@@ -63,15 +63,14 @@ pub async fn leader<AB, LogEntry>(
 }
 
 // returns the given object after some time, useful to keep track of follower timeouts
-async fn wait_and_return<T>(x: T, heartbeat_period: Duration) -> T 
-{
+async fn wait_and_return(x: usize, heartbeat_period: Duration) -> usize {
     tokio::time::sleep(heartbeat_period).await;
     x
 }
 
 // send an appendentriesRPC to a single follower
 fn update_follower<LogEntry>(
-    common_data: &mut CommonState<LogEntry>,
+    common_data: &CommonState<LogEntry>,
     follower: &mut Follower<LogEntry>,
     me: &ActorRef<RaftMessage<LogEntry>>,
 ) where
@@ -80,7 +79,7 @@ fn update_follower<LogEntry>(
     // TODO: maybe try avoiding adding the term after each logentry before so I don't have to strip them here
     let stuff_to_send = common_data.log[follower.next_index as usize..]
         .iter()
-        .map(|x| {x.0.clone()})
+        .map(|x| x.0.clone())
         .collect();
 
     // TODO: fill the rest of the fields
@@ -96,14 +95,13 @@ fn update_follower<LogEntry>(
     let _ = follower.actor_ref.try_send(append_entries_msg);
 }
 
-
 // handles one message as leader
 // returns true if we have to go back to a follower state, false otherwise
 fn handle_message<LogEntry>(
     common_data: &mut CommonState<LogEntry>,
     message: RaftMessage<LogEntry>,
-    follower_states: &mut Vec<Follower<LogEntry>>
-)-> bool
+    follower_states: &mut [Follower<LogEntry>],
+) -> bool
 where
     LogEntry: Send + Clone + 'static,
 {
@@ -111,7 +109,12 @@ where
         RaftMessage::AppendEntriesClient(mut append_entries_client_rpc) => {
             tracing::info!("⏭️ Received a message from a client, replicating it to the other nodes");
 
-            let mut entries = append_entries_client_rpc.entries.clone().into_iter().map(|entry| (entry, common_data.current_term)).collect();
+            let mut entries = append_entries_client_rpc
+                .entries
+                .clone()
+                .into_iter()
+                .map(|entry| (entry, common_data.current_term))
+                .collect();
             common_data.log.append(&mut entries);
 
             // TODO: send the confirmation when it's committed instead of here
@@ -148,12 +151,15 @@ where
             // find the follower that sent the message
             // TODO: I'd love to use a HashMap, but ActorRef is not hashable, creating a custom struct
             // that wraps it along with an id would be useless because then I would be missing the id here,
-            // since the follower doesn't know it. 
+            // since the follower doesn't know it.
             // Another solution would be to send to each follower their id
             // but that be a difference from the paper and a bit of a mess since it would need to be handled
             // by all three states (probably)
-            let index = follower_states.iter().position(|x| x.actor_ref == follower_ref).unwrap();
-            
+            let index = follower_states
+                .iter()
+                .position(|x| x.actor_ref == follower_ref)
+                .unwrap();
+
             if success {
                 // common_data.log.len() might be 0 when getting a heartbeat response before any entry is added
                 follower_states[index].match_index = (std::cmp::max(common_data.log.len() as i64 - 1, 0)) as u64;
