@@ -3,6 +3,8 @@
 use actum::prelude::ActorRef;
 use std::fmt::{self, Debug, Formatter};
 
+use crate::raft::common_state::CommonState;
+
 #[derive(Clone)]
 pub enum RaftMessage<LogEntry> {
     AddPeer(ActorRef<RaftMessage<LogEntry>>),
@@ -17,6 +19,10 @@ pub enum RaftMessage<LogEntry> {
     AppendEntriesClientResponse(Result<(), Option<ActorRef<RaftMessage<LogEntry>>>>),
 
     InitMessage(Vec<LogEntry>), // used only by the simulator to initialize the message the client will replay forever
+
+    // used between leader and children to share the common data
+    SetCommonData(CommonState<LogEntry>),
+    GetCommonData(ActorRef<RaftMessage<LogEntry>>),
 }
 
 #[derive(Clone)]
@@ -54,6 +60,8 @@ impl<LogEntry> Debug for RaftMessage<LogEntry> {
             Self::AppendEntriesClient(_) => "Append entries client".fmt(f),
             Self::AppendEntriesClientResponse(_) => "Append entries client response".fmt(f),
             Self::InitMessage(_) => "Init message".fmt(f),
+            Self::SetCommonData(_) => "Set common data".fmt(f),
+            Self::GetCommonData(_) => "Get common data".fmt(f),
         }
     }
 }

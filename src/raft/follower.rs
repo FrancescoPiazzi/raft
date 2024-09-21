@@ -45,7 +45,11 @@ pub async fn follower<AB, LogEntry>(
                     tracing::info!("✏️ Received an AppendEntries message, adding them to the log");
                 }
 
-                let mut entries = append_entries_rpc.entries.into_iter().map(|entry| (entry, append_entries_rpc.term)).collect();
+                let mut entries = append_entries_rpc
+                    .entries
+                    .into_iter()
+                    .map(|entry| (entry, append_entries_rpc.term))
+                    .collect();
 
                 common_data.log.append(&mut entries);
                 leader_ref = Some(append_entries_rpc.leader_ref.clone());

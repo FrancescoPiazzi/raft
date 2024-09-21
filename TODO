@@ -44,3 +44,5 @@ completed when:
 AT SOME POINT
 - [x] use a more generic type for log entries
 - [x] the maximum number of nodes is written in three different places but it must be the same in all of them, put them in a single place
+- [ ] acronym for ActorRef RaftMessage LogEntry
+- [ ] followers reset the timout when they vote for a candidate (page 4 -> rules for servers -> followers)
