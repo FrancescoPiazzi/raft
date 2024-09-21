@@ -6,6 +6,12 @@ use crate::raft::common_state::CommonState;
 use crate::raft::messages::*;
 use actum::prelude::*;
 
+#[derive(Clone)]
+struct Follower<LogEntry>{
+    actor_ref: ActorRef<RaftMessage<LogEntry>>,
+    next_index: u64,
+    match_index: u64,
+}
 
 // the leader is the interface of the cluster to the external world
 // clients send messages to the leader, which is responsible for replicating them to the other nodes
@@ -17,59 +23,71 @@ pub async fn leader<AB, LogEntry>(
     peer_refs: &mut [ActorRef<RaftMessage<LogEntry>>],
     me: &ActorRef<RaftMessage<LogEntry>>,
     heartbeat_period: Duration,
-    replication_period: Duration,
+    _replication_period: Duration,
 ) where
     AB: ActorBounds<RaftMessage<LogEntry>>,
     LogEntry: Send + Clone + 'static,
 {
-    let mut peer_timeouts = JoinSet::new();
-    peer_refs.iter_mut().for_each(|peer| {
-        peer_timeouts.spawn(wait_and_return(peer.clone(), heartbeat_period));
+    let mut followers: Vec<Follower<LogEntry>> = peer_refs
+        .into_iter()
+        .map(|peer| Follower{actor_ref: peer.clone(), next_index: 0, match_index: 0})
+        .collect();
+
+    let mut followers_timeouts = JoinSet::new();
+    followers.into_iter().for_each(|follower| {
+        followers_timeouts.spawn(wait_and_return(follower, heartbeat_period));
     });
 
     loop {
         tokio::select! {
             message = cell.recv() => {
                 let message = message.message().expect("raft runs indefinitely");
-                let become_follow = handle_message(common_data, peer_refs, me, message, replication_period);
+                let become_follow = handle_message(common_data, peer_refs, me, message, followers);
                 if become_follow {
                     break;
                 }
             },
-            peer = peer_timeouts.join_next() => {
-                let mut peer = peer.expect("leaders must have at least one follower").unwrap();
-                send_heartbeat(common_data, &mut peer, me);
-                peer_timeouts.spawn(wait_and_return(peer, heartbeat_period));
+            timed_out_follower = followers_timeouts.join_next() => {
+                let mut timed_out_follower = timed_out_follower.expect("leaders must have at least one follower").unwrap();
+                update_follower(common_data, &mut timed_out_follower, me);
+                followers_timeouts.spawn(wait_and_return(timed_out_follower, heartbeat_period));
             },
         }
     }
 }
 
-// returns the given ActorRef after some time, used to send heartbeats to followers
-async fn wait_and_return<LogEntry>(peer: ActorRef<RaftMessage<LogEntry>>, heartbeat_period: Duration) -> ActorRef<RaftMessage<LogEntry>> 
-where LogEntry: Send + Clone + 'static
+// returns the given object after some time, useful to keep track of follower timeouts
+async fn wait_and_return<T>(x: T, heartbeat_period: Duration) -> T 
 {
     tokio::time::sleep(heartbeat_period).await;
-    peer
+    x
 }
 
-// send a heartbeat to a single follower
-fn send_heartbeat<LogEntry>(
+// send an appendentriesRPC to a single follower
+fn update_follower<LogEntry>(
     common_data: &mut CommonState<LogEntry>,
-    peer: &mut ActorRef<RaftMessage<LogEntry>>,
+    follower: &mut Follower<LogEntry>,
     me: &ActorRef<RaftMessage<LogEntry>>,
 ) where
     LogEntry: Send + Clone + 'static,
 {
-    let heartbeat_msg = RaftMessage::AppendEntries(AppendEntriesRPC {
+    // TODO: maybe try avoiding adding the term after each logentry before so I don't have to strip them here
+    let stuff_to_send = common_data.log[follower.next_index as usize..]
+        .iter()
+        .map(|x| {x.0.clone()})
+        .collect();
+
+    // TODO
+    let append_entries_msg = RaftMessage::AppendEntries(AppendEntriesRPC {
         term: common_data.current_term,
         leader_ref: me.clone(),
-        prev_log_index: 0,
+        prev_log_index: follower.next_index,
         prev_log_term: 0,
-        entries: Vec::new(),
+        entries: stuff_to_send,
         leader_commit: 0,
     });
-    let _ = peer.try_send(heartbeat_msg);
+
+    let _ = follower.actor_ref.try_send(append_entries_msg);
 }
 
 
@@ -80,7 +98,7 @@ fn handle_message<LogEntry>(
     peer_refs: &mut [ActorRef<RaftMessage<LogEntry>>],
     me: &ActorRef<RaftMessage<LogEntry>>,
     message: RaftMessage<LogEntry>,
-    replication_period: Duration,
+    follower_states: Vec<Follower<LogEntry>>
 )-> bool
 where
     LogEntry: Send + Clone + 'static,
@@ -145,18 +163,6 @@ where
         }
     }
     false
-}
-
-
-// this is an actum node that manages one peer, it replays the AppendEntriesRPCs from the leader until 
-// it recieves a response, which is then replayed back to the leader, it also keeps track of when was the last time
-// the peer recieved a message, and sends an heartbeat if needed
-pub async fn peer_manager<AB, LogEntry>(mut cell: AB, me: ActorRef<RaftMessage<LogEntry>>, total_nodes: usize) -> AB
-where
-    AB: ActorBounds<RaftMessage<LogEntry>>,
-    LogEntry: Send + Clone + 'static
-{
-    cell
 }
 
 

@@ -42,7 +42,7 @@ pub async fn follower<AB, LogEntry>(
                 if append_entries_rpc.entries.is_empty() {
                     tracing::trace!("❤️ Received heartbeat");
                 } else {
-                    tracing::info!("✏️ Received an AppendEntries message, adding them to the log");
+                    tracing::info!("✏️ Received an AppendEntries message with {} entries, adding them to the log", append_entries_rpc.entries.len());
                 }
 
                 let mut entries = append_entries_rpc.entries.into_iter().map(|entry| (entry, append_entries_rpc.term)).collect();
