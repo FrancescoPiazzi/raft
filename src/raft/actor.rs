@@ -47,7 +47,7 @@ where
     tracing::trace!("starting as follower");
 
     loop {
-        follower(&mut cell, &mut common_data, election_timeout.clone())
+        follower(&me,&mut cell, &mut common_data, election_timeout.clone())
             .instrument(info_span!("follower"))
             .await;
 

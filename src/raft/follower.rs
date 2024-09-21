@@ -11,6 +11,7 @@ use actum::prelude::*;
 // follower nodes receive AppendEntry messages from the leader and duplicate them
 // returns when no message is received from the leader after some time
 pub async fn follower<AB, LogEntry>(
+    me: &ActorRef<RaftMessage<LogEntry>>,
     cell: &mut AB,
     common_data: &mut CommonState<LogEntry>,
     election_timeout: Range<Duration>,
@@ -34,7 +35,7 @@ pub async fn follower<AB, LogEntry>(
             RaftMessage::AppendEntries(mut append_entries_rpc) => {
                 if append_entries_rpc.term < common_data.current_term {
                     tracing::trace!("🚫 Received an AppendEntries message with an outdated term, ignoring");
-                    let msg = RaftMessage::AppendEntryResponse(common_data.current_term, false);
+                    let msg = RaftMessage::AppendEntryResponse(me.clone(), common_data.current_term, false);
                     let _ = append_entries_rpc.leader_ref.try_send(msg);
                     continue;
                 }
@@ -50,7 +51,7 @@ pub async fn follower<AB, LogEntry>(
                 common_data.log.append(&mut entries);
                 leader_ref = Some(append_entries_rpc.leader_ref.clone());
 
-                let msg = RaftMessage::AppendEntryResponse(common_data.current_term, true);
+                let msg = RaftMessage::AppendEntryResponse(me.clone(), common_data.current_term, true);
                 let _ = append_entries_rpc.leader_ref.try_send(msg);
             }
             RaftMessage::RequestVote(mut request_vote_rpc) => {

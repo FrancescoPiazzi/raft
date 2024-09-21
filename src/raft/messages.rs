@@ -8,7 +8,7 @@ pub enum RaftMessage<LogEntry> {
     AddPeer(ActorRef<RaftMessage<LogEntry>>),
 
     AppendEntries(AppendEntriesRPC<LogEntry>),
-    AppendEntryResponse(u64, bool), // term, success
+    AppendEntryResponse(ActorRef<RaftMessage<LogEntry>>, u64, bool), // term, success
 
     RequestVote(RequestVoteRPC<LogEntry>),
     RequestVoteResponse(bool), // true if the vote was granted, false otherwise
@@ -48,7 +48,7 @@ impl<LogEntry> Debug for RaftMessage<LogEntry> {
         match self {
             Self::AddPeer(_) => "Add peer".fmt(f),
             Self::AppendEntries(_) => "Append entries".fmt(f),
-            Self::AppendEntryResponse(_, _) => "Append entry response".fmt(f),
+            Self::AppendEntryResponse(_, _, _) => "Append entry response".fmt(f),
             Self::RequestVote(_) => "Request vote".fmt(f),
             Self::RequestVoteResponse(_) => "Request vote response".fmt(f),
             Self::AppendEntriesClient(_) => "Append entries client".fmt(f),

@@ -29,28 +29,34 @@ pub async fn leader<AB, LogEntry>(
     LogEntry: Send + Clone + 'static,
 {
     let mut followers: Vec<Follower<LogEntry>> = peer_refs
-        .into_iter()
-        .map(|peer| Follower{actor_ref: peer.clone(), next_index: 0, match_index: 0})
+        .iter()
+        .map(|peer| Follower {
+            actor_ref: peer.clone(),
+            next_index: 0,
+            match_index: 0,
+        })
         .collect();
 
     let mut followers_timeouts = JoinSet::new();
-    followers.into_iter().for_each(|follower| {
-        followers_timeouts.spawn(wait_and_return(follower, heartbeat_period));
-    });
+    for i in 0..followers.len() {
+        followers_timeouts.spawn(wait_and_return(i, heartbeat_period));
+    }
 
     loop {
         tokio::select! {
             message = cell.recv() => {
                 let message = message.message().expect("raft runs indefinitely");
-                let become_follow = handle_message(common_data, peer_refs, me, message, followers);
+                let become_follow = handle_message(common_data, message, &mut followers);
                 if become_follow {
                     break;
                 }
             },
-            timed_out_follower = followers_timeouts.join_next() => {
-                let mut timed_out_follower = timed_out_follower.expect("leaders must have at least one follower").unwrap();
-                update_follower(common_data, &mut timed_out_follower, me);
-                followers_timeouts.spawn(wait_and_return(timed_out_follower, heartbeat_period));
+            timed_out_follower_index = followers_timeouts.join_next() => {
+                let timed_out_follower_index = timed_out_follower_index
+                    .expect("leaders must have at least one follower")
+                    .unwrap();
+                update_follower(common_data, &mut followers[timed_out_follower_index], me);
+                followers_timeouts.spawn(wait_and_return(timed_out_follower_index, heartbeat_period));
             },
         }
     }
@@ -77,7 +83,7 @@ fn update_follower<LogEntry>(
         .map(|x| {x.0.clone()})
         .collect();
 
-    // TODO
+    // TODO: fill the rest of the fields
     let append_entries_msg = RaftMessage::AppendEntries(AppendEntriesRPC {
         term: common_data.current_term,
         leader_ref: me.clone(),
@@ -95,10 +101,8 @@ fn update_follower<LogEntry>(
 // returns true if we have to go back to a follower state, false otherwise
 fn handle_message<LogEntry>(
     common_data: &mut CommonState<LogEntry>,
-    peer_refs: &mut [ActorRef<RaftMessage<LogEntry>>],
-    me: &ActorRef<RaftMessage<LogEntry>>,
     message: RaftMessage<LogEntry>,
-    follower_states: Vec<Follower<LogEntry>>
+    follower_states: &mut Vec<Follower<LogEntry>>
 )-> bool
 where
     LogEntry: Send + Clone + 'static,
@@ -109,19 +113,6 @@ where
 
             let mut entries = append_entries_client_rpc.entries.clone().into_iter().map(|entry| (entry, common_data.current_term)).collect();
             common_data.log.append(&mut entries);
-
-            let append_entries_msg = RaftMessage::AppendEntries(AppendEntriesRPC {
-                term: common_data.current_term,
-                leader_ref: me.clone(),
-                prev_log_index: common_data.log.len() as u64,   // log entries are 1-indexed, 0 means no log entries yet
-                prev_log_term: 0,
-                entries: append_entries_client_rpc.entries.clone(),
-                leader_commit: 0,
-            });
-
-            for peer in peer_refs.iter_mut() {
-                let _ = peer.try_send(append_entries_msg.clone());
-            }
 
             // TODO: send the confirmation when it's committed instead of here
             let msg = RaftMessage::AppendEntriesClientResponse(Ok(()));
@@ -151,10 +142,26 @@ where
                 tracing::trace!("They are wrong, long live the king!");
             }
         }
-        RaftMessage::AppendEntryResponse(_term, _success) => {
+        RaftMessage::AppendEntryResponse(follower_ref, _term, success) => {
             tracing::trace!("✔️ Received an AppendEntryResponse message");
-            // TODO: check if we have a majority of the nodes and commit the message if so
-            // otherwise increment the number of nodes that have added the entry
+
+            // find the follower that sent the message
+            // TODO: I'd love to use a HashMap, but ActorRef is not hashable, creating a custom struct
+            // that wraps it along with an id would be useless because then I would be missing the id here,
+            // since the follower doesn't know it. 
+            // Another solution would be to send to each follower their id
+            // but that be a difference from the paper and a bit of a mess since it would need to be handled
+            // by all three states (probably)
+            let index = follower_states.iter().position(|x| x.actor_ref == follower_ref).unwrap();
+            
+            if success {
+                // common_data.log.len() might be 0 when getting a heartbeat response before any entry is added
+                follower_states[index].match_index = (std::cmp::max(common_data.log.len() as i64 - 1, 0)) as u64;
+                follower_states[index].next_index = common_data.log.len() as u64;
+                // TODO: we might want to commit something here
+            } else {
+                follower_states[index].next_index -= 1;
+            }
         }
         // normal to recieve some extra votes if we just got elected but we don't care
         RaftMessage::RequestVoteResponse(_) => {}
@@ -163,17 +170,4 @@ where
         }
     }
     false
-}
-
-
-// sends a message to a peer at a constant rate forever, used to replicate log entries, must be canceled from the outside
-async fn send_log_entry<LogEntry>(mut peer: ActorRef<RaftMessage<LogEntry>>, message: RaftMessage<LogEntry>, period: Duration) 
-where LogEntry: Send + Clone + 'static
-{
-    let mut interval = tokio::time::interval(period);
-    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-    loop {
-        interval.tick().await;
-        let _ = peer.try_send(message.clone());
-    }
 }
