@@ -1,3 +1,4 @@
+use std::cmp::max;
 use std::time::Duration;
 
 use tokio::task::JoinSet;
@@ -5,6 +6,8 @@ use tokio::task::JoinSet;
 use crate::raft::common_state::CommonState;
 use crate::raft::messages::*;
 use actum::prelude::*;
+
+use super::common::commit;
 
 #[derive(Clone)]
 struct Follower<LogEntry> {
@@ -87,9 +90,13 @@ fn update_follower<LogEntry>(
         term: common_data.current_term,
         leader_ref: me.clone(),
         prev_log_index: follower.next_index,
-        prev_log_term: 0,
+        prev_log_term: if common_data.log.is_empty() {
+            0
+        } else {
+            common_data.log[max(follower.next_index as i64 - 1, 0) as usize].1
+        },
         entries: stuff_to_send,
-        leader_commit: 0,
+        leader_commit: common_data.commit_index as u64,
     });
 
     let _ = follower.actor_ref.try_send(append_entries_msg);
@@ -152,9 +159,8 @@ where
             // TODO: I'd love to use a HashMap, but ActorRef is not hashable, creating a custom struct
             // that wraps it along with an id would be useless because then I would be missing the id here,
             // since the follower doesn't know it.
-            // Another solution would be to send to each follower their id
-            // but that be a difference from the paper and a bit of a mess since it would need to be handled
-            // by all three states (probably)
+            // We could solve this each follower their id but that be a difference from the paper
+            // and a bit of a mess since the "id reception" should need to be handled by all three states (probably)
             let index = follower_states
                 .iter()
                 .position(|x| x.actor_ref == follower_ref)
@@ -164,7 +170,8 @@ where
                 // common_data.log.len() might be 0 when getting a heartbeat response before any entry is added
                 follower_states[index].match_index = (std::cmp::max(common_data.log.len() as i64 - 1, 0)) as u64;
                 follower_states[index].next_index = common_data.log.len() as u64;
-                // TODO: we might want to commit something here
+
+                check_for_commits(common_data, follower_states);
             } else {
                 follower_states[index].next_index -= 1;
             }
@@ -176,4 +183,35 @@ where
         }
     }
     false
+}
+
+// commits all the log entries that are replicated on the majority of the nodes
+fn check_for_commits<LogEntry>(common_data: &mut CommonState<LogEntry>, follower_states: &[Follower<LogEntry>])
+where
+    LogEntry: Send + Clone + 'static,
+{
+    let mut i = common_data.commit_index + 1;
+    // len() check probably useless in theory but better safe than sorry I guess
+    while majority(follower_states, i)
+        && i < common_data.log.len()
+        && common_data.log[i].1 == common_data.current_term
+    {
+        common_data.commit_index += 1;
+        i += 1;
+    }
+    commit(common_data);
+}
+
+// returns true if most the followers have the log entry at index i
+fn majority<LogEntry>(follower_states: &[Follower<LogEntry>], i: usize) -> bool
+where
+    LogEntry: Send + Clone + 'static,
+{
+    let mut count = 0;
+    for follower in follower_states {
+        if follower.match_index >= i as u64 {
+            count += 1;
+        }
+    }
+    count >= follower_states.len() / 2
 }

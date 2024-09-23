@@ -1,9 +1,11 @@
+use std::cmp::{max, min};
 use std::ops::Range;
 use std::time::Duration;
 
 use rand::{thread_rng, Rng};
 use tokio::time::timeout;
 
+use crate::raft::common::commit;
 use crate::raft::common_state::CommonState;
 use crate::raft::messages::*;
 use actum::prelude::*;
@@ -39,6 +41,12 @@ pub async fn follower<AB, LogEntry>(
                     let _ = append_entries_rpc.leader_ref.try_send(msg);
                     continue;
                 }
+                if append_entries_rpc.prev_log_index > common_data.log.len() as u64 {
+                    tracing::trace!("🚫 Received an AppendEntries message with an invalid prev_log_index, ignoring");
+                    let msg = RaftMessage::AppendEntryResponse(me.clone(), common_data.current_term, false);
+                    let _ = append_entries_rpc.leader_ref.try_send(msg);
+                    continue;
+                }
 
                 if append_entries_rpc.entries.is_empty() {
                     tracing::trace!("❤️ Received heartbeat");
@@ -54,8 +62,17 @@ pub async fn follower<AB, LogEntry>(
                     .into_iter()
                     .map(|entry| (entry, append_entries_rpc.term))
                     .collect();
-
                 common_data.log.append(&mut entries);
+
+                if append_entries_rpc.leader_commit > common_data.commit_index as u64 {
+                    common_data.commit_index = min(
+                        append_entries_rpc.leader_commit,
+                        max(common_data.log.len() as i64 - 1, 0) as u64,
+                    ) as usize;
+                }
+
+                commit(common_data);
+
                 leader_ref = Some(append_entries_rpc.leader_ref.clone());
 
                 let msg = RaftMessage::AppendEntryResponse(me.clone(), common_data.current_term, true);

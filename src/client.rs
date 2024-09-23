@@ -14,7 +14,8 @@ where
     AB: ActorBounds<RaftMessage<LogEntry>>,
     LogEntry: Clone + Send + 'static,
 {
-    let initial_wait = std::time::Duration::from_secs(3);
+    // TODO: these are a bit magic numbers, but also the client should't necessarly be a raft node anyway
+    let initial_wait = std::time::Duration::from_secs(2);
     let interval_between_messages = std::time::Duration::from_millis(2345);
 
     tokio::time::sleep(initial_wait).await;
@@ -23,7 +24,7 @@ where
     let message_to_send = get_message_to_send(&mut cell).await;
     let mut leader = raft_nodes[0].clone();
 
-    tracing::info!("Client ready to send messages");
+    tracing::trace!("Client ready to send messages");
 
     loop {
         tokio::time::sleep(interval_between_messages).await;
@@ -39,12 +40,12 @@ where
         match message {
             RaftMessage::AppendEntriesClientResponse(response) => {
                 if let Err(Some(leader_ref)) = response {
-                    tracing::info!("Sent a message to the wrong node, updating leader");
+                    tracing::trace!("Sent a message to the wrong node, updating leader");
                     leader = leader_ref.clone();
                 }
             }
             _ => {
-                tracing::info!("Client received unexpected message");
+                tracing::warn!("Client received unexpected message");
             }
         }
     }
