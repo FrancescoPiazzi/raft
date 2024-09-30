@@ -91,16 +91,18 @@ where
     LogEntry: Send + 'static,
 {
     let mut peers: Vec<ActorRef<RaftMessage<LogEntry>>> = Vec::with_capacity(total_nodes - 1);
+    let mut peer_ids: Vec<String> = Vec::with_capacity(total_nodes - 1);
 
     let mut npeers = 0;
     while npeers < total_nodes - 1 {
         let msg = cell.recv().await.message();
         match msg {
             Some(message) => {
-                if let RaftMessage::AddPeer(peer) = message {
+                if let RaftMessage::AddPeer(peer, id) = message {
                     npeers += 1;
                     peers.push(peer);
-                    tracing::trace!("🙆 Peer added, total: {}", npeers);
+                    peer_ids.push(id.clone());
+                    tracing::trace!("🙆 Peer {} added", id);
                 }
             }
             None => {

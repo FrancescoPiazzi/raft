@@ -61,7 +61,7 @@ where
 
     while raft_nodes.len() < n_nodes {
         let message = cell.recv().await.message().expect("Received a None message, quitting");
-        if let RaftMessage::AddPeer(peer) = message {
+        if let RaftMessage::AddPeer(peer, _) = message {
             raft_nodes.push(peer);
         }
     }

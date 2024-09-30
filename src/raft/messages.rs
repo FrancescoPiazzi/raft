@@ -5,7 +5,7 @@ use std::fmt::{self, Debug, Formatter};
 
 #[derive(Clone)]
 pub enum RaftMessage<LogEntry> {
-    AddPeer(ActorRef<RaftMessage<LogEntry>>),
+    AddPeer(ActorRef<RaftMessage<LogEntry>>, String),
 
     AppendEntries(AppendEntriesRPC<LogEntry>),
     AppendEntryResponse(ActorRef<RaftMessage<LogEntry>>, u64, bool), // term, success
@@ -46,7 +46,7 @@ pub(crate) struct AppendEntriesClientRPC<LogEntry> {
 impl<LogEntry> Debug for RaftMessage<LogEntry> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Self::AddPeer(_) => "Add peer".fmt(f),
+            Self::AddPeer(_, _) => "Add peer".fmt(f),
             Self::AppendEntries(_) => "Append entries".fmt(f),
             Self::AppendEntryResponse(_, _, _) => "Append entry response".fmt(f),
             Self::RequestVote(_) => "Request vote".fmt(f),

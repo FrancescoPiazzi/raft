@@ -21,6 +21,7 @@ where
     LogEntry: Clone + Send + 'static,
 {
     let mut refs: Vec<ActorRef<RaftMessage<LogEntry>>> = Vec::with_capacity(server_count);
+    let mut ids: Vec<String> = Vec::with_capacity(server_count);
     #[allow(clippy::collection_is_never_read)] // we only need to store these 'cause otherwise the actors are dropped
     let mut guards: Vec<ActorDropGuard> = Vec::with_capacity(server_count);
     let mut handles: Vec<JoinHandle<()>> = Vec::with_capacity(server_count);
@@ -34,16 +35,17 @@ where
         let handle = tokio::spawn(task.run_task().instrument(info_span!("server", id)));
 
         refs.push(m_ref);
+        ids.push(id.to_string());
         guards.push(guard);
         handles.push(handle);
     }
 
     for server_ref in &refs {
-        for other_server_ref in &refs {
+        for (i, other_server_ref) in refs.iter().enumerate() {
             if server_ref != other_server_ref {
                 let mut server1 = server_ref.clone();
                 let server2 = other_server_ref.clone();
-                let _ = server1.try_send(RaftMessage::AddPeer(server2));
+                let _ = server1.try_send(RaftMessage::AddPeer(server2, ids[i].clone()));
             }
         }
     }
@@ -56,8 +58,8 @@ where
         .unwrap();
     let client_handle = tokio::spawn(client_actor.task.run_task().instrument(info_span!("client")));
 
-    for server_ref in &refs {
-        let _ = client_actor.m_ref.try_send(RaftMessage::AddPeer(server_ref.clone()));
+    for (i, server_ref) in refs.iter().enumerate() {
+        let _ = client_actor.m_ref.try_send(RaftMessage::AddPeer(server_ref.clone(), ids[i].clone()));
     }
     let _ = client_actor.m_ref.try_send(RaftMessage::InitMessage(client_message));
 
