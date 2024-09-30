@@ -8,7 +8,7 @@ pub enum RaftMessage<LogEntry> {
     AddPeer(ActorRef<RaftMessage<LogEntry>>, String),
 
     AppendEntries(AppendEntriesRPC<LogEntry>),
-    AppendEntryResponse(ActorRef<RaftMessage<LogEntry>>, u64, bool), // term, success
+    AppendEntryResponse(String, u64, bool), // term, success
 
     RequestVote(RequestVoteRPC<LogEntry>),
     RequestVoteResponse(bool), // true if the vote was granted, false otherwise

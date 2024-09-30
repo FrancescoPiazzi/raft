@@ -13,7 +13,7 @@ use crate::raft::leader::leader;
 
 use actum::prelude::*;
 
-pub async fn raft_actor<AB, LogEntry>(mut cell: AB, me: ActorRef<RaftMessage<LogEntry>>, total_nodes: usize) -> AB
+pub async fn raft_actor<AB, LogEntry>(mut cell: AB, me: ActorRef<RaftMessage<LogEntry>>, id: String, total_nodes: usize) -> AB
 where
     AB: ActorBounds<RaftMessage<LogEntry>>,
     LogEntry: Send + Clone + 'static,
@@ -26,12 +26,12 @@ where
         voted_for: None,
     };
 
-    let mut peer_refs = init(&mut cell, total_nodes).await;
+    let (mut peer_refs, peer_ids) = init(&mut cell, total_nodes).await;
 
     let election_timeout = {
         #[cfg(test)]
         {
-            Duration::from_millis(1000)..Duration::from_millis(1000)
+            Duration::from_millis(1000)..Duration::from_millis(1000)    // TOASK: isn't this a magic number?
         }
         #[cfg(not(test))]
         {
@@ -47,7 +47,7 @@ where
     tracing::trace!("starting as follower");
 
     loop {
-        follower(&me, &mut cell, &mut common_data, election_timeout.clone())
+        follower(&me, id.clone(), &mut cell, &mut common_data, election_timeout.clone())
             .instrument(info_span!("follower"))
             .await;
 
@@ -68,6 +68,7 @@ where
                 &mut cell,
                 &mut common_data,
                 &peer_refs,
+                &peer_ids,
                 &me,
                 hartbeat_period,
                 REPLICATION_PERIOD,
@@ -85,7 +86,7 @@ where
 // since they are memory addresses, we can't know them in advance,
 // when actum will switch to a different type of actor reference like a network address,
 // this function can be made to read from a file the addresses of the other servers instead
-async fn init<AB, LogEntry>(cell: &mut AB, total_nodes: usize) -> Vec<ActorRef<RaftMessage<LogEntry>>>
+async fn init<AB, LogEntry>(cell: &mut AB, total_nodes: usize) -> (Vec<ActorRef<RaftMessage<LogEntry>>>, Vec<String>)
 where
     AB: ActorBounds<RaftMessage<LogEntry>>,
     LogEntry: Send + 'static,
@@ -112,5 +113,5 @@ where
         }
     }
 
-    peers
+    (peers, peer_ids)
 }

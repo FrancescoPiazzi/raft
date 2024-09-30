@@ -8,6 +8,7 @@ use crate::raft::messages::*;
 use actum::prelude::*;
 
 use super::common::commit;
+use std::collections::HashMap;
 
 #[derive(Clone)]
 struct Follower<LogEntry> {
@@ -24,6 +25,7 @@ pub async fn leader<AB, LogEntry>(
     cell: &mut AB,
     common_data: &mut CommonState<LogEntry>,
     peer_refs: &[ActorRef<RaftMessage<LogEntry>>],
+    peer_ids: &[String],
     me: &ActorRef<RaftMessage<LogEntry>>,
     heartbeat_period: Duration,
     _replication_period: Duration,
@@ -31,18 +33,19 @@ pub async fn leader<AB, LogEntry>(
     AB: ActorBounds<RaftMessage<LogEntry>>,
     LogEntry: Send + Clone + 'static,
 {
-    let mut followers: Vec<Follower<LogEntry>> = peer_refs
+    let mut followers: HashMap<String, Follower<LogEntry>> = peer_refs
         .iter()
-        .map(|peer| Follower {
+        .zip(peer_ids.iter())
+        .map(|(peer, id)| (id.clone(), Follower {
             actor_ref: peer.clone(),
             next_index: 0,
             match_index: 0,
-        })
+        }))
         .collect();
 
     let mut followers_timeouts = JoinSet::new();
-    for i in 0..followers.len() {
-        followers_timeouts.spawn(wait_and_return(i, heartbeat_period));
+    for follower in followers.keys() {
+        followers_timeouts.spawn(wait_and_return(follower.clone(), heartbeat_period));
     }
 
     loop {
@@ -54,19 +57,23 @@ pub async fn leader<AB, LogEntry>(
                     break;
                 }
             },
-            timed_out_follower_index = followers_timeouts.join_next() => {
-                let timed_out_follower_index = timed_out_follower_index
+            timed_out_follower = followers_timeouts.join_next() => {
+                let timed_out_follower_id = timed_out_follower
                     .expect("leaders must have at least one follower")
                     .unwrap();
-                update_follower(common_data, &mut followers[timed_out_follower_index], me);
-                followers_timeouts.spawn(wait_and_return(timed_out_follower_index, heartbeat_period));
+                let timed_out_follower = followers.get_mut(&timed_out_follower_id)
+                    .expect("timed out follower not found");
+                update_follower(common_data, timed_out_follower, me);
+                followers_timeouts.spawn(wait_and_return(timed_out_follower_id, heartbeat_period));
             },
         }
     }
 }
 
 // returns the given object after some time, useful to keep track of follower timeouts
-async fn wait_and_return(x: usize, heartbeat_period: Duration) -> usize {
+async fn wait_and_return<T>(x: T, heartbeat_period: Duration) -> T 
+where T: Send + Clone + 'static
+{
     tokio::time::sleep(heartbeat_period).await;
     x
 }
@@ -107,7 +114,7 @@ fn update_follower<LogEntry>(
 fn handle_message<LogEntry>(
     common_data: &mut CommonState<LogEntry>,
     message: RaftMessage<LogEntry>,
-    follower_states: &mut [Follower<LogEntry>],
+    follower_states: &mut HashMap<String, Follower<LogEntry>>,
 ) -> bool
 where
     LogEntry: Send + Clone + 'static,
@@ -152,28 +159,19 @@ where
                 tracing::trace!("They are wrong, long live the king!");
             }
         }
-        RaftMessage::AppendEntryResponse(follower_ref, _term, success) => {
+        RaftMessage::AppendEntryResponse(follower_id, _term, success) => {
             tracing::trace!("✔️ Received an AppendEntryResponse message");
 
-            // find the follower that sent the message
-            // TODO: I'd love to use a HashMap, but ActorRef is not hashable, creating a custom struct
-            // that wraps it along with an id would be useless because then I would be missing the id here,
-            // since the follower doesn't know it.
-            // We could solve this each follower their id but that be a difference from the paper
-            // and a bit of a mess since the "id reception" should need to be handled by all three states (probably)
-            let index = follower_states
-                .iter()
-                .position(|x| x.actor_ref == follower_ref)
-                .unwrap();
+            let follower = follower_states.get_mut(&follower_id).expect("recieved a message from an unkown follower");
 
             if success {
                 // common_data.log.len() might be 0 when getting a heartbeat response before any entry is added
-                follower_states[index].match_index = (std::cmp::max(common_data.log.len() as i64 - 1, 0)) as u64;
-                follower_states[index].next_index = common_data.log.len() as u64;
+                follower.match_index = (std::cmp::max(common_data.log.len() as i64 - 1, 0)) as u64;
+                follower.next_index = common_data.log.len() as u64;
 
                 check_for_commits(common_data, follower_states);
             } else {
-                follower_states[index].next_index -= 1;
+                follower.next_index -= 1;
             }
         }
         // normal to recieve some extra votes if we just got elected but we don't care
@@ -186,15 +184,15 @@ where
 }
 
 // commits all the log entries that are replicated on the majority of the nodes
-fn check_for_commits<LogEntry>(common_data: &mut CommonState<LogEntry>, follower_states: &[Follower<LogEntry>])
+fn check_for_commits<LogEntry>(common_data: &mut CommonState<LogEntry>, follower_states: &HashMap<String, Follower<LogEntry>>)
 where
     LogEntry: Send + Clone + 'static,
 {
     let mut i = common_data.commit_index + 1;
     // len() check probably useless in theory but better safe than sorry I guess
-    while majority(follower_states, i)
-        && i < common_data.log.len()
-        && common_data.log[i].1 == common_data.current_term
+    while i < common_data.log.len() 
+        && common_data.log[i].1 == common_data.current_term 
+        && majority(follower_states, i)
     {
         common_data.commit_index += 1;
         i += 1;
@@ -203,12 +201,12 @@ where
 }
 
 // returns true if most the followers have the log entry at index i
-fn majority<LogEntry>(follower_states: &[Follower<LogEntry>], i: usize) -> bool
+fn majority<LogEntry>(follower_states: &HashMap<String, Follower<LogEntry>>, i: usize) -> bool
 where
     LogEntry: Send + Clone + 'static,
 {
     let mut count = 0;
-    for follower in follower_states {
+    for follower in follower_states.values() {
         if follower.match_index >= i as u64 {
             count += 1;
         }

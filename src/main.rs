@@ -28,7 +28,7 @@ where
 
     for id in 0..server_count {
         let Actor { task, guard, m_ref } = cell
-            .spawn(move |cell, me| async move { raft_actor(cell, me, server_count).await })
+            .spawn(move |cell, me| async move { raft_actor(cell, me, id.to_string(), server_count).await })
             .await
             .unwrap();
 
