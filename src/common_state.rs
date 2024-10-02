@@ -2,7 +2,6 @@ use crate::messages::RaftMessage;
 use actum::actor_ref::ActorRef;
 use std::fmt::{Debug, Formatter, Result};
 
-// data common to all states, used to avoid passing a million parameters to the state functions
 #[derive(Clone)]
 pub struct CommonState<LogEntry> {
     pub current_term: u64,
