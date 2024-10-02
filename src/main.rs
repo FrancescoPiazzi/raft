@@ -5,7 +5,6 @@ use actum::{actor_cell::standard_actor::StandardBounds, drop_guard::ActorDropGua
 
 mod raft;
 use raft::actor::raft_actor;
-use raft::config::N_NODES;
 use raft::messages::RaftMessage;
 
 mod client;
@@ -85,7 +84,7 @@ async fn main() {
     // Note: guard must remain in scope
     #[allow(unused_variables)]
     let Actor { task, guard, .. } = actum(|cell, me| {
-        simulator::<StandardBounds, String>(cell, N_NODES, vec!["Hello".to_string(), " raft!".to_string()])
+        simulator::<StandardBounds, String>(cell, 5, vec!["Hello".to_string(), " raft!".to_string()])
     });
     task.run_task().await;
 }
