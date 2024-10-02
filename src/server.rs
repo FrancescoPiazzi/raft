@@ -11,17 +11,17 @@ use crate::leader::leader;
 
 use actum::prelude::*;
 
-pub async fn raft_actor<AB, LogEntry>(
+pub async fn raft_server<AB, LogEntry>(
     mut cell: AB,
     me: ActorRef<RaftMessage<LogEntry>>,
-    node_id: u32,
-    total_nodes: usize,
+    server_id: u32,
+    n_servers: usize,
 ) -> AB
 where
     AB: ActorBounds<RaftMessage<LogEntry>>,
     LogEntry: Send + Clone + 'static,
 {
-    let mut common_data = CommonState {
+    let mut common_state = CommonState {
         current_term: 0,
         log: Vec::new(),
         commit_index: 0,
@@ -29,7 +29,7 @@ where
         voted_for: None,
     };
 
-    let (mut peer_refs, peer_ids) = init(&mut cell, total_nodes).await;
+    let (mut peer_refs, peer_ids) = init(&mut cell, n_servers).await;
 
     let election_timeout = {
         #[cfg(test)]
@@ -50,7 +50,7 @@ where
     tracing::trace!("starting as follower");
 
     loop {
-        follower(&me, node_id, &mut cell, &mut common_data, election_timeout.clone())
+        follower(&me, server_id, &mut cell, &mut common_state, election_timeout.clone())
             .instrument(info_span!("follower"))
             .await;
 
@@ -58,7 +58,7 @@ where
         let election_won = candidate(
             &mut cell,
             &me,
-            &mut common_data,
+            &mut common_state,
             &mut peer_refs,
             election_timeout.clone(),
         )
@@ -69,7 +69,7 @@ where
             tracing::trace!("transition: candidate → leader");
             leader(
                 &mut cell,
-                &mut common_data,
+                &mut common_state,
                 &peer_refs,
                 &peer_ids,
                 &me,

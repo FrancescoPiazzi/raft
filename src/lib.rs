@@ -1,4 +1,4 @@
-pub mod actor;
+pub mod server;
 pub mod config;
 pub mod messages;
 
