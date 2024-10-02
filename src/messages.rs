@@ -3,10 +3,10 @@ use std::fmt::{self, Debug, Formatter};
 
 #[derive(Clone)]
 pub enum RaftMessage<LogEntry> {
-    AddPeer(ActorRef<RaftMessage<LogEntry>>, String),
+    AddPeer(ActorRef<RaftMessage<LogEntry>>, u32),
 
     AppendEntries(AppendEntriesRPC<LogEntry>),
-    AppendEntryResponse(String, u64, bool), // term, success
+    AppendEntryResponse(u32, u64, bool), // term, success
 
     RequestVote(RequestVoteRPC<LogEntry>),
     RequestVoteResponse(bool), // true if the vote was granted, false otherwise

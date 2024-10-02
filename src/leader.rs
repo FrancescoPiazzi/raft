@@ -25,7 +25,7 @@ pub async fn leader<AB, LogEntry>(
     cell: &mut AB,
     common_data: &mut CommonState<LogEntry>,
     peer_refs: &[ActorRef<RaftMessage<LogEntry>>],
-    peer_ids: &[String],
+    peer_ids: &[u32],
     me: &ActorRef<RaftMessage<LogEntry>>,
     heartbeat_period: Duration,
     _replication_period: Duration,
@@ -33,7 +33,7 @@ pub async fn leader<AB, LogEntry>(
     AB: ActorBounds<RaftMessage<LogEntry>>,
     LogEntry: Send + Clone + 'static,
 {
-    let mut followers: HashMap<String, Follower<LogEntry>> = peer_refs
+    let mut followers: HashMap<u32, Follower<LogEntry>> = peer_refs
         .iter()
         .zip(peer_ids.iter())
         .map(|(peer, id)| (id.clone(), Follower {
@@ -114,7 +114,7 @@ fn update_follower<LogEntry>(
 fn handle_message<LogEntry>(
     common_data: &mut CommonState<LogEntry>,
     message: RaftMessage<LogEntry>,
-    follower_states: &mut HashMap<String, Follower<LogEntry>>,
+    follower_states: &mut HashMap<u32, Follower<LogEntry>>,
 ) -> bool
 where
     LogEntry: Send + Clone + 'static,
@@ -184,7 +184,7 @@ where
 }
 
 // commits all the log entries that are replicated on the majority of the nodes
-fn check_for_commits<LogEntry>(common_data: &mut CommonState<LogEntry>, follower_states: &HashMap<String, Follower<LogEntry>>)
+fn check_for_commits<LogEntry>(common_data: &mut CommonState<LogEntry>, follower_states: &HashMap<u32, Follower<LogEntry>>)
 where
     LogEntry: Send + Clone + 'static,
 {
@@ -201,7 +201,7 @@ where
 }
 
 // returns true if most the followers have the log entry at index i
-fn majority<LogEntry>(follower_states: &HashMap<String, Follower<LogEntry>>, i: usize) -> bool
+fn majority<LogEntry>(follower_states: &HashMap<u32, Follower<LogEntry>>, i: usize) -> bool
 where
     LogEntry: Send + Clone + 'static,
 {

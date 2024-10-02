@@ -13,7 +13,12 @@ use crate::leader::leader;
 
 use actum::prelude::*;
 
-pub async fn raft_actor<AB, LogEntry>(mut cell: AB, me: ActorRef<RaftMessage<LogEntry>>, id: String, total_nodes: usize) -> AB
+pub async fn raft_actor<AB, LogEntry>(
+    mut cell: AB,
+    me: ActorRef<RaftMessage<LogEntry>>,
+    node_id: u32,
+    total_nodes: usize,
+) -> AB
 where
     AB: ActorBounds<RaftMessage<LogEntry>>,
     LogEntry: Send + Clone + 'static,
@@ -31,7 +36,7 @@ where
     let election_timeout = {
         #[cfg(test)]
         {
-            Duration::from_millis(1000)..Duration::from_millis(1000)    // TOASK: isn't this a magic number?
+            Duration::from_millis(1000)..Duration::from_millis(1000) // TOASK: isn't this a magic number?
         }
         #[cfg(not(test))]
         {
@@ -47,7 +52,7 @@ where
     tracing::trace!("starting as follower");
 
     loop {
-        follower(&me, id.clone(), &mut cell, &mut common_data, election_timeout.clone())
+        follower(&me, node_id, &mut cell, &mut common_data, election_timeout.clone())
             .instrument(info_span!("follower"))
             .await;
 
@@ -86,13 +91,13 @@ where
 // since they are memory addresses, we can't know them in advance,
 // when actum will switch to a different type of actor reference like a network address,
 // this function can be made to read from a file the addresses of the other servers instead
-async fn init<AB, LogEntry>(cell: &mut AB, total_nodes: usize) -> (Vec<ActorRef<RaftMessage<LogEntry>>>, Vec<String>)
+async fn init<AB, LogEntry>(cell: &mut AB, total_nodes: usize) -> (Vec<ActorRef<RaftMessage<LogEntry>>>, Vec<u32>)
 where
     AB: ActorBounds<RaftMessage<LogEntry>>,
     LogEntry: Send + 'static,
 {
     let mut peers: Vec<ActorRef<RaftMessage<LogEntry>>> = Vec::with_capacity(total_nodes - 1);
-    let mut peer_ids: Vec<String> = Vec::with_capacity(total_nodes - 1);
+    let mut peer_ids: Vec<u32> = Vec::with_capacity(total_nodes - 1);
 
     let mut npeers = 0;
     while npeers < total_nodes - 1 {
@@ -102,7 +107,7 @@ where
                 if let RaftMessage::AddPeer(peer, id) = message {
                     npeers += 1;
                     peers.push(peer);
-                    peer_ids.push(id.clone());
+                    peer_ids.push(id);
                     tracing::trace!("🙆 Peer {} added", id);
                 }
             }

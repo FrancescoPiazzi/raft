@@ -14,7 +14,7 @@ use actum::prelude::*;
 // returns when no message is received from the leader after some time
 pub async fn follower<AB, LogEntry>(
     _me: &ActorRef<RaftMessage<LogEntry>>,
-    id: String,
+    node_id: u32,
     cell: &mut AB,
     common_data: &mut CommonState<LogEntry>,
     election_timeout: Range<Duration>,
@@ -38,13 +38,13 @@ pub async fn follower<AB, LogEntry>(
             RaftMessage::AppendEntries(mut append_entries_rpc) => {
                 if append_entries_rpc.term < common_data.current_term {
                     tracing::trace!("🚫 Received an AppendEntries message with an outdated term, ignoring");
-                    let msg = RaftMessage::AppendEntryResponse(id.clone(), common_data.current_term, false);
+                    let msg = RaftMessage::AppendEntryResponse(node_id, common_data.current_term, false);
                     let _ = append_entries_rpc.leader_ref.try_send(msg);
                     continue;
                 }
                 if append_entries_rpc.prev_log_index > common_data.log.len() as u64 {
                     tracing::trace!("🚫 Received an AppendEntries message with an invalid prev_log_index, ignoring");
-                    let msg = RaftMessage::AppendEntryResponse(id.clone(), common_data.current_term, false);
+                    let msg = RaftMessage::AppendEntryResponse(node_id, common_data.current_term, false);
                     let _ = append_entries_rpc.leader_ref.try_send(msg);
                     continue;
                 }
@@ -76,7 +76,7 @@ pub async fn follower<AB, LogEntry>(
 
                 leader_ref = Some(append_entries_rpc.leader_ref.clone());
 
-                let msg = RaftMessage::AppendEntryResponse(id.clone(), common_data.current_term, true);
+                let msg = RaftMessage::AppendEntryResponse(node_id, common_data.current_term, true);
                 let _ = append_entries_rpc.leader_ref.try_send(msg);
             }
             RaftMessage::RequestVote(mut request_vote_rpc) => {
