@@ -1,5 +1,3 @@
-#![allow(dead_code)] // remove when algorithm is done and all fields should be used
-
 use actum::prelude::ActorRef;
 use std::fmt::{self, Debug, Formatter};
 
