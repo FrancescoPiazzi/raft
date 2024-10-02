@@ -5,9 +5,9 @@ use std::time::Duration;
 use rand::{thread_rng, Rng};
 use tokio::time::timeout;
 
-use crate::raft::common::commit;
-use crate::raft::common_state::CommonState;
-use crate::raft::messages::*;
+use crate::common::commit;
+use crate::common_state::CommonState;
+use crate::messages::*;
 use actum::prelude::*;
 
 // follower nodes receive AppendEntry messages from the leader and duplicate them

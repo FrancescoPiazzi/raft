@@ -3,8 +3,8 @@ use std::time::Duration;
 
 use tokio::task::JoinSet;
 
-use crate::raft::common_state::CommonState;
-use crate::raft::messages::*;
+use crate::common_state::CommonState;
+use crate::messages::*;
 use actum::prelude::*;
 
 use super::common::commit;

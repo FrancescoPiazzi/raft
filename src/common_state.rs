@@ -1,15 +1,15 @@
-use crate::raft::messages::RaftMessage;
+use crate::messages::RaftMessage;
 use actum::actor_ref::ActorRef;
 use std::fmt::{Debug, Formatter, Result};
 
 // data common to all states, used to avoid passing a million parameters to the state functions
 #[derive(Clone)]
-pub(crate) struct CommonState<LogEntry> {
-    pub(crate) current_term: u64,
-    pub(crate) log: Vec<(LogEntry, u64)>,
-    pub(crate) commit_index: usize,
-    pub(crate) last_applied: usize,
-    pub(crate) voted_for: Option<ActorRef<RaftMessage<LogEntry>>>,
+pub struct CommonState<LogEntry> {
+    pub current_term: u64,
+    pub log: Vec<(LogEntry, u64)>,
+    pub commit_index: usize,
+    pub last_applied: usize,
+    pub voted_for: Option<ActorRef<RaftMessage<LogEntry>>>,
 }
 
 impl<LogEntry> Debug for CommonState<LogEntry> {

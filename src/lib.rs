@@ -2,8 +2,8 @@ pub mod actor;
 pub mod config;
 pub mod messages;
 
-mod candidate;
-mod common;
-mod common_state;
-mod follower;
-mod leader;
+pub mod candidate;
+pub mod common;
+pub mod common_state;
+pub mod follower;
+pub mod leader;

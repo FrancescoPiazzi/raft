@@ -2,14 +2,14 @@
 use std::time::Duration;
 
 #[allow(unused_imports)]
-use crate::raft::config::{DEFAULT_ELECTION_TIMEOUT, REPLICATION_PERIOD};
-use crate::raft::messages::*;
+use crate::config::{DEFAULT_ELECTION_TIMEOUT, REPLICATION_PERIOD};
+use crate::messages::*;
 use tracing::{info_span, Instrument};
 
-use crate::raft::candidate::candidate;
-use crate::raft::common_state::CommonState;
-use crate::raft::follower::follower;
-use crate::raft::leader::leader;
+use crate::candidate::candidate;
+use crate::common_state::CommonState;
+use crate::follower::follower;
+use crate::leader::leader;
 
 use actum::prelude::*;
 

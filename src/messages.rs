@@ -18,27 +18,27 @@ pub enum RaftMessage<LogEntry> {
 }
 
 #[derive(Clone)]
-pub(crate) struct RequestVoteRPC<LogEntry> {
-    pub(crate) term: u64,
-    pub(crate) candidate_ref: ActorRef<RaftMessage<LogEntry>>,
-    pub(crate) last_log_index: usize,
-    pub(crate) last_log_term: u64,
+pub struct RequestVoteRPC<LogEntry> {
+    pub term: u64,
+    pub candidate_ref: ActorRef<RaftMessage<LogEntry>>,
+    pub last_log_index: usize,
+    pub last_log_term: u64,
 }
 
 #[derive(Clone)]
-pub(crate) struct AppendEntriesRPC<LogEntry> {
-    pub(crate) term: u64,                                   // leader's term
-    pub(crate) leader_ref: ActorRef<RaftMessage<LogEntry>>, // the leader's address, followers should store it to redirect clients that talk to them
-    pub(crate) prev_log_index: u64, // the index of the log entry immediately preceding the new ones
-    pub(crate) prev_log_term: u64,  // the term of the entry at prev_log_index
-    pub(crate) entries: Vec<LogEntry>, // stuff to add, empty for heartbeat
-    pub(crate) leader_commit: u64,  // the leader's commit index
+pub struct AppendEntriesRPC<LogEntry> {
+    pub term: u64,                                   // leader's term
+    pub leader_ref: ActorRef<RaftMessage<LogEntry>>, // the leader's address, followers should store it to redirect clients that talk to them
+    pub prev_log_index: u64, // the index of the log entry immediately preceding the new ones
+    pub prev_log_term: u64,  // the term of the entry at prev_log_index
+    pub entries: Vec<LogEntry>, // stuff to add, empty for heartbeat
+    pub leader_commit: u64,  // the leader's commit index
 }
 
 #[derive(Clone)]
-pub(crate) struct AppendEntriesClientRPC<LogEntry> {
-    pub(crate) client_ref: ActorRef<RaftMessage<LogEntry>>,
-    pub(crate) entries: Vec<LogEntry>,
+pub struct AppendEntriesClientRPC<LogEntry> {
+    pub client_ref: ActorRef<RaftMessage<LogEntry>>,
+    pub entries: Vec<LogEntry>,
 }
 
 impl<LogEntry> Debug for RaftMessage<LogEntry> {

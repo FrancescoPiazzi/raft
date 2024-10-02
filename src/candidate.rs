@@ -3,8 +3,8 @@ use std::ops::Range;
 use std::time::{Duration, Instant};
 use tokio::time::timeout;
 
-use crate::raft::common_state::CommonState;
-use crate::raft::messages::*;
+use crate::common_state::CommonState;
+use crate::messages::*;
 use actum::prelude::*;
 
 // candidate nodes start an election by sending RequestVote messages to the other nodes
