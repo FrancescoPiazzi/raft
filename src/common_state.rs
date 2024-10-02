@@ -11,6 +11,18 @@ pub struct CommonState<LogEntry> {
     pub voted_for: Option<ActorRef<RaftMessage<LogEntry>>>,
 }
 
+impl<LogEntry> CommonState<LogEntry> {
+    pub fn new() -> Self {
+        Self {
+            current_term: 0,
+            log: Vec::new(),
+            commit_index: 0,
+            last_applied: 0,
+            voted_for: None,
+        }
+    }
+}
+
 impl<LogEntry> Debug for CommonState<LogEntry> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         f.debug_struct("CommonState")

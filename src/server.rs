@@ -21,13 +21,7 @@ where
     AB: ActorBounds<RaftMessage<LogEntry>>,
     LogEntry: Send + Clone + 'static,
 {
-    let mut common_state = CommonState {
-        current_term: 0,
-        log: Vec::new(),
-        commit_index: 0,
-        last_applied: 0,
-        voted_for: None,
-    };
+    let mut state = CommonState::new();
 
     let (mut peer_refs, peer_ids) = init(&mut cell, n_servers).await;
 
@@ -50,26 +44,20 @@ where
     tracing::trace!("starting as follower");
 
     loop {
-        follower(&me, server_id, &mut cell, &mut common_state, election_timeout.clone())
+        follower(&me, server_id, &mut cell, &mut state, election_timeout.clone())
             .instrument(info_span!("follower"))
             .await;
 
         tracing::trace!("transition: follower → candidate");
-        let election_won = candidate(
-            &mut cell,
-            &me,
-            &mut common_state,
-            &mut peer_refs,
-            election_timeout.clone(),
-        )
-        .instrument(info_span!("candidate"))
-        .await;
+        let election_won = candidate(&mut cell, &me, &mut state, &mut peer_refs, election_timeout.clone())
+            .instrument(info_span!("candidate"))
+            .await;
 
         if election_won {
             tracing::trace!("transition: candidate → leader");
             leader(
                 &mut cell,
-                &mut common_state,
+                &mut state,
                 &peer_refs,
                 &peer_ids,
                 &me,
