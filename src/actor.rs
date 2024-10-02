@@ -1,7 +1,5 @@
-#[allow(unused_imports)]
 use std::time::Duration;
 
-#[allow(unused_imports)]
 use crate::config::{DEFAULT_ELECTION_TIMEOUT, REPLICATION_PERIOD};
 use crate::messages::*;
 use tracing::{info_span, Instrument};
