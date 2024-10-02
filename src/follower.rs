@@ -1,30 +1,31 @@
+use actum::actor_bounds::ActorBounds;
+use actum::actor_ref::ActorRef;
+use rand::{thread_rng, Rng};
 use std::cmp::{max, min};
+use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Range;
 use std::time::Duration;
-
-use rand::{thread_rng, Rng};
 use tokio::time::timeout;
 
-use crate::common::commit;
 use crate::common_state::CommonState;
+use crate::messages::append_entries::AppendEntriesReply;
+use crate::messages::request_vote::RequestVoteReply;
 use crate::messages::*;
-use actum::prelude::*;
 
 // follower nodes receive AppendEntry messages from the leader and duplicate them
 // returns when no message is received from the leader after some time
 pub async fn follower<AB, LogEntry>(
-    _me: &ActorRef<RaftMessage<LogEntry>>,
-    node_id: u32,
     cell: &mut AB,
-    common_data: &mut CommonState<LogEntry>,
+    me: (u32, &mut ActorRef<RaftMessage<LogEntry>>),
+    common_state: &mut CommonState<LogEntry>,
+    peers: &mut BTreeMap<u32, ActorRef<RaftMessage<LogEntry>>>,
+    mut leader: Option<u32>,
     election_timeout: Range<Duration>,
 ) where
     AB: ActorBounds<RaftMessage<LogEntry>>,
-    LogEntry: Send + 'static,
+    LogEntry: Clone + Send + 'static,
 {
     let election_timeout = thread_rng().gen_range(election_timeout);
-
-    let mut leader_ref: Option<ActorRef<RaftMessage<LogEntry>>> = None;
 
     loop {
         let Ok(message) = timeout(election_timeout, cell.recv()).await else {
@@ -33,68 +34,57 @@ pub async fn follower<AB, LogEntry>(
         };
 
         let message = message.message().expect("raft runs indefinitely");
+        tracing::trace!(message = ?message);
 
         match message {
-            RaftMessage::AppendEntries(mut append_entries_rpc) => {
-                if append_entries_rpc.term < common_data.current_term {
-                    tracing::trace!("🚫 Received an AppendEntries message with an outdated term, ignoring");
-                    let msg = RaftMessage::AppendEntryResponse(node_id, common_data.current_term, false);
-                    let _ = append_entries_rpc.leader_ref.try_send(msg);
-                    continue;
+            RaftMessage::AppendEntriesRequest(mut request) => {
+                if request.term < common_state.current_term {
+                    todo!()
                 }
-                if append_entries_rpc.prev_log_index > common_data.log.len() as u64 {
-                    tracing::trace!("🚫 Received an AppendEntries message with an invalid prev_log_index, ignoring");
-                    let msg = RaftMessage::AppendEntryResponse(node_id, common_data.current_term, false);
-                    let _ = append_entries_rpc.leader_ref.try_send(msg);
-                    continue;
+                //
+                else if request.prev_log_index > common_state.log.len() as u64 {
+                    todo!()
                 }
-
-                if append_entries_rpc.entries.is_empty() {
-                    tracing::trace!("❤️ Received heartbeat");
-                } else {
-                    tracing::info!(
-                        "✏️ Received an AppendEntries message with {} entries, adding them to the log",
-                        append_entries_rpc.entries.len()
-                    );
+                //
+                else if request.entries.is_empty() {
+                    todo!()
                 }
+                //
+                else {
+                    let mut entries = request.entries.into_iter().map(|entry| (entry, request.term)).collect();
+                    common_state.log.append(&mut entries);
 
-                let mut entries = append_entries_rpc
-                    .entries
-                    .into_iter()
-                    .map(|entry| (entry, append_entries_rpc.term))
-                    .collect();
-                common_data.log.append(&mut entries);
+                    if request.leader_commit > common_state.commit_index as u64 {
+                        common_state.commit_index =
+                            min(request.leader_commit, max(common_state.log.len() as i64 - 1, 0) as u64) as usize;
+                    }
 
-                if append_entries_rpc.leader_commit > common_data.commit_index as u64 {
-                    common_data.commit_index = min(
-                        append_entries_rpc.leader_commit,
-                        max(common_data.log.len() as i64 - 1, 0) as u64,
-                    ) as usize;
+                    common_state.commit();
+
+                    // todo: update leader
+
+                    let reply = AppendEntriesReply {
+                        from: me.0,
+                        term: common_state.current_term,
+                        success: true,
+                    };
                 }
-
-                commit(common_data);
-
-                leader_ref = Some(append_entries_rpc.leader_ref.clone());
-
-                let msg = RaftMessage::AppendEntryResponse(node_id, common_data.current_term, true);
-                let _ = append_entries_rpc.leader_ref.try_send(msg);
             }
-            RaftMessage::RequestVote(mut request_vote_rpc) => {
-                // grant the vote if the candidate's term is greater than or equal to the current term,
-                // and either we haven't voted for anyone yet or we have voted for that candidate
-                tracing::trace!("🗳️ Received a RequestVote message");
-                let grant_vote = request_vote_rpc.term >= common_data.current_term
-                    && (common_data.voted_for.is_none()
-                        || *common_data.voted_for.as_ref().unwrap() == request_vote_rpc.candidate_ref.clone());
-                let msg = RaftMessage::RequestVoteResponse(grant_vote);
-                let _ = request_vote_rpc.candidate_ref.try_send(msg);
+            RaftMessage::RequestVoteRequest(mut request_vote_request) => {
+                let vote_granted = request_vote_request.term >= common_state.current_term
+                    && (common_state.voted_for.is_none()
+                        || *common_state.voted_for.as_ref().unwrap() == request_vote_request.candidate_id);
+                let reply = RequestVoteReply {
+                    from: 0,
+                    vote_granted: false,
+                };
+                todo!()
             }
-            RaftMessage::AppendEntriesClient(mut append_entries_client_rpc) => {
-                let msg = RaftMessage::AppendEntriesClientResponse(Err(leader_ref.clone()));
-                let _ = append_entries_client_rpc.client_ref.try_send(msg);
+            RaftMessage::AppendEntriesClientRequest(mut append_entries_client_request) => {
+                todo!()
             }
-            _ => {
-                tracing::trace!(unhandled = ?message);
+            other => {
+                tracing::trace!(unhandled = ?other);
             }
         }
     }

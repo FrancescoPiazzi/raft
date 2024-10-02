@@ -1,57 +1,69 @@
-use actum::prelude::ActorRef;
+mod add_peer;
+pub mod append_entries;
+pub mod append_entries_client;
+pub mod request_vote;
+
+use crate::messages::append_entries::{AppendEntriesReply, AppendEntriesRequest};
+use crate::messages::append_entries_client::AppendEntriesClientRequest;
+use crate::messages::request_vote::{RequestVoteReply, RequestVoteRequest};
+
+use crate::messages::add_peer::AddPeer;
 use std::fmt::{self, Debug, Formatter};
 
-#[derive(Clone)]
 pub enum RaftMessage<LogEntry> {
-    AddPeer(ActorRef<RaftMessage<LogEntry>>, u32),
-
-    AppendEntries(AppendEntriesRPC<LogEntry>),
-    AppendEntryResponse(u32, u64, bool), // term, success
-
-    RequestVote(RequestVoteRPC<LogEntry>),
-    RequestVoteResponse(bool), // true if the vote was granted, false otherwise
-
-    AppendEntriesClient(AppendEntriesClientRPC<LogEntry>),
-    AppendEntriesClientResponse(Result<(), Option<ActorRef<RaftMessage<LogEntry>>>>),
-
-    InitMessage(Vec<LogEntry>), // used only by the simulator to initialize the message the client will replay forever
-}
-
-#[derive(Clone)]
-pub struct RequestVoteRPC<LogEntry> {
-    pub term: u64,
-    pub candidate_ref: ActorRef<RaftMessage<LogEntry>>,
-    pub last_log_index: usize,
-    pub last_log_term: u64,
-}
-
-#[derive(Clone)]
-pub struct AppendEntriesRPC<LogEntry> {
-    pub term: u64,                                   // leader's term
-    pub leader_ref: ActorRef<RaftMessage<LogEntry>>, // the leader's address, followers should store it to redirect clients that talk to them
-    pub prev_log_index: u64, // the index of the log entry immediately preceding the new ones
-    pub prev_log_term: u64,  // the term of the entry at prev_log_index
-    pub entries: Vec<LogEntry>, // stuff to add, empty for heartbeat
-    pub leader_commit: u64,  // the leader's commit index
-}
-
-#[derive(Clone)]
-pub struct AppendEntriesClientRPC<LogEntry> {
-    pub client_ref: ActorRef<RaftMessage<LogEntry>>,
-    pub entries: Vec<LogEntry>,
+    AddPeer(AddPeer<LogEntry>),
+    AppendEntriesRequest(AppendEntriesRequest<LogEntry>),
+    AppendEntriesReply(AppendEntriesReply),
+    RequestVoteRequest(RequestVoteRequest),
+    RequestVoteReply(RequestVoteReply),
+    AppendEntriesClientRequest(AppendEntriesClientRequest<LogEntry>),
 }
 
 impl<LogEntry> Debug for RaftMessage<LogEntry> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Self::AddPeer(_, _) => "Add peer".fmt(f),
-            Self::AppendEntries(_) => "Append entries".fmt(f),
-            Self::AppendEntryResponse(_, _, _) => "Append entry response".fmt(f),
-            Self::RequestVote(_) => "Request vote".fmt(f),
-            Self::RequestVoteResponse(_) => "Request vote response".fmt(f),
-            Self::AppendEntriesClient(_) => "Append entries client".fmt(f),
-            Self::AppendEntriesClientResponse(_) => "Append entries client response".fmt(f),
-            Self::InitMessage(_) => "Init message".fmt(f),
+            Self::AddPeer(_) => "Add peer".fmt(f),
+            Self::AppendEntriesRequest(_) => "Append entries request".fmt(f),
+            Self::AppendEntriesReply(_) => "Append entries reply".fmt(f),
+            Self::RequestVoteRequest(_) => "Request vote request".fmt(f),
+            Self::RequestVoteReply(_) => "Request vote reply".fmt(f),
+            Self::AppendEntriesClientRequest(_) => "Append entries client request".fmt(f),
         }
+    }
+}
+
+impl<LogEntry> From<AddPeer<LogEntry>> for RaftMessage<LogEntry> {
+    fn from(value: AddPeer<LogEntry>) -> Self {
+        Self::AddPeer(value)
+    }
+}
+
+impl<LogEntry> From<AppendEntriesRequest<LogEntry>> for RaftMessage<LogEntry> {
+    fn from(value: AppendEntriesRequest<LogEntry>) -> Self {
+        Self::AppendEntriesRequest(value)
+    }
+}
+
+impl<LogEntry> From<AppendEntriesReply> for RaftMessage<LogEntry> {
+    fn from(value: AppendEntriesReply) -> Self {
+        Self::AppendEntriesReply(value)
+    }
+}
+
+impl<LogEntry> From<RequestVoteRequest> for RaftMessage<LogEntry> {
+    fn from(value: RequestVoteRequest) -> Self {
+        Self::RequestVoteRequest(value)
+    }
+}
+
+impl<LogEntry> From<RequestVoteReply> for RaftMessage<LogEntry> {
+    fn from(value: RequestVoteReply) -> Self {
+        Self::RequestVoteReply(value)
+    }
+}
+
+impl<LogEntry> From<AppendEntriesClientRequest<LogEntry>> for RaftMessage<LogEntry> {
+    fn from(value: AppendEntriesClientRequest<LogEntry>) -> Self {
+        Self::AppendEntriesClientRequest(value)
     }
 }

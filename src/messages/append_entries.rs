@@ -1,0 +1,29 @@
+use std::fmt::{Debug, Formatter};
+
+pub struct AppendEntriesRequest<LogEntry> {
+    pub term: u64,
+    pub leader_id: u32,
+    pub prev_log_index: u64,
+    pub prev_log_term: u64,
+    pub entries: Vec<LogEntry>,
+    pub leader_commit: u64,
+}
+
+impl<LogEntry> Debug for AppendEntriesRequest<LogEntry> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AppendEntriesRequest")
+            .field("term", &self.term)
+            .field("leader_id", &self.leader_id)
+            .field("prev_log_index", &self.prev_log_index)
+            .field("prev_log_term", &self.prev_log_term)
+            .field("leader_commit", &self.leader_commit)
+            .finish_non_exhaustive()
+    }
+}
+
+#[derive(Debug)]
+pub struct AppendEntriesReply {
+    pub from: u32,
+    pub term: u64,
+    pub success: bool,
+}
