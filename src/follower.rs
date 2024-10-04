@@ -18,8 +18,6 @@ pub async fn follower<AB, LogEntry>(
     cell: &mut AB,
     me: (u32, &mut ActorRef<RaftMessage<LogEntry>>),
     common_state: &mut CommonState<LogEntry>,
-    peers: &mut BTreeMap<u32, ActorRef<RaftMessage<LogEntry>>>,
-    mut leader: Option<u32>,
     election_timeout: Range<Duration>,
 ) where
     AB: ActorBounds<RaftMessage<LogEntry>>,

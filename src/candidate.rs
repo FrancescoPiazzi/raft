@@ -57,8 +57,8 @@ where
             tracing::info!(message = ?message);
 
             match message {
-                RaftMessage::RequestVoteReply(vote_granted) => {
-                    if vote_granted {
+                RaftMessage::RequestVoteReply(request_vote_reply) => {
+                    if request_vote_reply.vote_granted {
                         votes += 1;
                         if votes > peer_refs.len() / 2 + 1 {
                             election_won = true;

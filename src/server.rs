@@ -17,6 +17,8 @@ pub async fn raft_server<AB, LogEntry>(
     mut me: (u32, ActorRef<RaftMessage<LogEntry>>),
     n_peers: usize,
     election_timeout: Range<Duration>,
+    heartbeat_period: Duration,
+    replication_period: Duration
 ) -> AB
 where
     AB: ActorBounds<RaftMessage<LogEntry>>,
@@ -34,7 +36,8 @@ where
                 peers.insert(peer.peer_id, peer.peer_ref);
             }
             other => {
-                tracing::trace!(stash = ?other)
+                tracing::trace!(stash = ?other);
+                message_stash.push(other);
             }
         }
     }
@@ -53,7 +56,12 @@ where
     }
 
     loop {
-        follower(&mut cell, (me.0, &mut me.1), &mut common_state)
+        follower(
+            &mut cell, 
+            (me.0, &mut me.1), 
+            &mut common_state,
+            election_timeout.clone()
+        )
             .instrument(info_span!("follower"))
             .await;
 
@@ -75,7 +83,8 @@ where
                 (me.0, &mut me.1),
                 &mut common_state,
                 &mut peers,
-                DEFAULT_REPLICATION_PERIOD,
+                heartbeat_period,
+                replication_period,
             )
             .instrument(info_span!("leader👑"))
             .await;

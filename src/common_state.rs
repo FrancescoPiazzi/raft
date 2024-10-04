@@ -22,7 +22,7 @@ impl<LogEntry> CommonState<LogEntry> {
     // commit log entries up to the leader's commit index
     // the entire common_data object is taken even if for now only the commit_index and last_applied are used
     // because in the future I will want to access the log entries to actually apply them
-    pub fn commit<LogEntry>(&mut self) {
+    pub fn commit(&mut self) {
         while self.last_applied < self.commit_index {
             self.last_applied += 1;
         }

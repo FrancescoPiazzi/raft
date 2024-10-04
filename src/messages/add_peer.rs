@@ -1,9 +1,11 @@
+use crate::messages::RaftMessage;
+
 use actum::actor_ref::ActorRef;
 use std::fmt::{Debug, Formatter};
 
 pub struct AddPeer<LogEntry> {
     pub peer_id: u32,
-    pub peer_ref: ActorRef<LogEntry>,
+    pub peer_ref: ActorRef<RaftMessage<LogEntry>>,
 }
 
 impl<LogEntry> Debug for AddPeer<LogEntry> {
