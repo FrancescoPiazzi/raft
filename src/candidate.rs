@@ -18,7 +18,7 @@ pub async fn candidate<AB, LogEntry>(
     cell: &mut AB,
     me: (u32, &mut ActorRef<RaftMessage<LogEntry>>),
     common_data: &mut CommonState<LogEntry>,
-    peer_refs: &mut BTreeMap<u32, ActorRef<RaftMessage<LogEntry>>>,
+    peers: &mut BTreeMap<u32, ActorRef<RaftMessage<LogEntry>>>,
     election_timeout: Range<Duration>,
 ) -> bool
 where
@@ -43,7 +43,7 @@ where
             last_log_term: 0,
         };
 
-        for peer in peer_refs.values_mut() {
+        for peer in peers.values_mut() {
             let _ = peer.try_send(request.clone().into());
         }
 
@@ -60,7 +60,7 @@ where
                 RaftMessage::RequestVoteReply(request_vote_reply) => {
                     if request_vote_reply.vote_granted {
                         votes += 1;
-                        if votes > peer_refs.len() / 2 + 1 {
+                        if votes > peers.len() / 2 + 1 {
                             election_won = true;
                             break 'candidate;
                         }

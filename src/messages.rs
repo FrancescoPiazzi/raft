@@ -1,4 +1,4 @@
-mod add_peer;
+pub mod add_peer;
 pub mod append_entries;
 pub mod append_entries_client;
 pub mod request_vote;

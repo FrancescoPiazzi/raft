@@ -16,11 +16,11 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 // clients send messages to the leader, which is responsible for replicating them to the other nodes
 // after receiving confirmation from the majority of the nodes, the leader commits the message as agreed
 // returns when another leader or candidate with a higher term is detected
-pub async fn leader<AB, LogEntry>(
+pub async fn leader<'a, AB, LogEntry>(
     cell: &mut AB,
     me: (u32, &mut ActorRef<RaftMessage<LogEntry>>),
     common_state: &mut CommonState<LogEntry>,
-    peers: &mut BTreeMap<u32, ActorRef<RaftMessage<LogEntry>>>,
+    peers: &'a mut BTreeMap<u32, ActorRef<RaftMessage<LogEntry>>>,
     heartbeat_period: Duration,
     _replication_period: Duration,
 ) where
@@ -37,9 +37,10 @@ pub async fn leader<AB, LogEntry>(
     let mut follower_timeouts = JoinSet::new();
 
     for follower_id in peers.keys() {
+        let follower_id = *follower_id;
         follower_timeouts.spawn(async move {
             tokio::time::sleep(heartbeat_period).await;
-            *follower_id // id of timed out follower
+            follower_id // id of timed out follower
         });
     }
 

@@ -1,4 +1,3 @@
-use crate::config::{DEFAULT_ELECTION_TIMEOUT, DEFAULT_REPLICATION_PERIOD};
 use crate::messages::*;
 use actum::actor_bounds::ActorBounds;
 use actum::actor_ref::ActorRef;
