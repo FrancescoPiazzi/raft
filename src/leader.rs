@@ -27,10 +27,10 @@ pub async fn leader<'a, AB, LogEntry>(
     LogEntry: Clone + Send + 'static,
 {
     let mut next_index = BTreeMap::<u32, u64>::new();
-    let mut match_index = BTreeMap::<u32, u64>::new();
+    let mut match_index = BTreeMap::<u32, Option<u64>>::new();
     for follower_id in peers.keys() {
         next_index.insert(*follower_id, 0);
-        match_index.insert(*follower_id, 0);
+        match_index.insert(*follower_id, None);
     }
 
     let mut follower_timeouts = JoinSet::new();
@@ -110,7 +110,7 @@ fn handle_message<LogEntry>(
     common_state: &mut CommonState<LogEntry>,
     peers: &mut BTreeMap<u32, ActorRef<RaftMessage<LogEntry>>>,
     next_index: &mut BTreeMap<u32, u64>,
-    match_index: &mut BTreeMap<u32, u64>,
+    match_index: &mut BTreeMap<u32, Option<u64>>,
     message: RaftMessage<LogEntry>,
 ) -> bool
 where
@@ -166,8 +166,7 @@ where
                 .expect("recieved a message from an unkown peer");
 
             if reply.success {
-                // common_data.log.len() might be 0 when getting a heartbeat response before any entry is added
-                *match_idx = std::cmp::max(common_state.log.len() as i64 - 1, 0) as u64;
+                *match_idx = if common_state.log.is_empty() {None} else {Some(common_state.log.len() as u64 - 1)};
                 *next_idx = common_state.log.len() as u64;
 
                 check_for_commits(common_state, match_index);
@@ -185,7 +184,7 @@ where
 }
 
 // commits all the log entries that are replicated on the majority of the nodes
-fn check_for_commits<LogEntry>(common_data: &mut CommonState<LogEntry>, match_index: &BTreeMap<u32, u64>)
+fn check_for_commits<LogEntry>(common_data: &mut CommonState<LogEntry>, match_index: &BTreeMap<u32, Option<u64>>)
 where
     LogEntry: Send + Clone + 'static,
 {
@@ -202,10 +201,10 @@ where
 }
 
 // returns true if most the followers have the log entry at index i
-fn majority(match_index: &BTreeMap<u32, u64>, i: u64) -> bool {
+fn majority(match_index: &BTreeMap<u32, Option<u64>>, i: u64) -> bool {
     let mut count = 0;
     for match_idx in match_index.values() {
-        if *match_idx >= i {
+        if match_idx.is_some() && match_idx.unwrap() >= i {
             count += 1;
         }
     }
