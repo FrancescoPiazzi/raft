@@ -1,7 +1,7 @@
 use crate::messages::*;
 use actum::actor_bounds::ActorBounds;
 use actum::actor_ref::ActorRef;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::ops::Range;
 use std::time::Duration;
 use tracing::{info, info_span, Instrument};
@@ -57,7 +57,8 @@ where
     loop {
         follower(
             &mut cell, 
-            (me.0, &mut me.1), 
+            (me.0, &mut me.1),
+            &mut peers,
             &mut common_state,
             election_timeout.clone()
         )

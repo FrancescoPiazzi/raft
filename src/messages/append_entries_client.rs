@@ -1,6 +1,11 @@
 use std::fmt::{Debug, Formatter};
+use actum::prelude::ActorRef;
+use tokio::sync::oneshot;
+
+use super::RaftMessage;
 
 pub struct AppendEntriesClientRequest<LogEntry> {
+    pub reply_to: oneshot::Sender<Result<(), Option<ActorRef<RaftMessage<LogEntry>>>>>,
     pub entries_to_replicate: Vec<LogEntry>,
 }
 

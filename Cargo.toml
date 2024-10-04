@@ -10,5 +10,5 @@ actum = { git = "https://github.com/andreastedile/actum.git", rev="0e35afeb943ee
 rand = "0.8.4"
 futures = "0.3.30"
 tracing = { version = "0.1.40", default-features = false }
-tokio = { version = "1.37.0", features = ["rt-multi-thread", "macros", "time"] }
+tokio = { version = "1.37.0", features = ["full"] }
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }

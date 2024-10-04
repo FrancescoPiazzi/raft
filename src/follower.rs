@@ -2,7 +2,7 @@ use actum::actor_bounds::ActorBounds;
 use actum::actor_ref::ActorRef;
 use rand::{thread_rng, Rng};
 use std::cmp::{max, min};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::ops::Range;
 use std::time::Duration;
 use tokio::time::timeout;
@@ -17,6 +17,7 @@ use crate::messages::*;
 pub async fn follower<AB, LogEntry>(
     cell: &mut AB,
     me: (u32, &mut ActorRef<RaftMessage<LogEntry>>),
+    peers: &mut BTreeMap<u32, ActorRef<RaftMessage<LogEntry>>>,
     common_state: &mut CommonState<LogEntry>,
     election_timeout: Range<Duration>,
 ) where
@@ -24,6 +25,7 @@ pub async fn follower<AB, LogEntry>(
     LogEntry: Clone + Send + 'static,
 {
     let election_timeout = thread_rng().gen_range(election_timeout);
+    let mut leader_ref: Option<ActorRef<RaftMessage<LogEntry>>> = None;
 
     loop {
         let Ok(message) = timeout(election_timeout, cell.recv()).await else {
@@ -35,51 +37,69 @@ pub async fn follower<AB, LogEntry>(
         tracing::trace!(message = ?message);
 
         match message {
-            RaftMessage::AppendEntriesRequest(mut request) => {
+            RaftMessage::AppendEntriesRequest(request) => {
                 if request.term < common_state.current_term {
-                    todo!()
+                    tracing::trace!("🚫 Received an AppendEntries message with an outdated term, ignoring");
+                    let msg = AppendEntriesReply{   //TOASK: this is duplicated in the next if, should I make it into a function?
+                        from: me.0, 
+                        term: common_state.current_term, 
+                        success: false
+                    };
+                    let sender_ref = peers.get_mut(&request.leader_id).expect("all peers are known");
+                    let _ = sender_ref.try_send(msg.into());
+                    continue;
                 }
-                //
-                else if request.prev_log_index > common_state.log.len() as u64 {
-                    todo!()
+                if request.prev_log_index > common_state.log.len() as u64 {
+                    tracing::trace!("🚫 Received an AppendEntries message with an invalid prev_log_index, ignoring");
+                    let msg = AppendEntriesReply{
+                        from: me.0, 
+                        term: common_state.current_term, 
+                        success: false
+                    };
+                    let sender_ref = peers.get_mut(&request.leader_id).expect("all peers are known");
+                    let _ = sender_ref.try_send(msg.into());
+                    continue;
                 }
-                //
-                else if request.entries.is_empty() {
-                    todo!()
-                }
-                //
-                else {
+
+                if !request.entries.is_empty() {
                     let mut entries = request.entries.into_iter().map(|entry| (entry, request.term)).collect();
+
+                    // TODO: entries should  not simply be added,
+                    // they should be compared to the current log and only added if they are not already present
+                    // also we should make sure that request.prev_log_index is the index of one of our entries
+                    // and if it isn't send an unsuccessful reply
                     common_state.log.append(&mut entries);
 
                     if request.leader_commit > common_state.commit_index as u64 {
                         common_state.commit_index =
                             min(request.leader_commit, max(common_state.log.len() as i64 - 1, 0) as u64) as usize;
                     }
-
                     common_state.commit();
-
-                    // todo: update leader
-
-                    let reply = AppendEntriesReply {
-                        from: me.0,
-                        term: common_state.current_term,
-                        success: true,
-                    };
                 }
+
+                leader_ref = Some(peers.get_mut(&request.leader_id).expect("all peers are known").clone());
+
+                let reply = AppendEntriesReply {
+                    from: me.0,
+                    term: common_state.current_term,
+                    success: true,
+                };
+                let _ = leader_ref.as_mut().unwrap().try_send(reply.into());
             }
-            RaftMessage::RequestVoteRequest(mut request_vote_request) => {
+            RaftMessage::RequestVoteRequest(request_vote_request) => {
                 let vote_granted = request_vote_request.term >= common_state.current_term
                     && (common_state.voted_for.is_none()
                         || *common_state.voted_for.as_ref().unwrap() == request_vote_request.candidate_id);
                 let reply = RequestVoteReply {
-                    from: 0,
-                    vote_granted: false,
+                    from: me.0,
+                    vote_granted: vote_granted,
                 };
-                todo!()
+                
+                let candidate_ref = peers.get_mut(&request_vote_request.candidate_id).expect("all peers are known");
+                let _ = candidate_ref.try_send(reply.into());
             }
-            RaftMessage::AppendEntriesClientRequest(mut append_entries_client_request) => {
-                todo!()
+            RaftMessage::AppendEntriesClientRequest(append_entries_client_request) => {
+                let _ = append_entries_client_request.reply_to.send(Err(leader_ref.clone()));
             }
             other => {
                 tracing::trace!(unhandled = ?other);
