@@ -1,15 +1,15 @@
 use actum::drop_guard::ActorDropGuard;
 use actum::prelude::*;
 use raft::config::*;
-use raft::messages::RaftMessage;
 use raft::messages::add_peer::AddPeer;
+use raft::messages::RaftMessage;
 use raft::server::raft_server;
 use tokio::task::JoinHandle;
-use tracing::{trace_span, Instrument};
 
 struct Server<LogEntry> {
     server_id: u32,
     server_ref: ActorRef<RaftMessage<LogEntry>>,
+    #[allow(dead_code)] // guard is not used but must remain in scope or the actors are dropped as well
     guard: ActorDropGuard,
     handle: JoinHandle<()>,
 }
@@ -24,13 +24,14 @@ where
         let actor = actum::<RaftMessage<LogEntry>, _, _>(move |cell, me| async move {
             let me = (i as u32, me);
             let actor = raft_server(
-                cell, 
-                me, 
-                n_servers - 1, 
-                DEFAULT_ELECTION_TIMEOUT, 
+                cell,
+                me,
+                n_servers - 1,
+                DEFAULT_ELECTION_TIMEOUT,
                 DEFAULT_HEARTBEAT_PERIOD,
-                DEFAULT_REPLICATION_PERIOD
-            ).await;
+                DEFAULT_REPLICATION_PERIOD,
+            )
+            .await;
             actor
         });
         let handle = tokio::spawn(actor.task.run_task());
@@ -44,8 +45,9 @@ where
     servers
 }
 
-fn send_peer_refs<LogEntry>(servers: &[Server<LogEntry>]) 
-where LogEntry: Send + 'static
+fn send_peer_refs<LogEntry>(servers: &[Server<LogEntry>])
+where
+    LogEntry: Send + 'static,
 {
     for i in 0..servers.len() {
         let (server_id, mut server_ref) = {
@@ -55,9 +57,9 @@ where LogEntry: Send + 'static
 
         for other_server in servers {
             if server_id != other_server.server_id {
-                let _ = server_ref.try_send(RaftMessage::AddPeer(AddPeer { 
-                    peer_id: other_server.server_id, 
-                    peer_ref: other_server.server_ref.clone()
+                let _ = server_ref.try_send(RaftMessage::AddPeer(AddPeer {
+                    peer_id: other_server.server_id,
+                    peer_ref: other_server.server_ref.clone(),
                 }));
             }
         }

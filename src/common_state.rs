@@ -9,7 +9,7 @@ pub struct CommonState<LogEntry> {
 }
 
 impl<LogEntry> CommonState<LogEntry> {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             current_term: 0,
             log: Vec::new(),
@@ -45,5 +45,11 @@ impl<LogEntry> Debug for CommonState<LogEntry> {
                 },
             )
             .finish()
+    }
+}
+
+impl<LogEntry> Default for CommonState<LogEntry> {
+    fn default() -> Self {
+        Self::new()
     }
 }

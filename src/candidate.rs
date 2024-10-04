@@ -16,7 +16,7 @@ use crate::messages::*;
 // returns true if the election was won, false if it was lost
 pub async fn candidate<AB, LogEntry>(
     cell: &mut AB,
-    me: (u32, &mut ActorRef<RaftMessage<LogEntry>>),
+    me: u32,
     common_data: &mut CommonState<LogEntry>,
     peers: &mut BTreeMap<u32, ActorRef<RaftMessage<LogEntry>>>,
     election_timeout: Range<Duration>,
@@ -38,7 +38,7 @@ where
 
         let request = RequestVoteRequest {
             term: common_data.current_term,
-            candidate_id: me.0,
+            candidate_id: me,
             last_log_index: 0,
             last_log_term: 0,
         };

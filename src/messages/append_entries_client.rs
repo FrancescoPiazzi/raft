@@ -1,5 +1,5 @@
-use std::fmt::{Debug, Formatter};
 use actum::prelude::ActorRef;
+use std::fmt::{Debug, Formatter};
 use tokio::sync::oneshot;
 
 use super::RaftMessage;

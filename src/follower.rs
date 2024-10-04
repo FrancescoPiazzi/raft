@@ -16,7 +16,7 @@ use crate::messages::*;
 // returns when no message is received from the leader after some time
 pub async fn follower<AB, LogEntry>(
     cell: &mut AB,
-    me: (u32, &mut ActorRef<RaftMessage<LogEntry>>),
+    me: u32,
     peers: &mut BTreeMap<u32, ActorRef<RaftMessage<LogEntry>>>,
     common_state: &mut CommonState<LogEntry>,
     election_timeout: Range<Duration>,
@@ -40,10 +40,11 @@ pub async fn follower<AB, LogEntry>(
             RaftMessage::AppendEntriesRequest(request) => {
                 if request.term < common_state.current_term {
                     tracing::trace!("🚫 Received an AppendEntries message with an outdated term, ignoring");
-                    let msg = AppendEntriesReply{   //TOASK: this is duplicated in the next if, should I make it into a function?
-                        from: me.0, 
-                        term: common_state.current_term, 
-                        success: false
+                    let msg = AppendEntriesReply {
+                        //TOASK: this is duplicated in the next if, should I make it into a function?
+                        from: me,
+                        term: common_state.current_term,
+                        success: false,
                     };
                     let sender_ref = peers.get_mut(&request.leader_id).expect("all peers are known");
                     let _ = sender_ref.try_send(msg.into());
@@ -51,10 +52,10 @@ pub async fn follower<AB, LogEntry>(
                 }
                 if request.prev_log_index > common_state.log.len() as u64 {
                     tracing::trace!("🚫 Received an AppendEntries message with an invalid prev_log_index, ignoring");
-                    let msg = AppendEntriesReply{
-                        from: me.0, 
-                        term: common_state.current_term, 
-                        success: false
+                    let msg = AppendEntriesReply {
+                        from: me,
+                        term: common_state.current_term,
+                        success: false,
                     };
                     let sender_ref = peers.get_mut(&request.leader_id).expect("all peers are known");
                     let _ = sender_ref.try_send(msg.into());
@@ -80,7 +81,7 @@ pub async fn follower<AB, LogEntry>(
                 leader_ref = Some(peers.get_mut(&request.leader_id).expect("all peers are known").clone());
 
                 let reply = AppendEntriesReply {
-                    from: me.0,
+                    from: me,
                     term: common_state.current_term,
                     success: true,
                 };
@@ -91,11 +92,13 @@ pub async fn follower<AB, LogEntry>(
                     && (common_state.voted_for.is_none()
                         || *common_state.voted_for.as_ref().unwrap() == request_vote_request.candidate_id);
                 let reply = RequestVoteReply {
-                    from: me.0,
-                    vote_granted: vote_granted,
+                    from: me,
+                    vote_granted,
                 };
-                
-                let candidate_ref = peers.get_mut(&request_vote_request.candidate_id).expect("all peers are known");
+
+                let candidate_ref = peers
+                    .get_mut(&request_vote_request.candidate_id)
+                    .expect("all peers are known");
                 let _ = candidate_ref.try_send(reply.into());
             }
             RaftMessage::AppendEntriesClientRequest(append_entries_client_request) => {
