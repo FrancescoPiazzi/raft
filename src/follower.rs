@@ -39,7 +39,7 @@ pub async fn follower<AB, LogEntry>(
         match message {
             RaftMessage::AppendEntriesRequest(request) => {
                 if request.term < common_state.current_term {
-                    tracing::trace!("🚫 Received an AppendEntries message with an outdated term, ignoring");
+                    tracing::debug!("🚫 Received an AppendEntries message with an outdated term, ignoring");
                     let msg = AppendEntriesReply {
                         //TOASK: this is duplicated in the next if, should I make it into a function?
                         from: me,
@@ -51,7 +51,11 @@ pub async fn follower<AB, LogEntry>(
                     continue;
                 }
                 if request.prev_log_index > common_state.log.len() as u64 {
-                    tracing::trace!("🚫 Received an AppendEntries message with an invalid prev_log_index, ignoring");
+                    tracing::debug!(
+                        "🚫 Received an AppendEntries message with an invalid prev_log_index (received: {}, log length: {}), ignoring",
+                        request.prev_log_index,
+                        common_state.log.len()
+                    );
                     let msg = AppendEntriesReply {
                         from: me,
                         term: common_state.current_term,
@@ -63,6 +67,8 @@ pub async fn follower<AB, LogEntry>(
                 }
 
                 if !request.entries.is_empty() {
+                    tracing::debug!("Received AppendEntries with entries to append");
+
                     let mut entries = request.entries.into_iter().map(|entry| (entry, request.term)).collect();
 
                     // TODO: entries should  not simply be added,
@@ -102,6 +108,7 @@ pub async fn follower<AB, LogEntry>(
                 let _ = candidate_ref.try_send(reply.into());
             }
             RaftMessage::AppendEntriesClientRequest(append_entries_client_request) => {
+                tracing::trace!("Received a client message, redirecting the client to the leader");
                 let _ = append_entries_client_request.reply_to.send(Err(leader_ref.clone()));
             }
             other => {

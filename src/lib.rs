@@ -6,3 +6,4 @@ pub mod candidate;
 pub mod common_state;
 pub mod follower;
 pub mod leader;
+pub mod types;

@@ -86,7 +86,6 @@ fn send_append_entries_request<LogEntry>(
         .map(|entry| entry.0.clone())
         .collect::<Vec<LogEntry>>();
 
-    // TODO: fill the rest of the fields
     let request = AppendEntriesRequest::<LogEntry> {
         term: common_state.current_term,
         leader_id: me,
@@ -94,7 +93,7 @@ fn send_append_entries_request<LogEntry>(
         prev_log_term: if common_state.log.is_empty() {
             0
         } else {
-            common_state.log[max(next_index as usize - 1, 0)].1
+            common_state.log[max(next_index as i64 - 1, 0) as usize].1  // TODO: checked sub here
         },
         entries: entries_to_send,
         leader_commit: common_state.commit_index as u64,
@@ -120,6 +119,7 @@ where
 
     match message {
         RaftMessage::AppendEntriesClientRequest(append_entries_client) => {
+            tracing::debug!("Received a client message, replicating it");
             let mut entries = append_entries_client
                 .entries_to_replicate
                 .into_iter()
@@ -128,17 +128,17 @@ where
             common_state.log.append(&mut entries);
         }
         RaftMessage::AppendEntriesRequest(append_entries_rpc) => {
-            tracing::trace!("Received an AppendEntries message as the leader, somone challenged me");
+            tracing::debug!("Received an AppendEntries message as the leader, somone challenged me");
             // TOASK: should it be >= ?
             if append_entries_rpc.term > common_state.current_term {
-                tracing::trace!("They are right, I'm stepping down");
+                tracing::debug!("They are right, I'm stepping down");
                 return true;
             } else {
-                tracing::trace!("They are wrong, long live the king!");
+                tracing::debug!("They are wrong, long live the king!");
             }
         }
         RaftMessage::RequestVoteRequest(request_vote_rpc) => {
-            tracing::trace!("Received a request vote message as the leader, somone challenged me");
+            tracing::debug!("Received a request vote message as the leader, somone challenged me");
             // TOASK: should it be >= ?
             let step_down_from_lead = request_vote_rpc.term > common_state.current_term;
             let msg = request_vote::RequestVoteReply {
@@ -150,11 +150,11 @@ where
                 .expect("recieved a message from an unkown peer");
             let _ = candidate_ref.try_send(msg.into());
             if step_down_from_lead {
-                tracing::trace!("They are right, granted vote and stepping down");
+                tracing::debug!("They are right, granted vote and stepping down");
                 common_state.voted_for = Some(request_vote_rpc.candidate_id);
                 return true;
             } else {
-                tracing::trace!("They are wrong, long live the king!");
+                tracing::debug!("They are wrong, long live the king!");
             }
         }
         RaftMessage::AppendEntriesReply(reply) => {

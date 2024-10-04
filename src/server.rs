@@ -1,6 +1,4 @@
-use crate::messages::*;
-use actum::actor_bounds::ActorBounds;
-use actum::actor_ref::ActorRef;
+
 use std::collections::BTreeMap;
 use std::ops::Range;
 use std::time::Duration;
@@ -10,6 +8,12 @@ use crate::candidate::candidate;
 use crate::common_state::CommonState;
 use crate::follower::follower;
 use crate::leader::leader;
+use crate::messages::*;
+use crate::types::AppendEntriesClientResponse;
+
+use actum::actor_bounds::ActorBounds;
+use actum::actor_ref::ActorRef;
+use tokio::sync::mpsc;
 
 pub async fn raft_server<AB, LogEntry>(
     mut cell: AB,
