@@ -9,7 +9,7 @@ use crate::messages::*;
 
 use actum::actor_bounds::ActorBounds;
 use actum::actor_ref::ActorRef;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque as Queue};
 
 // the leader is the interface of the cluster to the external world
 // clients send messages to the leader, which is responsible for replicating them to the other nodes
@@ -34,7 +34,6 @@ pub async fn leader<'a, AB, LogEntry>(
     }
 
     let mut follower_timeouts = JoinSet::new();
-
     for follower_id in peers.keys() {
         let follower_id = *follower_id;
         follower_timeouts.spawn(async move {
@@ -43,11 +42,23 @@ pub async fn leader<'a, AB, LogEntry>(
         });
     }
 
+    // for each follower, remember how long is each message that we sent and hasn't come back yet (len of log entries)
+    // this is used to calculate the next_index, this should be safe even if we lose an AppendEntriesResponse,
+    // because even if we get next_index wrong, the follower will either let us know if we set it to a number
+    // that is too big, or overwrite the log with the same things if we set it to a number that is too small
+    // the queue is needed only in case we send multiple messages to the same follower before receiving a response
+    // it makes sense to have a queue as probably the replies will be in order, 
+    // if they aren't the same as if an AppendEntriesResponse is lost applies
+    let mut messages_len_per_follower = BTreeMap::<u32, Queue<usize>>::new();
+    for follower_id in peers.keys() {
+        messages_len_per_follower.insert(*follower_id, Queue::new());
+    }
+
     loop {
         tokio::select! {
             message = cell.recv() => {
                 let message = message.message().expect("raft runs indefinitely");
-                let become_follower = handle_message(me, common_state, peers, &mut next_index, &mut match_index, message);
+                let become_follower = handle_message(me, common_state, peers, &mut next_index, &mut match_index, &mut messages_len_per_follower, message);
                 if become_follower {
                     break;
                 }
@@ -61,7 +72,8 @@ pub async fn leader<'a, AB, LogEntry>(
                 let timed_out_follower_id = timed_out_follower_id.unwrap();
                 let timed_out_follower_ref = peers.get_mut(&timed_out_follower_id).expect("all peers are known");
                 let next_index_of_follower = *next_index.get(&timed_out_follower_id).unwrap();
-                send_append_entries_request(me, common_state, timed_out_follower_ref, next_index_of_follower);
+                let mut messages_len = messages_len_per_follower.get_mut(&timed_out_follower_id).expect("all followers have a message len queue");
+                send_append_entries_request(me, common_state, &mut messages_len, timed_out_follower_ref, next_index_of_follower);
 
                 follower_timeouts.spawn(async move {
                     tokio::time::sleep(heartbeat_period).await;
@@ -75,6 +87,7 @@ pub async fn leader<'a, AB, LogEntry>(
 fn send_append_entries_request<LogEntry>(
     me: u32,
     common_state: &CommonState<LogEntry>,
+    messages_len: &mut Queue<usize>,
     follower_ref: &mut ActorRef<RaftMessage<LogEntry>>,
     next_index: u64,
 ) where
@@ -85,6 +98,8 @@ fn send_append_entries_request<LogEntry>(
         .iter()
         .map(|entry| entry.0.clone())
         .collect::<Vec<LogEntry>>();
+
+    messages_len.push_back(entries_to_send.len());
 
     let request = AppendEntriesRequest::<LogEntry> {
         term: common_state.current_term,
@@ -110,6 +125,7 @@ fn handle_message<LogEntry>(
     peers: &mut BTreeMap<u32, ActorRef<RaftMessage<LogEntry>>>,
     next_index: &mut BTreeMap<u32, u64>,
     match_index: &mut BTreeMap<u32, Option<u64>>,
+    messages_len_per_follower: &mut BTreeMap<u32, Queue<usize>>,
     message: RaftMessage<LogEntry>,
 ) -> bool
 where
@@ -166,8 +182,20 @@ where
                 .expect("recieved a message from an unkown peer");
 
             if reply.success {
-                *match_idx = if common_state.log.is_empty() {None} else {Some(common_state.log.len() as u64 - 1)};
-                *next_idx = common_state.log.len() as u64;
+                let n_logentry_request = messages_len_per_follower
+                    .get_mut(&reply.from)
+                    .expect("recieved a message from an unkown peer")
+                    .pop_front()
+                    .unwrap_or(0);  // TODO: should always be Some, since we always push a value before each append entries request
+
+                *match_idx = match match_idx {
+                    Some(match_idx) => Some(*match_idx + n_logentry_request as u64),
+                    None => if n_logentry_request == 0 {None} else {Some(n_logentry_request as u64 - 1)},
+                };
+                *next_idx = match match_idx {
+                    Some(match_idx) => *match_idx + 1,
+                    None => 0,
+                };
 
                 check_for_commits(common_state, match_index);
             } else {

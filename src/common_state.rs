@@ -24,6 +24,7 @@ impl<LogEntry> CommonState<LogEntry> {
     // because in the future I will want to access the log entries to actually apply them
     pub fn commit(&mut self) {
         while self.last_applied < self.commit_index {
+            tracing::info!("Applying log entry {}", self.last_applied);
             self.last_applied += 1;
         }
     }

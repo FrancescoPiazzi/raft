@@ -86,6 +86,8 @@ where
     let mut leader = servers[0].server_ref.clone();
 
     loop {
+        tracing::info!("SEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEENDDDD");
+
         let request = AppendEntriesClientRequest {
             entries_to_replicate: entries.clone(),
             reply_to: tx.clone(),
@@ -145,7 +147,7 @@ async fn main() {
     let servers = spawn_raft_servers::<LogEntry>(5);
     send_peer_refs(&servers);
 
-    tokio::time::sleep(Duration::from_millis(500)).await;   // give the servers a moment to elect a leader
+    tokio::time::sleep(Duration::from_millis(2500)).await;   // give the servers a moment to elect a leader
 
     send_entries_to_duplicate(&servers, vec![1, 2, 3], Duration::from_millis(700), Duration::from_millis(500), (tx, rx)).await;
 

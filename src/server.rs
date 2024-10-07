@@ -1,4 +1,3 @@
-
 use std::collections::BTreeMap;
 use std::ops::Range;
 use std::time::Duration;
@@ -13,7 +12,6 @@ use crate::types::AppendEntriesClientResponse;
 
 use actum::actor_bounds::ActorBounds;
 use actum::actor_ref::ActorRef;
-use tokio::sync::mpsc;
 
 pub async fn raft_server<AB, LogEntry>(
     mut cell: AB,
