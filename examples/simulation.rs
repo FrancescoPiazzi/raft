@@ -75,14 +75,14 @@ where
 async fn send_entries_to_duplicate<LogEntry>(
     servers: &Vec<Server<LogEntry>>, 
     entries: Vec<LogEntry>, 
-    frequency: Duration,
+    period: Duration,
     timeout: Duration, 
     (tx, mut rx): (mpsc::Sender<AppendEntriesClientResponse<LogEntry>>, mpsc::Receiver<AppendEntriesClientResponse<LogEntry>>)
 )
 where
     LogEntry: Clone + Send + 'static,
 {
-    let mut interval = tokio::time::interval(frequency);
+    let mut interval = tokio::time::interval(period);
     let mut leader = servers[0].server_ref.clone();
 
     loop {
@@ -118,10 +118,12 @@ where
             }
             // channel closed, break the loop
             Ok(None) => {
+                tracing::error!("Channel closed, exiting");
                 break;
             }
             // no response, switch to another random node
             Err(_) => {
+                tracing::warn!("No response from the interrogated server, switching to another random node");
                 let new_leader_index = rand::random::<usize>() % servers.len();
                 leader = servers[new_leader_index].server_ref.clone();
             }
@@ -149,7 +151,7 @@ async fn main() {
 
     tokio::time::sleep(Duration::from_millis(2500)).await;   // give the servers a moment to elect a leader
 
-    send_entries_to_duplicate(&servers, vec![1, 2, 3], Duration::from_millis(700), Duration::from_millis(500), (tx, rx)).await;
+    send_entries_to_duplicate(&servers, vec![1, 2, 3], Duration::from_millis(2000), Duration::from_millis(1000), (tx, rx)).await;
 
     for server in servers {
         server.handle.await.unwrap();

@@ -1,9 +1,10 @@
 use std::cmp::max;
 use std::time::Duration;
 
+use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 
-use crate::common_state::CommonState;
+use crate::{common_state::CommonState, types::AppendEntriesClientResponse};
 use crate::messages::append_entries::AppendEntriesRequest;
 use crate::messages::*;
 
@@ -42,23 +43,33 @@ pub async fn leader<'a, AB, LogEntry>(
         });
     }
 
-    // for each follower, remember how long is each message that we sent and hasn't come back yet (len of log entries)
-    // this is used to calculate the next_index, this should be safe even if we lose an AppendEntriesResponse,
-    // because even if we get next_index wrong, the follower will either let us know if we set it to a number
-    // that is too big, or overwrite the log with the same things if we set it to a number that is too small
-    // the queue is needed only in case we send multiple messages to the same follower before receiving a response
-    // it makes sense to have a queue as probably the replies will be in order, 
-    // if they aren't the same as if an AppendEntriesResponse is lost applies
+    // Track the length of log entries sent to each follower but not yet acknowledged.
+    // This is used to calculate next_index. If an AppendEntriesResponse is lost, the follower
+    // will correct us if next_index is too high, or overwrite logs if it's too low.
+    // The queue handles multiple messages sent before receiving a response, assuming
+    // replies are generally in order. If not, the same correction logic applies.
     let mut messages_len_per_follower = BTreeMap::<u32, Queue<usize>>::new();
     for follower_id in peers.keys() {
         messages_len_per_follower.insert(*follower_id, Queue::new());
     }
 
+    // Tracks the mpsc that we have to answer on per entry group
+    let mut client_per_entry_group = BTreeMap::<usize, mpsc::Sender<AppendEntriesClientResponse<LogEntry>>>::new();
+
     loop {
         tokio::select! {
             message = cell.recv() => {
                 let message = message.message().expect("raft runs indefinitely");
-                let become_follower = handle_message(me, common_state, peers, &mut next_index, &mut match_index, &mut messages_len_per_follower, message);
+                let become_follower = handle_message(
+                    me, 
+                    common_state, 
+                    peers, 
+                    &mut next_index, 
+                    &mut match_index, 
+                    &mut messages_len_per_follower, 
+                    &mut client_per_entry_group, 
+                    message
+                );
                 if become_follower {
                     break;
                 }
@@ -126,6 +137,7 @@ fn handle_message<LogEntry>(
     next_index: &mut BTreeMap<u32, u64>,
     match_index: &mut BTreeMap<u32, Option<u64>>,
     messages_len_per_follower: &mut BTreeMap<u32, Queue<usize>>,
+    client_per_entry_group: &mut BTreeMap<usize, mpsc::Sender<AppendEntriesClientResponse<LogEntry>>>,
     message: RaftMessage<LogEntry>,
 ) -> bool
 where
@@ -136,12 +148,20 @@ where
     match message {
         RaftMessage::AppendEntriesClientRequest(append_entries_client) => {
             tracing::debug!("Received a client message, replicating it");
+            
+            // empty requests can cause problems when keeping track of the sender per request
+            if append_entries_client.entries_to_replicate.is_empty() {
+                return false;
+            }
+
             let mut entries = append_entries_client
                 .entries_to_replicate
                 .into_iter()
                 .map(|entry| (entry, common_state.current_term))
                 .collect();
+
             common_state.log.append(&mut entries);
+            client_per_entry_group.insert(common_state.log.len()-1, append_entries_client.reply_to);
         }
         RaftMessage::AppendEntriesRequest(append_entries_rpc) => {
             tracing::debug!("Received an AppendEntries message as the leader, somone challenged me");
@@ -197,7 +217,7 @@ where
                     None => 0,
                 };
 
-                check_for_commits(common_state, match_index);
+                check_for_commits(common_state, match_index, client_per_entry_group);
             } else {
                 *next_idx -= 1;
             }
@@ -212,7 +232,7 @@ where
 }
 
 // commits all the log entries that are replicated on the majority of the nodes
-fn check_for_commits<LogEntry>(common_data: &mut CommonState<LogEntry>, match_index: &BTreeMap<u32, Option<u64>>)
+fn check_for_commits<LogEntry>(common_data: &mut CommonState<LogEntry>, match_index: &BTreeMap<u32, Option<u64>>, client_per_entry_group: &mut BTreeMap<usize, mpsc::Sender<AppendEntriesClientResponse<LogEntry>>>)
 where
     LogEntry: Send + Clone + 'static,
 {
@@ -225,7 +245,8 @@ where
         common_data.commit_index += 1;
         i += 1;
     }
-    common_data.commit();
+    
+    common_data.commit( Some(client_per_entry_group));
 }
 
 // returns true if most the followers have the log entry at index i

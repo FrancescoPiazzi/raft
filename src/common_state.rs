@@ -1,4 +1,8 @@
-use std::fmt::{Debug, Formatter, Result};
+use std::{collections::BTreeMap, fmt::{Debug, Formatter, Result}};
+
+use tokio::sync::mpsc;
+
+use crate::types::AppendEntriesClientResponse;
 
 pub struct CommonState<LogEntry> {
     pub current_term: u64,
@@ -22,10 +26,17 @@ impl<LogEntry> CommonState<LogEntry> {
     // commit log entries up to the leader's commit index
     // the entire common_data object is taken even if for now only the commit_index and last_applied are used
     // because in the future I will want to access the log entries to actually apply them
-    pub fn commit(&mut self) {
+    // TOASK: I don't thing there 2 mut are needed
+    pub fn commit(&mut self, mut client_per_entry_group: Option<&mut BTreeMap<usize, mpsc::Sender<AppendEntriesClientResponse<LogEntry>>>>) {
         while self.last_applied < self.commit_index {
             tracing::info!("Applying log entry {}", self.last_applied);
             self.last_applied += 1;
+
+            if let Some(map) = &mut client_per_entry_group {
+                if let Some(sender) = map.remove(&self.last_applied) {
+                    let _ = sender.try_send(AppendEntriesClientResponse::Ok(()));
+                }
+            }
         }
     }
 }
