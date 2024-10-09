@@ -8,7 +8,6 @@ use crate::common_state::CommonState;
 use crate::follower::follower;
 use crate::leader::leader;
 use crate::messages::*;
-use crate::types::AppendEntriesClientResponse;
 
 use actum::actor_bounds::ActorBounds;
 use actum::actor_ref::ActorRef;
@@ -25,6 +24,8 @@ where
     AB: ActorBounds<RaftMessage<LogEntry>>,
     LogEntry: Send + Clone + 'static,
 {
+    check_parameters(n_peers, &election_timeout, &heartbeat_period, &replication_period);
+
     let mut peers = BTreeMap::<u32, ActorRef<RaftMessage<LogEntry>>>::new();
     let mut message_stash = Vec::<RaftMessage<LogEntry>>::new();
 
@@ -81,5 +82,19 @@ where
         } else {
             tracing::trace!("transition: candidate → follower");
         }
+    }
+}
+
+fn check_parameters(n_peers: usize, election_timeout: &Range<Duration>, heartbeat_period: &Duration, replication_period: &Duration) {
+    assert!(n_peers > 0, "must have at least one server");
+    assert!(election_timeout.start < election_timeout.end, "election_timeout start must be less than end");
+    assert!(*heartbeat_period > Duration::from_secs(0), "heartbeat_period must be greater than 0");
+    assert!(*replication_period > Duration::from_secs(0), "replication_period must be greater than 0");
+
+    if election_timeout.start < *heartbeat_period {
+        tracing::error!("election_timeout start is less than heartbeat_period, this will cause followers to always time out");
+    }
+    if election_timeout.end < *heartbeat_period {
+        tracing::warn!("election_timeout end is less than heartbeat_period, this may cause followers to time out even when the leader is working");
     }
 }
