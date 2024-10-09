@@ -122,11 +122,12 @@ fn send_append_entries_request<LogEntry>(
             common_state.log[max(next_index as i64 - 1, 0) as usize].1  // TODO: checked sub here
         },
         entries: entries_to_send,
-        leader_commit: common_state.commit_index as u64,
+        leader_commit: common_state.commit_index.map(|index| index as u64),
     };
 
     let _ = follower_ref.try_send(request.into());
 }
+
 
 // handles one message as leader
 // returns true if we have to go back to a follower state, false otherwise
@@ -232,20 +233,40 @@ where
 }
 
 // commits all the log entries that are replicated on the majority of the nodes
-fn check_for_commits<LogEntry>(common_data: &mut CommonState<LogEntry>, match_index: &BTreeMap<u32, Option<u64>>, client_per_entry_group: &mut BTreeMap<usize, mpsc::Sender<AppendEntriesClientResponse<LogEntry>>>)
+fn check_for_commits<LogEntry>(
+    common_data: &mut CommonState<LogEntry>, 
+    match_index: &BTreeMap<u32, Option<u64>>, 
+    client_per_entry_group: &mut BTreeMap<usize, mpsc::Sender<AppendEntriesClientResponse<LogEntry>>>
+)
 where
     LogEntry: Send + Clone + 'static,
 {
-    let mut i = common_data.commit_index + 1;
-    // len() check probably useless in theory but better safe than sorry I guess
-    while i < common_data.log.len()
-        && common_data.log[i].1 == common_data.current_term
-        && majority(match_index, i as u64)
-    {
-        common_data.commit_index += 1;
-        i += 1;
+    match common_data.commit_index{
+        // TOASK TODO: these two cases are similar, but I can't figure out a way to merge them
+        // without having two different meanings for i depending on wether commit_index is Some or None
+        Some(mut i) => {
+            while i+1 < common_data.log.len()
+                && common_data.log[i+1].1 == common_data.current_term
+                && majority(match_index, (i+1) as u64)
+            {
+                i += 1;
+            }
+            common_data.commit_index  = Some(i);
+        }
+        None => {
+            let mut i = 0;
+            while i < common_data.log.len()
+                && common_data.log[i].1 == common_data.current_term
+                && majority(match_index, i as u64)
+            {
+                i += 1;
+            }
+            common_data.commit_index = if i>0 {Some(i-1)} else {None};
+        }
     }
-    
+
+    tracing::trace!("commit index is now {:?}", common_data.commit_index);    
+
     common_data.commit( Some(client_per_entry_group));
 }
 

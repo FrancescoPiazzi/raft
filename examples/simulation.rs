@@ -86,7 +86,7 @@ where
     let mut leader = servers[0].server_ref.clone();
 
     loop {
-        tracing::info!("SEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEENDDDD");
+        tracing::info!("Sending entries to replicate");
 
         let request = AppendEntriesClientRequest {
             entries_to_replicate: entries.clone(),
@@ -122,8 +122,9 @@ where
                 break;
             }
             // no response, switch to another random node
-            Err(_) => {
+            Err(e) => {
                 tracing::warn!("No response from the interrogated server, switching to another random node");
+                tracing::warn!("Error: {:?}", e);
                 let new_leader_index = rand::random::<usize>() % servers.len();
                 leader = servers[new_leader_index].server_ref.clone();
             }
@@ -151,7 +152,7 @@ async fn main() {
 
     tokio::time::sleep(Duration::from_millis(2500)).await;   // give the servers a moment to elect a leader
 
-    send_entries_to_duplicate(&servers, vec![1, 2, 3], Duration::from_millis(2000), Duration::from_millis(1000), (tx, rx)).await;
+    send_entries_to_duplicate(&servers, vec![1], Duration::from_millis(500), Duration::from_millis(1000), (tx, rx)).await;
 
     for server in servers {
         server.handle.await.unwrap();

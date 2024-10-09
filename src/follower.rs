@@ -77,9 +77,12 @@ pub async fn follower<AB, LogEntry>(
                     // and if it isn't send an unsuccessful reply
                     common_state.log.append(&mut entries);
 
-                    if request.leader_commit > common_state.commit_index as u64 {
-                        common_state.commit_index =
-                            min(request.leader_commit, max(common_state.log.len() as i64 - 1, 0) as u64) as usize;
+                    if let Some(leader_commit) = request.leader_commit {
+                        let commit_index = common_state.commit_index.unwrap_or(0) as u64;
+                        if leader_commit > commit_index {
+                            let new_commit_index = min(leader_commit, common_state.log.len() as u64 - 1);
+                            common_state.commit_index = Some(new_commit_index as usize);
+                        }
                     }
                     common_state.commit(None);
                 }
@@ -109,7 +112,7 @@ pub async fn follower<AB, LogEntry>(
             }
             RaftMessage::AppendEntriesClientRequest(append_entries_client_request) => {
                 tracing::trace!("Received a client message, redirecting the client to the leader");
-                let _ = append_entries_client_request.reply_to.send(Err(leader_ref.clone()));
+                let _ = append_entries_client_request.reply_to.send(Err(leader_ref.clone())).await;
             }
             other => {
                 tracing::trace!(unhandled = ?other);
