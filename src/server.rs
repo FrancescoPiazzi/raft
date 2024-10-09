@@ -85,14 +85,30 @@ where
     }
 }
 
-fn check_parameters(n_peers: usize, election_timeout: &Range<Duration>, heartbeat_period: &Duration, replication_period: &Duration) {
+fn check_parameters(
+    n_peers: usize,
+    election_timeout: &Range<Duration>,
+    heartbeat_period: &Duration,
+    replication_period: &Duration,
+) {
     assert!(n_peers > 0, "must have at least one server");
-    assert!(election_timeout.start < election_timeout.end, "election_timeout start must be less than end");
-    assert!(*heartbeat_period > Duration::from_secs(0), "heartbeat_period must be greater than 0");
-    assert!(*replication_period > Duration::from_secs(0), "replication_period must be greater than 0");
+    assert!(
+        election_timeout.start < election_timeout.end,
+        "election_timeout start must be less than end"
+    );
+    assert!(
+        *heartbeat_period > Duration::from_secs(0),
+        "heartbeat_period must be greater than 0"
+    );
+    assert!(
+        *replication_period > Duration::from_secs(0),
+        "replication_period must be greater than 0"
+    );
 
     if election_timeout.start < *heartbeat_period {
-        tracing::error!("election_timeout start is less than heartbeat_period, this will cause followers to always time out");
+        tracing::error!(
+            "election_timeout start is less than heartbeat_period, this will cause followers to always time out"
+        );
     }
     if election_timeout.end < *heartbeat_period {
         tracing::warn!("election_timeout end is less than heartbeat_period, this may cause followers to time out even when the leader is working");

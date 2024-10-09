@@ -1,7 +1,7 @@
 use actum::actor_bounds::ActorBounds;
 use actum::actor_ref::ActorRef;
 use rand::{thread_rng, Rng};
-use std::cmp::{max, min};
+use std::cmp::min;
 use std::collections::BTreeMap;
 use std::ops::Range;
 use std::time::Duration;
@@ -100,10 +100,7 @@ pub async fn follower<AB, LogEntry>(
                 let vote_granted = request_vote_request.term >= common_state.current_term
                     && (common_state.voted_for.is_none()
                         || *common_state.voted_for.as_ref().unwrap() == request_vote_request.candidate_id);
-                let reply = RequestVoteReply {
-                    from: me,
-                    vote_granted,
-                };
+                let reply = RequestVoteReply { from: me, vote_granted };
 
                 let candidate_ref = peers
                     .get_mut(&request_vote_request.candidate_id)
@@ -112,7 +109,10 @@ pub async fn follower<AB, LogEntry>(
             }
             RaftMessage::AppendEntriesClientRequest(append_entries_client_request) => {
                 tracing::trace!("Received a client message, redirecting the client to the leader");
-                let _ = append_entries_client_request.reply_to.send(Err(leader_ref.clone())).await;
+                let _ = append_entries_client_request
+                    .reply_to
+                    .send(Err(leader_ref.clone()))
+                    .await;
             }
             other => {
                 tracing::trace!(unhandled = ?other);

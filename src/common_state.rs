@@ -1,4 +1,7 @@
-use std::{collections::BTreeMap, fmt::{Debug, Formatter, Result}};
+use std::{
+    collections::BTreeMap,
+    fmt::{Debug, Formatter, Result},
+};
 
 use tokio::sync::mpsc;
 
@@ -29,14 +32,14 @@ impl<LogEntry> CommonState<LogEntry> {
     // TOASK: I don't thing there 2 mut are needed
     // TODO: the optional bitmap is needed because the leader will pass it, the followers will pass None instead
     // is there a cleaner way to do this? Expecially since the let Some(map) is repeated every iteration
-    pub fn commit(&mut self, mut client_per_entry_group: Option<&mut BTreeMap<usize, mpsc::Sender<AppendEntriesClientResponse<LogEntry>>>>) {
-        let start = match self.last_applied {
-            Some(index) => index + 1,
-            None => 0,
-        };
+    pub fn commit(
+        &mut self,
+        mut client_per_entry_group: Option<&mut BTreeMap<usize, mpsc::Sender<AppendEntriesClientResponse<LogEntry>>>>,
+    ) {
+        let start = self.last_applied.map_or(0, |index| index + 1);
         let end = match self.commit_index {
             Some(index) => index,
-            None => return,     // the leader has not committed anything yet
+            None => return, // the leader has not committed anything yet
         };
 
         if start <= end {

@@ -1,10 +1,7 @@
-use actum::prelude::ActorRef;
 use std::fmt::{Debug, Formatter};
 use tokio::sync::mpsc;
 
 use crate::types::AppendEntriesClientResponse;
-
-use super::RaftMessage;
 
 pub struct AppendEntriesClientRequest<LogEntry> {
     pub reply_to: mpsc::Sender<AppendEntriesClientResponse<LogEntry>>,

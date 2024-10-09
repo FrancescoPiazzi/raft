@@ -4,12 +4,12 @@ use actum::drop_guard::ActorDropGuard;
 use actum::prelude::*;
 use raft::config::*;
 use raft::messages::add_peer::AddPeer;
+use raft::messages::append_entries_client::AppendEntriesClientRequest;
 use raft::messages::RaftMessage;
 use raft::server::raft_server;
-use raft::messages::append_entries_client::AppendEntriesClientRequest;
 use raft::types::AppendEntriesClientResponse;
-use tokio::task::JoinHandle;
 use tokio::sync::mpsc;
+use tokio::task::JoinHandle;
 use tracing::{info_span, Instrument};
 
 struct Server<LogEntry> {
@@ -73,13 +73,15 @@ where
 }
 
 async fn send_entries_to_duplicate<LogEntry>(
-    servers: &Vec<Server<LogEntry>>, 
-    entries: Vec<LogEntry>, 
+    servers: &Vec<Server<LogEntry>>,
+    entries: Vec<LogEntry>,
     period: Duration,
-    timeout: Duration, 
-    (tx, mut rx): (mpsc::Sender<AppendEntriesClientResponse<LogEntry>>, mpsc::Receiver<AppendEntriesClientResponse<LogEntry>>)
-)
-where
+    timeout: Duration,
+    (tx, mut rx): (
+        mpsc::Sender<AppendEntriesClientResponse<LogEntry>>,
+        mpsc::Receiver<AppendEntriesClientResponse<LogEntry>>,
+    ),
+) where
     LogEntry: Clone + Send + 'static,
 {
     let mut interval = tokio::time::interval(period);
@@ -98,24 +100,24 @@ where
         // these are too many nested Results and Options but I don't know how to reduce them without losing expressiveness
         match tokio::time::timeout(timeout, rx.recv()).await {
             // we recieved an answer
-            Ok(Some(response)) => {
-                match response {
-                    Ok(_) => {
-                        tracing::info!("Recieved confirmation of successful entry replication");
-                        interval.tick().await;
-                    }
-                    Err(Some(new_leader_ref)) => {
-                        tracing::trace!("interrogated server is not the leader, switching to the indicated one");
-                        leader = new_leader_ref;
-                    }
-                    Err(None) => {
-                        tracing::trace!("interrogated server does not know who the leader is, switch to another random node");
-                        let new_leader_index = rand::random::<usize>() % servers.len();
-                        leader = servers[new_leader_index].server_ref.clone();
-                        continue;
-                    }
+            Ok(Some(response)) => match response {
+                Ok(_) => {
+                    tracing::info!("Recieved confirmation of successful entry replication");
+                    interval.tick().await;
                 }
-            }
+                Err(Some(new_leader_ref)) => {
+                    tracing::trace!("interrogated server is not the leader, switching to the indicated one");
+                    leader = new_leader_ref;
+                }
+                Err(None) => {
+                    tracing::trace!(
+                        "interrogated server does not know who the leader is, switch to another random node"
+                    );
+                    let new_leader_index = rand::random::<usize>() % servers.len();
+                    leader = servers[new_leader_index].server_ref.clone();
+                    continue;
+                }
+            },
             // channel closed, break the loop
             Ok(None) => {
                 tracing::error!("Channel closed, exiting");
@@ -150,9 +152,16 @@ async fn main() {
     let servers = spawn_raft_servers::<LogEntry>(5);
     send_peer_refs(&servers);
 
-    tokio::time::sleep(Duration::from_millis(2500)).await;   // give the servers a moment to elect a leader
+    tokio::time::sleep(Duration::from_millis(2500)).await; // give the servers a moment to elect a leader
 
-    send_entries_to_duplicate(&servers, vec![1], Duration::from_millis(500), Duration::from_millis(1000), (tx, rx)).await;
+    send_entries_to_duplicate(
+        &servers,
+        vec![1],
+        Duration::from_millis(500),
+        Duration::from_millis(1000),
+        (tx, rx),
+    )
+    .await;
 
     for server in servers {
         server.handle.await.unwrap();

@@ -4,9 +4,9 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 
-use crate::{common_state::CommonState, types::AppendEntriesClientResponse};
 use crate::messages::append_entries::AppendEntriesRequest;
 use crate::messages::*;
+use crate::{common_state::CommonState, types::AppendEntriesClientResponse};
 
 use actum::actor_bounds::ActorBounds;
 use actum::actor_ref::ActorRef;
@@ -61,13 +61,13 @@ pub async fn leader<'a, AB, LogEntry>(
             message = cell.recv() => {
                 let message = message.message().expect("raft runs indefinitely");
                 let become_follower = handle_message(
-                    me, 
-                    common_state, 
-                    peers, 
-                    &mut next_index, 
-                    &mut match_index, 
-                    &mut messages_len_per_follower, 
-                    &mut client_per_entry_group, 
+                    me,
+                    common_state,
+                    peers,
+                    &mut next_index,
+                    &mut match_index,
+                    &mut messages_len_per_follower,
+                    &mut client_per_entry_group,
                     message
                 );
                 if become_follower {
@@ -83,8 +83,8 @@ pub async fn leader<'a, AB, LogEntry>(
                 let timed_out_follower_id = timed_out_follower_id.unwrap();
                 let timed_out_follower_ref = peers.get_mut(&timed_out_follower_id).expect("all peers are known");
                 let next_index_of_follower = *next_index.get(&timed_out_follower_id).unwrap();
-                let mut messages_len = messages_len_per_follower.get_mut(&timed_out_follower_id).expect("all followers have a message len queue");
-                send_append_entries_request(me, common_state, &mut messages_len, timed_out_follower_ref, next_index_of_follower);
+                let messages_len = messages_len_per_follower.get_mut(&timed_out_follower_id).expect("all followers have a message len queue");
+                send_append_entries_request(me, common_state, messages_len, timed_out_follower_ref, next_index_of_follower);
 
                 follower_timeouts.spawn(async move {
                     tokio::time::sleep(heartbeat_period).await;
@@ -119,7 +119,7 @@ fn send_append_entries_request<LogEntry>(
         prev_log_term: if common_state.log.is_empty() {
             0
         } else {
-            common_state.log[max(next_index as i64 - 1, 0) as usize].1  // TODO: checked sub here
+            common_state.log[max(next_index as i64 - 1, 0) as usize].1 // TODO: checked sub here
         },
         entries: entries_to_send,
         leader_commit: common_state.commit_index.map(|index| index as u64),
@@ -127,7 +127,6 @@ fn send_append_entries_request<LogEntry>(
 
     let _ = follower_ref.try_send(request.into());
 }
-
 
 // handles one message as leader
 // returns true if we have to go back to a follower state, false otherwise
@@ -149,7 +148,7 @@ where
     match message {
         RaftMessage::AppendEntriesClientRequest(append_entries_client) => {
             tracing::debug!("Received a client message, replicating it");
-            
+
             // empty requests can cause problems when keeping track of the sender per request
             if append_entries_client.entries_to_replicate.is_empty() {
                 return false;
@@ -162,7 +161,7 @@ where
                 .collect();
 
             common_state.log.append(&mut entries);
-            client_per_entry_group.insert(common_state.log.len()-1, append_entries_client.reply_to);
+            client_per_entry_group.insert(common_state.log.len() - 1, append_entries_client.reply_to);
         }
         RaftMessage::AppendEntriesRequest(append_entries_rpc) => {
             tracing::debug!("Received an AppendEntries message as the leader, somone challenged me");
@@ -207,11 +206,17 @@ where
                     .get_mut(&reply.from)
                     .expect("recieved a message from an unkown peer")
                     .pop_front()
-                    .unwrap_or(0);  // TODO: should always be Some, since we always push a value before each append entries request
+                    .unwrap_or(0); // TODO: should always be Some, since we always push a value before each append entries request
 
                 *match_idx = match match_idx {
                     Some(match_idx) => Some(*match_idx + n_logentry_request as u64),
-                    None => if n_logentry_request == 0 {None} else {Some(n_logentry_request as u64 - 1)},
+                    None => {
+                        if n_logentry_request == 0 {
+                            None
+                        } else {
+                            Some(n_logentry_request as u64 - 1)
+                        }
+                    }
                 };
                 *next_idx = match match_idx {
                     Some(match_idx) => *match_idx + 1,
@@ -234,24 +239,23 @@ where
 
 // commits all the log entries that are replicated on the majority of the nodes
 fn check_for_commits<LogEntry>(
-    common_data: &mut CommonState<LogEntry>, 
-    match_index: &BTreeMap<u32, Option<u64>>, 
-    client_per_entry_group: &mut BTreeMap<usize, mpsc::Sender<AppendEntriesClientResponse<LogEntry>>>
-)
-where
+    common_data: &mut CommonState<LogEntry>,
+    match_index: &BTreeMap<u32, Option<u64>>,
+    client_per_entry_group: &mut BTreeMap<usize, mpsc::Sender<AppendEntriesClientResponse<LogEntry>>>,
+) where
     LogEntry: Send + Clone + 'static,
 {
-    match common_data.commit_index{
+    match common_data.commit_index {
         // TOASK TODO: these two cases are similar, but I can't figure out a way to merge them
         // without having two different meanings for i depending on wether commit_index is Some or None
         Some(mut i) => {
-            while i+1 < common_data.log.len()
-                && common_data.log[i+1].1 == common_data.current_term
-                && majority(match_index, (i+1) as u64)
+            while i + 1 < common_data.log.len()
+                && common_data.log[i + 1].1 == common_data.current_term
+                && majority(match_index, (i + 1) as u64)
             {
                 i += 1;
             }
-            common_data.commit_index  = Some(i);
+            common_data.commit_index = Some(i);
         }
         None => {
             let mut i = 0;
@@ -261,13 +265,13 @@ where
             {
                 i += 1;
             }
-            common_data.commit_index = if i>0 {Some(i-1)} else {None};
+            common_data.commit_index = if i > 0 { Some(i - 1) } else { None };
         }
     }
 
-    tracing::trace!("commit index is now {:?}", common_data.commit_index);    
+    tracing::trace!("commit index is now {:?}", common_data.commit_index);
 
-    common_data.commit( Some(client_per_entry_group));
+    common_data.commit(Some(client_per_entry_group));
 }
 
 // returns true if most the followers have the log entry at index i
