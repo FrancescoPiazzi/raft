@@ -8,7 +8,7 @@ use raft::messages::append_entries_client::AppendEntriesClientRequest;
 use raft::messages::RaftMessage;
 use raft::server::raft_server;
 use raft::types::AppendEntriesClientResponse;
-use tokio::sync::mpsc;
+use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 use tracing::{info_span, Instrument};
 
@@ -77,10 +77,6 @@ async fn send_entries_to_duplicate<LogEntry>(
     entries: Vec<LogEntry>,
     period: Duration,
     timeout: Duration,
-    (tx, mut rx): (
-        mpsc::Sender<AppendEntriesClientResponse<LogEntry>>,
-        mpsc::Receiver<AppendEntriesClientResponse<LogEntry>>,
-    ),
 ) where
     LogEntry: Clone + Send + 'static,
 {
@@ -90,17 +86,19 @@ async fn send_entries_to_duplicate<LogEntry>(
     loop {
         tracing::info!("Sending entries to replicate");
 
+        let (tx, rx) = oneshot::channel::<AppendEntriesClientResponse<LogEntry>>();
+
         let request = AppendEntriesClientRequest {
             entries_to_replicate: entries.clone(),
-            reply_to: tx.clone(),
+            reply_to: tx,
         };
 
         let _ = leader.try_send(request.into());
 
         // these are too many nested Results and Options but I don't know how to reduce them without losing expressiveness
-        match tokio::time::timeout(timeout, rx.recv()).await {
+        match tokio::time::timeout(timeout, rx).await {
             // we recieved an answer
-            Ok(Some(response)) => match response {
+            Ok(Ok(response)) => match response {
                 Ok(_) => {
                     tracing::info!("Recieved confirmation of successful entry replication");
                     interval.tick().await;
@@ -119,7 +117,7 @@ async fn send_entries_to_duplicate<LogEntry>(
                 }
             },
             // channel closed, break the loop
-            Ok(None) => {
+            Ok(Err(_)) => {
                 tracing::error!("Channel closed, exiting");
                 break;
             }
@@ -147,8 +145,6 @@ async fn main() {
         .with_max_level(tracing::Level::DEBUG)
         .init();
 
-    let (tx, rx) = mpsc::channel::<AppendEntriesClientResponse<LogEntry>>(1);
-
     let servers = spawn_raft_servers::<LogEntry>(5);
     send_peer_refs(&servers);
 
@@ -159,7 +155,6 @@ async fn main() {
         vec![1],
         Duration::from_millis(500),
         Duration::from_millis(1000),
-        (tx, rx),
     )
     .await;
 

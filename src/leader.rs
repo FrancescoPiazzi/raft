@@ -1,17 +1,16 @@
-use std::collections::{BTreeMap, VecDeque as Queue};
 use std::cmp::max;
+use std::collections::{BTreeMap, VecDeque as Queue};
 use std::time::Duration;
 
 use actum::actor_bounds::ActorBounds;
 use actum::actor_ref::ActorRef;
-use tokio::sync::mpsc;
+use tokio::sync::oneshot;
 use tokio::task::JoinSet;
 
 use crate::common_state::CommonState;
 use crate::messages::append_entries::AppendEntriesRequest;
 use crate::messages::*;
 use crate::types::AppendEntriesClientResponse;
-
 
 // the leader is the interface of the cluster to the external world
 // clients send messages to the leader, which is responsible for replicating them to the other nodes
@@ -54,8 +53,8 @@ pub async fn leader<'a, AB, LogEntry>(
         messages_len_per_follower.insert(*follower_id, Queue::new());
     }
 
-    // Tracks the mpsc that we have to answer on per entry group
-    let mut client_per_entry_group = BTreeMap::<usize, mpsc::Sender<AppendEntriesClientResponse<LogEntry>>>::new();
+    // Tracks the oneshot that we have to answer on per entry group
+    let mut client_per_entry_group = BTreeMap::<usize, oneshot::Sender<AppendEntriesClientResponse<LogEntry>>>::new();
 
     loop {
         tokio::select! {
@@ -138,7 +137,7 @@ fn handle_message<LogEntry>(
     next_index: &mut BTreeMap<u32, u64>,
     match_index: &mut BTreeMap<u32, Option<u64>>,
     messages_len_per_follower: &mut BTreeMap<u32, Queue<usize>>,
-    client_per_entry_group: &mut BTreeMap<usize, mpsc::Sender<AppendEntriesClientResponse<LogEntry>>>,
+    client_per_entry_group: &mut BTreeMap<usize, oneshot::Sender<AppendEntriesClientResponse<LogEntry>>>,
     message: RaftMessage<LogEntry>,
 ) -> bool
 where
@@ -242,7 +241,7 @@ where
 fn check_for_commits<LogEntry>(
     common_data: &mut CommonState<LogEntry>,
     match_index: &BTreeMap<u32, Option<u64>>,
-    client_per_entry_group: &mut BTreeMap<usize, mpsc::Sender<AppendEntriesClientResponse<LogEntry>>>,
+    client_per_entry_group: &mut BTreeMap<usize, oneshot::Sender<AppendEntriesClientResponse<LogEntry>>>,
 ) where
     LogEntry: Send + Clone + 'static,
 {

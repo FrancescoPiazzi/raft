@@ -74,8 +74,6 @@ pub async fn follower<AB, LogEntry>(
 
                     // TODO: entries should  not simply be added,
                     // they should be compared to the current log and only added if they are not already present
-                    // also we should make sure that request.prev_log_index is the index of one of our entries
-                    // and if it isn't send an unsuccessful reply
                     common_state.log.append(&mut entries);
 
                     if let Some(leader_commit) = request.leader_commit {
@@ -110,10 +108,7 @@ pub async fn follower<AB, LogEntry>(
             }
             RaftMessage::AppendEntriesClientRequest(append_entries_client_request) => {
                 tracing::trace!("Received a client message, redirecting the client to the leader");
-                let _ = append_entries_client_request
-                    .reply_to
-                    .send(Err(leader_ref.clone()))
-                    .await;
+                let _ = append_entries_client_request.reply_to.send(Err(leader_ref.clone()));
             }
             other => {
                 tracing::trace!(unhandled = ?other);

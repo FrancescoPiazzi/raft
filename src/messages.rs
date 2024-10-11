@@ -10,7 +10,6 @@ use crate::messages::append_entries::{AppendEntriesReply, AppendEntriesRequest};
 use crate::messages::append_entries_client::AppendEntriesClientRequest;
 use crate::messages::request_vote::{RequestVoteReply, RequestVoteRequest};
 
-
 pub enum RaftMessage<LogEntry> {
     AddPeer(AddPeer<LogEntry>),
     AppendEntriesRequest(AppendEntriesRequest<LogEntry>),

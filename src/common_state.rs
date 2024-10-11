@@ -3,7 +3,7 @@ use std::{
     fmt::{Debug, Formatter, Result},
 };
 
-use tokio::sync::mpsc;
+use tokio::sync::oneshot;
 
 use crate::types::AppendEntriesClientResponse;
 
@@ -34,7 +34,9 @@ impl<LogEntry> CommonState<LogEntry> {
     // is there a cleaner way to do this? Expecially since the let Some(map) is repeated every iteration
     pub fn commit(
         &mut self,
-        mut client_per_entry_group: Option<&mut BTreeMap<usize, mpsc::Sender<AppendEntriesClientResponse<LogEntry>>>>,
+        mut client_per_entry_group: Option<
+            &mut BTreeMap<usize, oneshot::Sender<AppendEntriesClientResponse<LogEntry>>>,
+        >,
     ) {
         let start = self.last_applied.map_or(0, |index| index + 1);
         let end = match self.commit_index {
@@ -47,7 +49,7 @@ impl<LogEntry> CommonState<LogEntry> {
                 tracing::info!("Applying log entry {}", i);
                 if let Some(map) = &mut client_per_entry_group {
                     if let Some(sender) = map.remove(&i) {
-                        let _ = sender.try_send(AppendEntriesClientResponse::Ok(()));
+                        let _ = sender.send(AppendEntriesClientResponse::Ok(()));
                     }
                 }
             }
