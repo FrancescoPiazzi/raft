@@ -3,12 +3,13 @@ pub mod append_entries;
 pub mod append_entries_client;
 pub mod request_vote;
 
+use std::fmt::{self, Debug, Formatter};
+
+use crate::messages::add_peer::AddPeer;
 use crate::messages::append_entries::{AppendEntriesReply, AppendEntriesRequest};
 use crate::messages::append_entries_client::AppendEntriesClientRequest;
 use crate::messages::request_vote::{RequestVoteReply, RequestVoteRequest};
 
-use crate::messages::add_peer::AddPeer;
-use std::fmt::{self, Debug, Formatter};
 
 pub enum RaftMessage<LogEntry> {
     AddPeer(AddPeer<LogEntry>),

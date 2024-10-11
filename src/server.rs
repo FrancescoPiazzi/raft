@@ -1,6 +1,9 @@
 use std::collections::BTreeMap;
 use std::ops::Range;
 use std::time::Duration;
+
+use actum::actor_bounds::ActorBounds;
+use actum::actor_ref::ActorRef;
 use tracing::{info_span, Instrument};
 
 use crate::candidate::candidate;
@@ -9,8 +12,6 @@ use crate::follower::follower;
 use crate::leader::leader;
 use crate::messages::*;
 
-use actum::actor_bounds::ActorBounds;
-use actum::actor_ref::ActorRef;
 
 pub async fn raft_server<AB, LogEntry>(
     mut cell: AB,
@@ -106,11 +107,11 @@ fn check_parameters(
     );
 
     if election_timeout.start < *heartbeat_period {
-        tracing::error!(
-            "election_timeout start is less than heartbeat_period, this will cause followers to always time out"
-        );
+        tracing::error!("election_timeout start is less than heartbeat_period, 
+            this will cause followers to always time out");
     }
     if election_timeout.end < *heartbeat_period {
-        tracing::warn!("election_timeout end is less than heartbeat_period, this may cause followers to time out even when the leader is working");
+        tracing::warn!("election_timeout end is less than heartbeat_period, 
+            this may cause followers to time out even when the leader is working");
     }
 }

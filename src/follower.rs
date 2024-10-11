@@ -1,10 +1,11 @@
-use actum::actor_bounds::ActorBounds;
-use actum::actor_ref::ActorRef;
-use rand::{thread_rng, Rng};
 use std::cmp::min;
 use std::collections::BTreeMap;
 use std::ops::Range;
 use std::time::Duration;
+
+use actum::actor_bounds::ActorBounds;
+use actum::actor_ref::ActorRef;
+use rand::{thread_rng, Rng};
 use tokio::time::timeout;
 
 use crate::common_state::CommonState;

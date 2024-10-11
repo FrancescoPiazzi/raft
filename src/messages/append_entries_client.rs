@@ -1,4 +1,5 @@
 use std::fmt::{Debug, Formatter};
+
 use tokio::sync::mpsc;
 
 use crate::types::AppendEntriesClientResponse;

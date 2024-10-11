@@ -1,16 +1,17 @@
+use std::collections::{BTreeMap, VecDeque as Queue};
 use std::cmp::max;
 use std::time::Duration;
 
+use actum::actor_bounds::ActorBounds;
+use actum::actor_ref::ActorRef;
 use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 
+use crate::common_state::CommonState;
 use crate::messages::append_entries::AppendEntriesRequest;
 use crate::messages::*;
-use crate::{common_state::CommonState, types::AppendEntriesClientResponse};
+use crate::types::AppendEntriesClientResponse;
 
-use actum::actor_bounds::ActorBounds;
-use actum::actor_ref::ActorRef;
-use std::collections::{BTreeMap, VecDeque as Queue};
 
 // the leader is the interface of the cluster to the external world
 // clients send messages to the leader, which is responsible for replicating them to the other nodes
