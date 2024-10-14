@@ -269,9 +269,16 @@ fn check_for_commits<LogEntry>(
         }
     }
 
-    tracing::trace!("commit index is now {:?}", common_data.commit_index);
+    // TODO: this here does not help performance, but moving it out would mean taking
+    // an empty parameter for "no reason"
+    let mut newly_committed_entries = Some(Vec::new());
+    common_data.commit( &mut newly_committed_entries);
 
-    common_data.commit(Some(client_per_entry_group));
+    for i in newly_committed_entries.unwrap() {
+        if let Some(sender) = client_per_entry_group.remove(&i) {
+            let _ = sender.send(AppendEntriesClientResponse::Ok(()));
+        }
+    }
 }
 
 // returns true if most the followers have the log entry at index i

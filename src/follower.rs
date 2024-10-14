@@ -83,7 +83,7 @@ pub async fn follower<AB, LogEntry>(
                             common_state.commit_index = Some(new_commit_index as usize);
                         }
                     }
-                    common_state.commit(None);
+                    common_state.commit(&mut None);
                 }
 
                 leader_ref = Some(peers.get_mut(&request.leader_id).expect("all peers are known").clone());

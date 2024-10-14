@@ -1,11 +1,5 @@
-use std::{
-    collections::BTreeMap,
-    fmt::{Debug, Formatter, Result},
-};
+use std::fmt::{Debug, Formatter, Result};
 
-use tokio::sync::oneshot;
-
-use crate::types::AppendEntriesClientResponse;
 
 pub struct CommonState<LogEntry> {
     pub current_term: u64,
@@ -29,14 +23,9 @@ impl<LogEntry> CommonState<LogEntry> {
     // commit log entries up to the leader's commit index
     // the entire common_data object is taken even if for now only the commit_index and last_applied are used
     // because in the future I will want to access the log entries to actually apply them
-    // TOASK: I don't thing there 2 mut are needed
-    // TODO: the optional bitmap is needed because the leader will pass it, the followers will pass None instead
-    // is there a cleaner way to do this? Expecially since the let Some(map) is repeated every iteration
     pub fn commit(
         &mut self,
-        mut client_per_entry_group: Option<
-            &mut BTreeMap<usize, oneshot::Sender<AppendEntriesClientResponse<LogEntry>>>,
-        >,
+        newly_committed_entries: &mut Option<Vec<usize>>
     ) {
         let start = self.last_applied.map_or(0, |index| index + 1);
         let end = match self.commit_index {
@@ -47,10 +36,8 @@ impl<LogEntry> CommonState<LogEntry> {
         if start <= end {
             for i in start..=end {
                 tracing::info!("Applying log entry {}", i);
-                if let Some(map) = &mut client_per_entry_group {
-                    if let Some(sender) = map.remove(&i) {
-                        let _ = sender.send(AppendEntriesClientResponse::Ok(()));
-                    }
+                if let Some(inner) = newly_committed_entries {
+                    inner.push(i);
                 }
             }
             self.last_applied = Some(end);
