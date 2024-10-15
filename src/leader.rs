@@ -5,14 +5,13 @@ use std::time::Duration;
 use actum::actor_bounds::ActorBounds;
 use actum::actor_ref::ActorRef;
 use peer_state::PeerState;
-use tokio::task::JoinSet;
 use tokio::sync::oneshot;
+use tokio::task::JoinSet;
 
 use crate::common_state::CommonState;
 use crate::messages::append_entries::AppendEntriesRequest;
 use crate::messages::*;
 use crate::types::AppendEntriesClientResponse;
-
 
 mod peer_state;
 
@@ -32,8 +31,8 @@ pub async fn leader<'a, AB, LogEntry>(
     LogEntry: Clone + Send + 'static,
 {
     let mut peers_state = BTreeMap::new();
-    for (id, _) in peers.iter_mut(){
-        peers_state.insert(*id, PeerState::new((common_state.log.len()+1) as u64));
+    for (id, _) in peers.iter_mut() {
+        peers_state.insert(*id, PeerState::new((common_state.log.len() + 1) as u64));
     }
 
     let mut follower_timeouts = JoinSet::new();
@@ -103,7 +102,7 @@ fn send_append_entries_request<LogEntry>(
     let request = AppendEntriesRequest::<LogEntry> {
         term: common_state.current_term,
         leader_id: me,
-        prev_log_index: next_index,
+        prev_log_index: next_index - 1,
         prev_log_term: if common_state.log.is_empty() {
             0
         } else {
@@ -140,7 +139,9 @@ where
                 return false;
             }
 
-            common_state.log.append(append_entries_client.entries_to_replicate, common_state.current_term);
+            common_state
+                .log
+                .append(append_entries_client.entries_to_replicate, common_state.current_term);
             client_per_entry_group.insert(common_state.log.len(), append_entries_client.reply_to);
         }
         RaftMessage::AppendEntriesRequest(append_entries_rpc) => {
@@ -185,7 +186,11 @@ where
             if reply.success {
                 // should always be Some, since we always push a value before each append entries request
                 let request_len = peer_state.messages_len.pop_front().unwrap_or(0);
-                tracing::trace!("Received success from follower {} for {} entries", reply.from, request_len);
+                tracing::trace!(
+                    "Received success from follower {} for {} entries",
+                    reply.from,
+                    request_len
+                );
                 *peer_match_idx = request_len as u64 + *peer_next_idx - 1;
                 *peer_next_idx = *peer_match_idx + 1;
 
@@ -211,12 +216,14 @@ fn check_for_commits<LogEntry>(
 ) where
     LogEntry: Send + Clone + 'static,
 {
-    while common_data.commit_index + 1 <= common_data.log.len()
-        && common_data.log.get_term(common_data.commit_index + 1) == common_data.current_term
-        && majority(peers_state, common_data.commit_index as u64 + 1)
+    let mut i = common_data.commit_index + 1;
+    while i <= common_data.log.len()
+        && common_data.log.get_term(i) == common_data.current_term
+        && majority(peers_state, i as u64)
     {
-        common_data.commit_index += 1;
+        i += 1;
     }
+    common_data.commit_index = max(i - 1, 0);
 
     // TODO: this here does not help performance, but moving it out would mean taking
     // an empty parameter for "no reason"
@@ -234,12 +241,11 @@ fn check_for_commits<LogEntry>(
 // TODO: this could be optimized for large groups of entries being sent together
 // by getting the median match_index instead of checking all of them
 fn majority(peers_state: &BTreeMap<u32, PeerState>, i: u64) -> bool {
-    let mut count = 1;  // count ourselves
+    let mut count = 1; // count ourselves
     for peer_state in peers_state.values() {
         if peer_state.match_index >= i {
             count += 1;
         }
     }
-    // first +1 for self to get n servers, second +1 for majority
-    count >= (peers_state.len() + 1) / 2 + 1
+    count > (peers_state.len() + 1) / 2
 }

@@ -51,8 +51,7 @@ pub async fn follower<AB, LogEntry>(
                     let _ = sender_ref.try_send(msg.into());
                     continue;
                 }
-                // +1 because if we have a log of length n, (indexes 1 to n), n+1 is valid
-                if request.prev_log_index > common_state.log.len() as u64 + 1 { 
+                if request.prev_log_index > common_state.log.len() as u64 {
                     tracing::debug!(
                         "🚫 Received an AppendEntries message with an invalid prev_log_index (received: {}, log length: {}), ignoring",
                         request.prev_log_index,
@@ -68,15 +67,13 @@ pub async fn follower<AB, LogEntry>(
                     continue;
                 }
 
-                if request.prev_log_index != common_state.log.len() as u64 + 1{   // Remove when log merge is implemented
-                    tracing::warn!("Merge is not implemented yet");
-                }
-
-                let leader_commit:usize  = request.leader_commit.try_into().unwrap();
                 if !request.entries.is_empty() {
                     tracing::debug!("AppendEntries has entries to append");
-                    common_state.log.insert(request.entries, request.prev_log_index, request.term);
+                    common_state
+                        .log
+                        .insert(request.entries, request.prev_log_index, request.term);
                 }
+                let leader_commit: usize = request.leader_commit.try_into().unwrap();
                 if leader_commit > common_state.commit_index {
                     tracing::trace!("leader commit is greater than follower commit, updating commit index");
                     let new_commit_index = min(leader_commit, common_state.log.len());

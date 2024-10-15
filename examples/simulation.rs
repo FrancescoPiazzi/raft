@@ -82,7 +82,7 @@ async fn send_entries_to_duplicate<LogEntry>(
     LogEntry: Clone + Send + 'static,
 {
     let mut interval = tokio::time::interval(period);
-    interval.tick().await;  // first tick is immediate, skip it
+    interval.tick().await; // first tick is immediate, skip it
 
     let mut leader = servers[0].server_ref.clone();
 

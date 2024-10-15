@@ -1,5 +1,5 @@
-use std::ops::{Index, IndexMut, RangeFrom};
 use std::iter::repeat;
+use std::ops::{Index, IndexMut, RangeFrom};
 
 const LOG_INDEX_STARTS_AT_1: &str = "Log index starts at 1";
 
@@ -13,15 +13,16 @@ impl<LogEntry> Index<usize> for Log<LogEntry> {
     type Output = LogEntry;
 
     fn index(&self, index: usize) -> &Self::Output {
-        if index <= 0 {
+        if index == 0 {
             panic!("{}", LOG_INDEX_STARTS_AT_1);
         }
         &self.log[index - 1]
     }
 }
 
-impl<LogEntry> Index<RangeFrom<usize>> for Log<LogEntry> 
-where LogEntry: Clone
+impl<LogEntry> Index<RangeFrom<usize>> for Log<LogEntry>
+where
+    LogEntry: Clone,
 {
     type Output = [LogEntry];
 
@@ -36,7 +37,7 @@ where LogEntry: Clone
 
 impl<LogEntry> IndexMut<usize> for Log<LogEntry> {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        if index <= 0 {
+        if index == 0 {
             panic!("{}", LOG_INDEX_STARTS_AT_1);
         }
         &mut self.log[index - 1]
@@ -60,7 +61,7 @@ impl<LogEntry> Log<LogEntry> {
     }
 
     pub fn get_term(&self, index: usize) -> u64 {
-        if index <= 0 {
+        if index == 0 {
             panic!("{}", LOG_INDEX_STARTS_AT_1);
         }
         self.terms[index - 1]
@@ -70,7 +71,7 @@ impl<LogEntry> Log<LogEntry> {
         self.insert(entries, self.len() as u64, term);
     }
 
-    pub fn insert(&mut self, mut entries: Vec<LogEntry>, prev_log_index: u64, term: u64){
+    pub fn insert(&mut self, mut entries: Vec<LogEntry>, prev_log_index: u64, term: u64) {
         assert!(prev_log_index as usize <= self.log.len(), "Raft logs cannot have holes");
 
         let insert_index = prev_log_index as usize;
@@ -84,10 +85,18 @@ impl<LogEntry> Log<LogEntry> {
         self.log.append(&mut entries);
         self.terms.extend(repeat(term).take(n_new_entries));
 
-        assert!(self.log.len() == self.terms.len(), "Log and term vectors must have the same length");
+        assert!(
+            self.log.len() == self.terms.len(),
+            "Log and term vectors must have the same length"
+        );
     }
 }
 
+impl<LogEntry> Default for Log<LogEntry> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 #[cfg(test)]
 mod tests {
