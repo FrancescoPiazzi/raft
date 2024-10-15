@@ -59,7 +59,6 @@ impl<LogEntry> Log<LogEntry> {
         self.log.is_empty()
     }
 
-    // TODO: maybe return an Option
     pub fn get_term(&self, index: usize) -> u64 {
         if index <= 0 {
             panic!("{}", LOG_INDEX_STARTS_AT_1);
@@ -67,13 +66,113 @@ impl<LogEntry> Log<LogEntry> {
         self.terms[index - 1]
     }
 
-    // TODO: entries should  not simply be added,
-    // they should be compared to the current log and only added if they are not already present
-    pub fn append(&mut self, mut entries: Vec<LogEntry>, term: u64) {
+    pub fn append(&mut self, entries: Vec<LogEntry>, term: u64) {
+        self.insert(entries, self.len() as u64, term);
+    }
+
+    pub fn insert(&mut self, mut entries: Vec<LogEntry>, prev_log_index: u64, term: u64){
+        assert!(prev_log_index as usize <= self.log.len(), "Raft logs cannot have holes");
+
+        let insert_index = prev_log_index as usize;
         let n_new_entries = entries.len();
+
+        // Remove entries that will be overwritten
+        self.log.truncate(insert_index);
+        self.terms.truncate(insert_index);
+
+        // Insert new entries
         self.log.append(&mut entries);
         self.terms.extend(repeat(term).take(n_new_entries));
 
-        assert!(self.log.len() == self.terms.len());
+        assert!(self.log.len() == self.terms.len(), "Log and term vectors must have the same length");
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_log_indexing() {
+        let mut log = Log::<u32>::new();
+        log.append(vec![1, 2, 3], 1);
+
+        assert_eq!(log[1], 1);
+        assert_eq!(log[2], 2);
+        assert_eq!(log[3], 3);
+    }
+
+    #[test]
+    #[should_panic(expected = "Log index starts at 1")]
+    fn test_log_indexing_0() {
+        let log = Log::<u32>::new();
+        let _ = log[0];
+    }
+
+    #[test]
+    fn test_log_indexing_range() {
+        let mut log = Log::<u32>::new();
+        log.append(vec![1, 2, 3], 1);
+
+        assert_eq!(&log[1..], &[1, 2, 3]);
+        assert_eq!(&log[2..], &[2, 3]);
+        assert_eq!(&log[3..], &[3]);
+    }
+
+    #[test]
+    fn test_log_indexing_range_empty() {
+        let log = Log::<u32>::new();
+        assert_eq!(&log[1..], &[]);
+    }
+
+    #[test]
+    fn test_log_indexing_mut() {
+        let mut log = Log::<u32>::new();
+        log.append(vec![1, 2, 3], 1);
+
+        log[1] = 4;
+        log[2] = 5;
+        log[3] = 6;
+
+        assert_eq!(log[1], 4);
+        assert_eq!(log[2], 5);
+        assert_eq!(log[3], 6);
+    }
+
+    #[test]
+    #[should_panic(expected = "Log index starts at 1")]
+    fn test_log_indexing_mut_0() {
+        let mut log = Log::<u32>::new();
+        log[0] = 1;
+    }
+
+    #[test]
+    fn test_insert_normal() {
+        let mut log = Log::<u32>::new();
+        log.append(vec![1, 2, 3], 1);
+        log.insert(vec![4, 5], 3, 1);
+
+        assert_eq!(&log[1..], &[1, 2, 3, 4, 5]);
+    }
+
+    #[test]
+    fn test_insert_overwrite() {
+        let mut log = Log::<u32>::new();
+        log.append(vec![1, 2, 3], 1);
+
+        log.insert(vec![6, 7], 2, 2);
+        assert_eq!(&log[1..], &[1, 2, 6, 7]);
+
+        log.insert(vec![8], 0, 3);
+        assert_eq!(&log[1..], &[8]);
+    }
+
+    #[test]
+    #[should_panic(expected = "Raft logs cannot have holes")]
+    fn test_insert_hole() {
+        let mut log = Log::<u32>::new();
+        log.append(vec![1, 2, 3], 1);
+        log.insert(vec![4, 5], 4, 1);
     }
 }

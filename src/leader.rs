@@ -183,12 +183,9 @@ where
             let peer_match_idx = &mut peer_state.match_index;
 
             if reply.success {
-                // TODO: should always be Some, since we always push a value before each append entries request
+                // should always be Some, since we always push a value before each append entries request
                 let request_len = peer_state.messages_len.pop_front().unwrap_or(0);
                 tracing::trace!("Received success from follower {} for {} entries", reply.from, request_len);
-                // follow has match index = 4, and next index = 5
-                // follow is excpecting 5, we send 3 entries: 5, 6, 7
-                // when we get a response, match is 7 (n_logentry_request + next_idx - 1) and next is 8 (match + 1)
                 *peer_match_idx = request_len as u64 + *peer_next_idx - 1;
                 *peer_next_idx = *peer_match_idx + 1;
 

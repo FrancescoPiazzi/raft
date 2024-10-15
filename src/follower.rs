@@ -75,7 +75,7 @@ pub async fn follower<AB, LogEntry>(
                 let leader_commit:usize  = request.leader_commit.try_into().unwrap();
                 if !request.entries.is_empty() {
                     tracing::debug!("AppendEntries has entries to append");
-                    common_state.log.append(request.entries, request.term);
+                    common_state.log.insert(request.entries, request.prev_log_index, request.term);
                 }
                 if leader_commit > common_state.commit_index {
                     tracing::trace!("leader commit is greater than follower commit, updating commit index");
