@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use actum::actor_bounds::ActorBounds;
 use actum::actor_ref::ActorRef;
+use peer_state::PeerState;
 use tokio::task::JoinSet;
 use tokio::sync::oneshot;
 
@@ -11,6 +12,9 @@ use crate::common_state::CommonState;
 use crate::messages::append_entries::AppendEntriesRequest;
 use crate::messages::*;
 use crate::types::AppendEntriesClientResponse;
+
+
+mod peer_state;
 
 /// the leader is the interface of the cluster to the external world
 /// clients send messages to the leader, which is responsible for replicating them to the other nodes
@@ -27,11 +31,9 @@ pub async fn leader<'a, AB, LogEntry>(
     AB: ActorBounds<RaftMessage<LogEntry>>,
     LogEntry: Clone + Send + 'static,
 {
-    let mut next_index = BTreeMap::<u32, u64>::new();
-    let mut match_index = BTreeMap::<u32, u64>::new();
-    for follower_id in peers.keys() {
-        next_index.insert(*follower_id, common_state.log.len() as u64 + 1);
-        match_index.insert(*follower_id, 0);
+    let mut peers_state = BTreeMap::new();
+    for (id, _) in peers.iter_mut(){
+        peers_state.insert(*id, PeerState::new((common_state.log.len()+1) as u64));
     }
 
     let mut follower_timeouts = JoinSet::new();
@@ -39,18 +41,8 @@ pub async fn leader<'a, AB, LogEntry>(
         let follower_id = *follower_id;
         follower_timeouts.spawn(async move {
             tokio::time::sleep(heartbeat_period).await;
-            follower_id // id of timed out follower
+            follower_id // return id of timed out follower
         });
-    }
-
-    // Track the length of log entries sent to each follower but not yet acknowledged.
-    // This is used to calculate next_index. If an AppendEntriesResponse is lost, the follower
-    // will correct us if next_index is too high, or overwrite logs if it's too low.
-    // The queue handles multiple messages sent before receiving a response, assuming
-    // replies are generally in order. If not, the same correction logic applies.
-    let mut messages_len_per_follower = BTreeMap::<u32, Queue<usize>>::new();
-    for follower_id in peers.keys() {
-        messages_len_per_follower.insert(*follower_id, Queue::new());
     }
 
     // Tracks the oneshot that we have to answer on per entry group
@@ -64,9 +56,7 @@ pub async fn leader<'a, AB, LogEntry>(
                     me,
                     common_state,
                     peers,
-                    &mut next_index,
-                    &mut match_index,
-                    &mut messages_len_per_follower,
+                    &mut peers_state,
                     &mut client_per_entry_group,
                     message
                 );
@@ -82,8 +72,9 @@ pub async fn leader<'a, AB, LogEntry>(
 
                 let timed_out_follower_id = timed_out_follower_id.unwrap();
                 let timed_out_follower_ref = peers.get_mut(&timed_out_follower_id).expect("all peers are known");
-                let next_index_of_follower = *next_index.get(&timed_out_follower_id).unwrap();
-                let messages_len = messages_len_per_follower.get_mut(&timed_out_follower_id).expect("all followers have a message len queue");
+                let timed_out_follower_state = peers_state.get_mut(&timed_out_follower_id).expect("all peers are known");
+                let next_index_of_follower = timed_out_follower_state.next_index;
+                let messages_len = &mut timed_out_follower_state.messages_len;
                 send_append_entries_request(me, common_state, messages_len, timed_out_follower_ref, next_index_of_follower);
 
                 follower_timeouts.spawn(async move {
@@ -131,9 +122,7 @@ fn handle_message<LogEntry>(
     me: u32,
     common_state: &mut CommonState<LogEntry>,
     peers: &mut BTreeMap<u32, ActorRef<RaftMessage<LogEntry>>>,
-    next_index: &mut BTreeMap<u32, u64>,
-    match_index: &mut BTreeMap<u32, u64>,
-    messages_len_per_follower: &mut BTreeMap<u32, Queue<usize>>,
+    peers_state: &mut BTreeMap<u32, PeerState>,
     client_per_entry_group: &mut BTreeMap<usize, oneshot::Sender<AppendEntriesClientResponse<LogEntry>>>,
     message: RaftMessage<LogEntry>,
 ) -> bool
@@ -187,30 +176,25 @@ where
             }
         }
         RaftMessage::AppendEntriesReply(reply) => {
-            let next_idx = next_index
+            let peer_state = peers_state
                 .get_mut(&reply.from)
                 .expect("recieved a message from an unkown peer");
-            let match_idx = match_index
-                .get_mut(&reply.from)
-                .expect("recieved a message from an unkown peer");
+            let peer_next_idx = &mut peer_state.next_index;
+            let peer_match_idx = &mut peer_state.match_index;
 
             if reply.success {
-                let n_logentry_request = messages_len_per_follower
-                    .get_mut(&reply.from)
-                    .expect("recieved a message from an unkown peer")
-                    .pop_front()
-                    .unwrap_or(0); // TODO: should always be Some, since we always push a value before each append entries request
-
-                tracing::trace!("Received success from follower {} for {} entries", reply.from, n_logentry_request);
+                // TODO: should always be Some, since we always push a value before each append entries request
+                let request_len = peer_state.messages_len.pop_front().unwrap_or(0);
+                tracing::trace!("Received success from follower {} for {} entries", reply.from, request_len);
                 // follow has match index = 4, and next index = 5
                 // follow is excpecting 5, we send 3 entries: 5, 6, 7
                 // when we get a response, match is 7 (n_logentry_request + next_idx - 1) and next is 8 (match + 1)
-                *match_idx = n_logentry_request as u64 + *next_idx - 1;
-                *next_idx = *match_idx + 1;
+                *peer_match_idx = request_len as u64 + *peer_next_idx - 1;
+                *peer_next_idx = *peer_match_idx + 1;
 
-                check_for_commits(common_state, match_index, client_per_entry_group);
+                check_for_commits(common_state, peers_state, client_per_entry_group);
             } else {
-                *next_idx -= 1;
+                *peer_next_idx -= 1;
             }
         }
         // normal to recieve some extra votes if we just got elected but we don't care
@@ -225,14 +209,14 @@ where
 // commits all the log entries that are replicated on the majority of the nodes
 fn check_for_commits<LogEntry>(
     common_data: &mut CommonState<LogEntry>,
-    match_index: &BTreeMap<u32, u64>,
+    peers_state: &BTreeMap<u32, PeerState>,
     client_per_entry_group: &mut BTreeMap<usize, oneshot::Sender<AppendEntriesClientResponse<LogEntry>>>,
 ) where
     LogEntry: Send + Clone + 'static,
 {
     while common_data.commit_index + 1 <= common_data.log.len()
         && common_data.log.get_term(common_data.commit_index + 1) == common_data.current_term
-        && majority(match_index, common_data.commit_index as u64 + 1)
+        && majority(peers_state, common_data.commit_index as u64 + 1)
     {
         common_data.commit_index += 1;
     }
@@ -252,13 +236,13 @@ fn check_for_commits<LogEntry>(
 // returns true if most the followers have the log entry at index i
 // TODO: this could be optimized for large groups of entries being sent together
 // by getting the median match_index instead of checking all of them
-fn majority(match_index: &BTreeMap<u32, u64>, i: u64) -> bool {
+fn majority(peers_state: &BTreeMap<u32, PeerState>, i: u64) -> bool {
     let mut count = 1;  // count ourselves
-    for match_idx in match_index.values() {
-        if *match_idx >= i {
+    for peer_state in peers_state.values() {
+        if peer_state.match_index >= i {
             count += 1;
         }
     }
     // first +1 for self to get n servers, second +1 for majority
-    count >= (match_index.len() + 1) / 2 + 1
+    count >= (peers_state.len() + 1) / 2 + 1
 }

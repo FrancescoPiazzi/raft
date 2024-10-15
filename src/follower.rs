@@ -78,7 +78,7 @@ pub async fn follower<AB, LogEntry>(
                     common_state.log.append(request.entries, request.term);
                 }
                 if leader_commit > common_state.commit_index {
-                    tracing::debug!("leader commit is greater than follower commit, updating commit index");
+                    tracing::trace!("leader commit is greater than follower commit, updating commit index");
                     let new_commit_index = min(leader_commit, common_state.log.len());
                     common_state.commit_index = new_commit_index;
                     common_state.commit(&mut None);

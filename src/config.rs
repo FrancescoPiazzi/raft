@@ -3,7 +3,7 @@ use std::time::Duration;
 
 pub const DEFAULT_ELECTION_TIMEOUT: Range<Duration> = Duration::from_millis(500)..Duration::from_millis(700);
 
-pub const DEFAULT_HEARTBEAT_PERIOD: Duration = Duration::from_millis(400);
+pub const DEFAULT_HEARTBEAT_PERIOD: Duration = Duration::from_millis(100);
 
 // leader will resend the AppendEntries message to each follower
 // if it doesn't receive a response in this time
