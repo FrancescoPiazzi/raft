@@ -150,6 +150,7 @@ where
             // pretty sure it should be >, and if they are == we check commit_index
             if append_entries_rpc.term > common_state.current_term {
                 tracing::debug!("They are right, I'm stepping down");
+                common_state.current_term = append_entries_rpc.term;
                 return true;
             } else {
                 tracing::debug!("They are wrong, long live the king!");
@@ -158,7 +159,7 @@ where
         RaftMessage::RequestVoteRequest(request_vote_rpc) => {
             tracing::debug!("Received a request vote message as the leader, somone challenged me");
             // TOASK: should it be >= ?
-            // pretty sure it should be >, and if they are == we check commit_index
+            // TODO: pretty sure it should be >, and if they are == we check commit_index
             let step_down_from_lead = request_vote_rpc.term > common_state.current_term;
             let msg = request_vote::RequestVoteReply {
                 from: me,
@@ -171,6 +172,7 @@ where
             if step_down_from_lead {
                 tracing::debug!("They are right, granted vote and stepping down");
                 common_state.voted_for = Some(request_vote_rpc.candidate_id);
+                common_state.current_term = request_vote_rpc.term;
                 return true;
             } else {
                 tracing::debug!("They are wrong, long live the king!");

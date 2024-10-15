@@ -67,6 +67,8 @@ pub async fn follower<AB, LogEntry>(
                     continue;
                 }
 
+                common_state.current_term = request.term;
+
                 if !request.entries.is_empty() {
                     tracing::debug!("AppendEntries has entries to append");
                     common_state
