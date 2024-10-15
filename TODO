@@ -44,3 +44,4 @@ completed when:
 AT SOME POINT
 - [x] use a more generic type for log entries
 - [x] the maximum number of nodes is written in three different places but it must be the same in all of them, put them in a single place
+- [ ] struct to store follower state: match and next indexes, and message len queue

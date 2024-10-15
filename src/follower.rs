@@ -13,8 +13,8 @@ use crate::messages::append_entries::AppendEntriesReply;
 use crate::messages::request_vote::RequestVoteReply;
 use crate::messages::*;
 
-// follower nodes receive AppendEntry messages from the leader and duplicate them
-// returns when no message is received from the leader after some time
+/// follower nodes receive AppendEntry messages from the leader and duplicate them
+/// returns when no message is received from the leader after some time
 pub async fn follower<AB, LogEntry>(
     cell: &mut AB,
     me: u32,
@@ -51,7 +51,8 @@ pub async fn follower<AB, LogEntry>(
                     let _ = sender_ref.try_send(msg.into());
                     continue;
                 }
-                if request.prev_log_index > common_state.log.len() as u64 {
+                // +1 because if we have a log of length n, (indexes 1 to n), n+1 is valid
+                if request.prev_log_index > common_state.log.len() as u64 + 1 { 
                     tracing::debug!(
                         "🚫 Received an AppendEntries message with an invalid prev_log_index (received: {}, log length: {}), ignoring",
                         request.prev_log_index,
@@ -67,23 +68,22 @@ pub async fn follower<AB, LogEntry>(
                     continue;
                 }
 
+                if request.prev_log_index != common_state.log.len() as u64 + 1{   // Remove when log merge is implemented
+                    tracing::warn!("Merge is not implemented yet");
+                }
+
+                tracing::debug!("Received AppendEntries with {} log entries", request.entries.len());
                 if !request.entries.is_empty() {
                     tracing::debug!("Received AppendEntries with entries to append");
 
-                    let mut entries = request.entries.into_iter().map(|entry| (entry, request.term)).collect();
+                    common_state.log.append(request.entries, request.term);
+                    let leader_commit:usize  = request.leader_commit.try_into().unwrap();
 
-                    // TODO: entries should  not simply be added,
-                    // they should be compared to the current log and only added if they are not already present
-                    common_state.log.append(&mut entries);
-
-                    if let Some(leader_commit) = request.leader_commit {
-                        let commit_index = common_state.commit_index.unwrap_or(0) as u64;
-                        if leader_commit > commit_index {
-                            let new_commit_index = min(leader_commit, common_state.log.len() as u64 - 1);
-                            common_state.commit_index = Some(new_commit_index as usize);
-                        }
+                    if leader_commit > common_state.commit_index {
+                        let new_commit_index = min(leader_commit, common_state.log.len() - 1);
+                        common_state.commit_index = new_commit_index;
                     }
-                    common_state.commit(&mut None);
+                    common_state.commit(&mut None); // TODO: I think this will never commit anything unless the if is executed
                 }
 
                 leader_ref = Some(peers.get_mut(&request.leader_id).expect("all peers are known").clone());

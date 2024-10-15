@@ -10,7 +10,7 @@ use raft::server::raft_server;
 use raft::types::AppendEntriesClientResponse;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
-use tracing::{info_span, Instrument};
+use tracing::{info_span, instrument, Instrument};
 
 struct Server<LogEntry> {
     server_id: u32,
@@ -72,6 +72,7 @@ where
     }
 }
 
+#[instrument(name = "client" skip(servers, entries, period, timeout))]
 async fn send_entries_to_duplicate<LogEntry>(
     servers: &Vec<Server<LogEntry>>,
     entries: Vec<LogEntry>,
@@ -81,6 +82,8 @@ async fn send_entries_to_duplicate<LogEntry>(
     LogEntry: Clone + Send + 'static,
 {
     let mut interval = tokio::time::interval(period);
+    interval.tick().await;  // first tick is immediate, skip it
+
     let mut leader = servers[0].server_ref.clone();
 
     loop {
@@ -142,7 +145,7 @@ async fn main() {
         )
         .with_target(false)
         .with_line_number(true)
-        .with_max_level(tracing::Level::DEBUG)
+        .with_max_level(tracing::Level::TRACE)
         .init();
 
     let servers = spawn_raft_servers::<LogEntry>(5);
@@ -153,8 +156,8 @@ async fn main() {
     send_entries_to_duplicate(
         &servers,
         vec![1],
-        Duration::from_millis(500),
         Duration::from_millis(1000),
+        Duration::from_millis(2000),
     )
     .await;
 

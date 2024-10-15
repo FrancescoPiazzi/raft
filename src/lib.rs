@@ -1,3 +1,5 @@
+mod log;
+
 pub mod config;
 pub mod messages;
 pub mod server;

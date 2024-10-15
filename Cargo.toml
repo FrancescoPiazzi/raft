@@ -9,6 +9,6 @@ edition = "2021"
 actum = { git = "https://github.com/andreastedile/actum.git", rev="0e35afeb943eede4badbf2802c258737b0435da8" }
 rand = "0.8.4"
 futures = "0.3.30"
-tracing = { version = "0.1.40", default-features = false }
+tracing = { version = "0.1.40", features = ["attributes"] }
 tokio = { version = "1.37.0", features = ["full"] }
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
