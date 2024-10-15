@@ -12,10 +12,10 @@ use crate::messages::append_entries::AppendEntriesRequest;
 use crate::messages::*;
 use crate::types::AppendEntriesClientResponse;
 
-// the leader is the interface of the cluster to the external world
-// clients send messages to the leader, which is responsible for replicating them to the other nodes
-// after receiving confirmation from the majority of the nodes, the leader commits the message as agreed
-// returns when another leader or candidate with a higher term is detected
+/// the leader is the interface of the cluster to the external world
+/// clients send messages to the leader, which is responsible for replicating them to the other nodes
+/// after receiving confirmation from the majority of the nodes, the leader commits the message as agreed
+/// returns when another leader or candidate with a higher term is detected
 pub async fn leader<'a, AB, LogEntry>(
     cell: &mut AB,
     me: u32,
@@ -113,7 +113,6 @@ fn send_append_entries_request<LogEntry>(
         term: common_state.current_term,
         leader_id: me,
         prev_log_index: next_index,
-        // TODO: move all this if into a method in Log
         prev_log_term: if common_state.log.is_empty() {
             0
         } else {
@@ -231,9 +230,8 @@ fn check_for_commits<LogEntry>(
 ) where
     LogEntry: Send + Clone + 'static,
 {
-    // length check is probably useless but better safe than sorry TODO: pretty sure there should be a +1 somewhere here
-    while common_data.commit_index < common_data.log.len()
-        /* && common_data.log.get_term(common_data.commit_index) == common_data.current_term */ // TODO: this needs to be added, but for now it crashes when the first entry is added, prob an off by 1 error
+    while common_data.commit_index + 1 <= common_data.log.len()
+        && common_data.log.get_term(common_data.commit_index + 1) == common_data.current_term
         && majority(match_index, common_data.commit_index as u64 + 1)
     {
         common_data.commit_index += 1;
@@ -242,7 +240,7 @@ fn check_for_commits<LogEntry>(
     // TODO: this here does not help performance, but moving it out would mean taking
     // an empty parameter for "no reason"
     let mut newly_committed_entries = Some(Vec::new());
-    common_data.commit( &mut newly_committed_entries);
+    common_data.commit(&mut newly_committed_entries);
 
     for i in newly_committed_entries.unwrap() {
         if let Some(sender) = client_per_entry_group.remove(&i) {

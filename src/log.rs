@@ -59,6 +59,7 @@ impl<LogEntry> Log<LogEntry> {
         self.log.is_empty()
     }
 
+    // TODO: maybe return an Option
     pub fn get_term(&self, index: usize) -> u64 {
         if index <= 0 {
             panic!("{}", LOG_INDEX_STARTS_AT_1);

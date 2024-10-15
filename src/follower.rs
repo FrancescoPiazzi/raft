@@ -72,18 +72,16 @@ pub async fn follower<AB, LogEntry>(
                     tracing::warn!("Merge is not implemented yet");
                 }
 
-                tracing::debug!("Received AppendEntries with {} log entries", request.entries.len());
+                let leader_commit:usize  = request.leader_commit.try_into().unwrap();
                 if !request.entries.is_empty() {
-                    tracing::debug!("Received AppendEntries with entries to append");
-
+                    tracing::debug!("AppendEntries has entries to append");
                     common_state.log.append(request.entries, request.term);
-                    let leader_commit:usize  = request.leader_commit.try_into().unwrap();
-
-                    if leader_commit > common_state.commit_index {
-                        let new_commit_index = min(leader_commit, common_state.log.len() - 1);
-                        common_state.commit_index = new_commit_index;
-                    }
-                    common_state.commit(&mut None); // TODO: I think this will never commit anything unless the if is executed
+                }
+                if leader_commit > common_state.commit_index {
+                    tracing::debug!("leader commit is greater than follower commit, updating commit index");
+                    let new_commit_index = min(leader_commit, common_state.log.len());
+                    common_state.commit_index = new_commit_index;
+                    common_state.commit(&mut None);
                 }
 
                 leader_ref = Some(peers.get_mut(&request.leader_id).expect("all peers are known").clone());
