@@ -4,24 +4,24 @@
 - [x] Make lead duplicate messages and follow to listen and make their copies
 - [x] Write client node to send messages to the leader
 - [x] Followers tell client who the leader is if they recieve a message from a client
-- [ ] Make lead keep track of who received a certain update and commit it when a majority has it
+- [x] Make lead keep track of who received a certain update and commit it when a majority has it
 
 **Completed when:**
 - [x] The right leader is elected
-- [ ] Messages are received by the leader, duplicated, and committed
+- [x] Messages are received by the leader, duplicated, and committed
 
 
 # STEP 2: prepare for stuff to break
 - [x] Leader ping to check if it is alive, end of term and re-election if not
-- [ ] Implement resolutions for cases of lead-follow conflicts
+- [x] Implement resolutions for cases of lead-follow conflicts
 - [x] Update client node to change server if instructed to do so because it sent a request to a non-leader
-- [ ] Update client node to change server to another random one if requests are timing out
+- [x] Update client node to change server to another random one if requests are timing out
 
 **Completed when:**
 - [x] Nodes are able to detect when the leader is dead and elect a new one
-- [ ] Follow can update their log to match the leader's
+- [x] Follow can update their log to match the leader's
 - [x] Client node can figure out who is the leader and send messages only to it
-- [ ] Client node changes server if the current one is not responding
+- [x] Client node changes server if the current one is not responding
 
 
 # STEP 3: make stuff break
