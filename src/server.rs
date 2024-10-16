@@ -14,7 +14,7 @@ use crate::messages::*;
 
 pub async fn raft_server<AB, LogEntry>(
     mut cell: AB,
-    me: (u32, ActorRef<RaftMessage<LogEntry>>),
+    mut me: (u32, ActorRef<RaftMessage<LogEntry>>),
     n_peers: usize,
     election_timeout: Range<Duration>,
     heartbeat_period: Duration,
@@ -24,7 +24,7 @@ where
     AB: ActorBounds<RaftMessage<LogEntry>>,
     LogEntry: Send + Clone + 'static,
 {
-    check_parameters(n_peers, &election_timeout, &heartbeat_period, &replication_period);
+    check_parameters(&election_timeout, &heartbeat_period, &replication_period);
 
     let mut peers = BTreeMap::<u32, ActorRef<RaftMessage<LogEntry>>>::new();
     let mut message_stash = Vec::<RaftMessage<LogEntry>>::new();
@@ -49,11 +49,7 @@ where
     for message in message_stash {
         match message {
             RaftMessage::AddPeer(_) => unreachable!(),
-            RaftMessage::AppendEntriesRequest(_) => {}
-            RaftMessage::AppendEntriesReply(_) => {}
-            RaftMessage::RequestVoteRequest(_) => {}
-            RaftMessage::RequestVoteReply(_) => {}
-            RaftMessage::AppendEntriesClientRequest(_) => {}
+            _ => { let _ = me.1.try_send(message); }
         }
     }
 
@@ -86,12 +82,10 @@ where
 }
 
 fn check_parameters(
-    n_peers: usize,
     election_timeout: &Range<Duration>,
     heartbeat_period: &Duration,
     replication_period: &Duration,
 ) {
-    assert!(n_peers > 0, "must have at least one server");
     assert!(
         election_timeout.start < election_timeout.end,
         "election_timeout start must be less than end"
@@ -116,5 +110,74 @@ fn check_parameters(
             "election_timeout end is less than heartbeat_period, 
             this may cause followers to time out even when the leader is working"
         );
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use actum::actum;
+    use actum::prelude::*;
+    use tracing::info_span;
+    use tracing::Instrument;
+
+    use crate::messages::RaftMessage;
+    use crate::messages::append_entries::AppendEntriesRequest;
+    use crate::server::add_peer::AddPeer;
+    use crate::server::raft_server;
+
+    #[tokio::test]
+    async fn test_stash() 
+    {
+        let mut actor1 = actum::<RaftMessage<u64>, _, _>(move |cell, me| async move {
+            let actor = raft_server(
+                cell,
+                (0, me),
+                1,
+                Duration::from_millis(100)..Duration::from_millis(100),
+                Duration::from_millis(50),
+                Duration::from_millis(50),
+            )
+            .await;
+            actor
+        });
+
+        let actor2 = actum::<RaftMessage<u64>, _, _>(move |cell, me| async move {
+            let actor = raft_server(
+                cell,
+                (1, me),
+                1,
+                Duration::from_millis(100)..Duration::from_millis(100),
+                Duration::from_millis(50),
+                Duration::from_millis(50),
+            )
+            .await;
+            actor
+        });
+
+        let _handle1 = tokio::spawn(actor1.task.run_task().instrument(info_span!("test")));
+        let _handle2 = tokio::spawn(actor2.task.run_task().instrument(info_span!("test")));
+
+        let request = AppendEntriesRequest {
+            term: 1,
+            leader_id: 2,
+            prev_log_index: 0,
+            prev_log_term: 0,
+            entries: vec![],
+            leader_commit: 0,
+        };
+
+        let _ = actor1.m_ref.try_send(request.into());
+
+        // actor 1 should have stashed the message here TOASK: how do I check? Can I from here?
+
+        let _ = actor1.m_ref.try_send(AddPeer {
+            peer_id: 1,
+            peer_ref: actor2.m_ref.clone(),
+        }.into());
+
+        // actor 1 should have sent the message to itself here
     }
 }
