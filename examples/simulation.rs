@@ -1,15 +1,16 @@
+use std::collections::HashSet as Set;
 use std::time::Duration;
 
-use raft::state_machine::StateMachine;
 use raft::messages::append_entries_client::AppendEntriesClientRequest;
+use raft::state_machine::StateMachine;
 use raft::types::AppendEntriesClientResponse;
 use raft::util::{send_peer_refs, spawn_raft_servers, Server};
+use rand::seq::IteratorRandom;
 use tokio::sync::oneshot;
 use tracing::instrument;
 
-
 #[derive(Clone)]
-struct ExampleStateMachine{
+struct ExampleStateMachine {
     sum: u64,
 }
 
@@ -23,7 +24,7 @@ impl StateMachine<u64, bool> for ExampleStateMachine {
     fn apply(&mut self, entry: &u64) -> bool {
         self.sum += entry;
         tracing::debug!("State machine sum: {}", self.sum);
-        self.sum%2 == 0
+        self.sum % 2 == 0
     }
 }
 
@@ -31,7 +32,7 @@ impl StateMachine<u64, bool> for ExampleStateMachine {
 #[instrument(name = "client" skip(servers, entries, period, timeout))]
 async fn send_entries_to_duplicate<SMin>(
     servers: &Vec<Server<SMin>>,
-    entries: Vec<SMin>,
+    entries: Set<Vec<SMin>>,
     period: Duration,
     timeout: Duration,
 ) where
@@ -41,6 +42,7 @@ async fn send_entries_to_duplicate<SMin>(
     interval.tick().await; // first tick is immediate, skip it
 
     let mut leader = servers[0].server_ref.clone();
+    let mut rng = rand::thread_rng();
 
     loop {
         tracing::info!("Sending entries to replicate");
@@ -48,7 +50,7 @@ async fn send_entries_to_duplicate<SMin>(
         let (tx, rx) = oneshot::channel::<AppendEntriesClientResponse<SMin>>();
 
         let request = AppendEntriesClientRequest {
-            entries_to_replicate: entries.clone(),
+            entries_to_replicate: entries.iter().choose(&mut rng).unwrap().clone(),
             reply_to: tx,
         };
 
@@ -66,10 +68,10 @@ async fn send_entries_to_duplicate<SMin>(
             }
             Ok(Ok(Err(None))) | Err(_) => {
                 tracing::trace!(
-                    "Interrogated server does not know who the leader is or it did not answer, switch to another random node"
+                    "Interrogated server does not know who the leader is or it did not answer, 
+                    switching to another random node"
                 );
-                let new_leader_index = rand::random::<usize>() % servers.len();
-                leader = servers[new_leader_index].server_ref.clone();
+                leader = servers.iter().choose(&mut rng).unwrap().server_ref.clone();
                 continue;
             }
             Ok(Err(_)) => {
@@ -98,7 +100,7 @@ async fn main() {
 
     send_entries_to_duplicate(
         &servers,
-        vec![1],
+        Set::from([vec![1], vec![4, 5, 6], vec![2, 2]]),
         Duration::from_millis(1000),
         Duration::from_millis(2000),
     )

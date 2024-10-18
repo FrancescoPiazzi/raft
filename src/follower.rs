@@ -23,9 +23,10 @@ pub async fn follower<AB, SM, SMin, SMout>(
     common_state: &mut CommonState<SM, SMin, SMout>,
     election_timeout: Range<Duration>,
 ) where
-    SM: StateMachine<SMin, SMout>,
     AB: ActorBounds<RaftMessage<SMin>>,
+    SM: StateMachine<SMin, SMout> + Send,
     SMin: Clone + Send + 'static,
+    SMout: Send,
 {
     let election_timeout = thread_rng().gen_range(election_timeout);
     let mut leader_ref: Option<ActorRef<RaftMessage<SMin>>> = None;

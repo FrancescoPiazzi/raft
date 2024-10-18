@@ -1,9 +1,9 @@
 mod log;
 
 pub mod config;
-pub mod state_machine;
 pub mod messages;
 pub mod server;
+pub mod state_machine;
 
 pub mod candidate;
 pub mod common_state;

@@ -28,9 +28,10 @@ pub async fn leader<'a, AB, SM, SMin, SMout>(
     heartbeat_period: Duration,
     _replication_period: Duration,
 ) where
-    SM: StateMachine<SMin, SMout>,
+    SM: StateMachine<SMin, SMout> + Send,
     AB: ActorBounds<RaftMessage<SMin>>,
     SMin: Clone + Send + 'static,
+    SMout: Send,
 {
     let mut peers_state = BTreeMap::new();
     for (id, _) in peers.iter_mut() {
@@ -128,7 +129,7 @@ fn handle_message<SM, SMin, SMout>(
     message: RaftMessage<SMin>,
 ) -> bool
 where
-    SM: StateMachine<SMin, SMout>,
+    SM: StateMachine<SMin, SMout> + Send,
     SMin: Send + Clone + 'static,
 {
     tracing::trace!(message = ?message);
@@ -219,7 +220,7 @@ fn check_for_commits<SM, SMin, SMout>(
     peers_state: &BTreeMap<u32, PeerState>,
     client_per_entry_group: &mut BTreeMap<usize, oneshot::Sender<AppendEntriesClientResponse<SMin>>>,
 ) where
-    SM: StateMachine<SMin, SMout>,
+    SM: StateMachine<SMin, SMout> + Send,
     SMin: Clone,
 {
     let mut i = common_data.commit_index + 1;

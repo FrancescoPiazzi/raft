@@ -24,7 +24,7 @@ pub async fn raft_server<AB, SM, SMin, SMout>(
 ) -> AB
 where
     AB: ActorBounds<RaftMessage<SMin>>,
-    SM: StateMachine<SMin, SMout>,
+    SM: StateMachine<SMin, SMout> + Send,
     SMin: Send + Clone + 'static,
     SMout: Send + 'static,
 {
@@ -53,7 +53,9 @@ where
     for message in message_stash {
         match message {
             RaftMessage::AddPeer(_) => unreachable!(),
-            _ => { let _ = me.1.try_send(message); }
+            _ => {
+                let _ = me.1.try_send(message);
+            }
         }
     }
 
@@ -85,11 +87,7 @@ where
     }
 }
 
-fn check_parameters(
-    election_timeout: &Range<Duration>,
-    heartbeat_period: &Duration,
-    replication_period: &Duration,
-) {
+fn check_parameters(election_timeout: &Range<Duration>, heartbeat_period: &Duration, replication_period: &Duration) {
     assert!(
         election_timeout.start < election_timeout.end,
         "election_timeout start must be less than end"
@@ -117,7 +115,6 @@ fn check_parameters(
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
@@ -127,12 +124,11 @@ mod tests {
     use tracing::info_span;
     use tracing::Instrument;
 
-    use crate::messages::RaftMessage;
     use crate::messages::append_entries::AppendEntriesRequest;
+    use crate::messages::RaftMessage;
     use crate::server::add_peer::AddPeer;
     use crate::server::raft_server;
     use crate::state_machine::StateMachine;
-
 
     struct VoidStateMachine;
 
@@ -141,14 +137,13 @@ mod tests {
             VoidStateMachine
         }
     }
-    
+
     impl StateMachine<(), ()> for VoidStateMachine {
-        fn apply(&mut self, _: &()) -> () { }
+        fn apply(&mut self, _: &()) -> () {}
     }
 
     #[tokio::test]
-    async fn test_stash() 
-    {
+    async fn test_stash() {
         // TODO: make state machine clone and remember how to clone stuff into the closure
         let useless_state_machine_1 = VoidStateMachine::new();
         let useless_state_machine_2 = VoidStateMachine::new();
@@ -196,10 +191,13 @@ mod tests {
 
         // actor 1 should have stashed the message here TOASK: how do I check? Can I from here?
 
-        let _ = actor1.m_ref.try_send(AddPeer {
-            peer_id: 1,
-            peer_ref: actor2.m_ref.clone(),
-        }.into());
+        let _ = actor1.m_ref.try_send(
+            AddPeer {
+                peer_id: 1,
+                peer_ref: actor2.m_ref.clone(),
+            }
+            .into(),
+        );
 
         // actor 1 should have sent the message to itself here
     }

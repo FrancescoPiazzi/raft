@@ -24,7 +24,9 @@ pub async fn candidate<AB, SM, SMin, SMout>(
 ) -> bool
 where
     AB: ActorBounds<RaftMessage<SMin>>,
+    SM: Send,
     SMin: Clone + Send + 'static,
+    SMout: Send,
 {
     let election_won;
 
