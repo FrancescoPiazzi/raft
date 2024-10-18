@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use actum::drop_guard::ActorDropGuard;
 use actum::prelude::*;
-use raft::config::*;
+use raft::{config::*, state_machine::StateMachine};
 use raft::messages::add_peer::AddPeer;
 use raft::messages::append_entries_client::AppendEntriesClientRequest;
 use raft::messages::RaftMessage;
@@ -20,19 +20,45 @@ struct Server<LogEntry> {
     handle: JoinHandle<()>,
 }
 
-fn spawn_raft_servers<LogEntry>(n_servers: usize) -> Vec<Server<LogEntry>>
+#[derive(Clone)]
+struct ExampleStateMachine{
+    sum: u64,
+}
+
+impl ExampleStateMachine {
+    fn new() -> Self {
+        ExampleStateMachine { sum: 0 }
+    }
+}
+
+impl StateMachine<u64, bool> for ExampleStateMachine {
+    fn apply(&mut self, entry: &u64) -> bool {
+        self.sum += entry;
+        tracing::debug!("State machine sum: {}", self.sum);
+        self.sum%2 == 0
+    }
+}
+
+fn spawn_raft_servers<LogEntry, SM, StateMachineResult>(
+    n_servers: usize, 
+    state_machine: SM,
+) -> Vec<Server<LogEntry>>
 where
     LogEntry: Clone + Send + 'static,
+    SM: StateMachine<LogEntry, StateMachineResult> + Send + Clone + 'static,
+    StateMachineResult: Send + 'static,
 {
     let mut servers = Vec::with_capacity(n_servers);
 
     for id in 0..n_servers {
+        let state_machine = state_machine.clone();
         let actor = actum::<RaftMessage<LogEntry>, _, _>(move |cell, me| async move {
             let me = (id as u32, me);
             let actor = raft_server(
                 cell,
                 me,
                 n_servers - 1,
+                state_machine,
                 DEFAULT_ELECTION_TIMEOUT,
                 DEFAULT_HEARTBEAT_PERIOD,
                 DEFAULT_REPLICATION_PERIOD,
@@ -137,8 +163,6 @@ async fn send_entries_to_duplicate<LogEntry>(
 
 #[tokio::main]
 async fn main() {
-    type LogEntry = u64;
-
     tracing_subscriber::fmt()
         .with_span_events(
             tracing_subscriber::fmt::format::FmtSpan::NEW | tracing_subscriber::fmt::format::FmtSpan::CLOSE,
@@ -148,7 +172,7 @@ async fn main() {
         .with_max_level(tracing::Level::DEBUG)
         .init();
 
-    let servers = spawn_raft_servers::<LogEntry>(5);
+    let servers = spawn_raft_servers(5, ExampleStateMachine::new());
     send_peer_refs(&servers);
 
     tokio::time::sleep(Duration::from_millis(2500)).await; // give the servers a moment to elect a leader

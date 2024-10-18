@@ -11,18 +11,22 @@ use crate::common_state::CommonState;
 use crate::follower::follower;
 use crate::leader::leader;
 use crate::messages::*;
+use crate::state_machine::StateMachine;
 
-pub async fn raft_server<AB, LogEntry>(
+pub async fn raft_server<AB, LogEntry, SM, StateMachineResult>(
     mut cell: AB,
     mut me: (u32, ActorRef<RaftMessage<LogEntry>>),
     n_peers: usize,
+    state_machine: SM,
     election_timeout: Range<Duration>,
     heartbeat_period: Duration,
     replication_period: Duration,
 ) -> AB
 where
     AB: ActorBounds<RaftMessage<LogEntry>>,
+    SM: StateMachine<LogEntry, StateMachineResult> + Send + 'static,
     LogEntry: Send + Clone + 'static,
+    StateMachineResult: Send + 'static,
 {
     check_parameters(&election_timeout, &heartbeat_period, &replication_period);
 
@@ -44,7 +48,7 @@ where
         }
     }
 
-    let mut common_state = CommonState::new();
+    let mut common_state = CommonState::new(state_machine);
 
     for message in message_stash {
         match message {
@@ -127,15 +131,33 @@ mod tests {
     use crate::messages::append_entries::AppendEntriesRequest;
     use crate::server::add_peer::AddPeer;
     use crate::server::raft_server;
+    use crate::state_machine::StateMachine;
+
+
+    struct VoidStateMachine;
+
+    impl VoidStateMachine {
+        fn new() -> Self {
+            VoidStateMachine
+        }
+    }
+    
+    impl StateMachine<(), ()> for VoidStateMachine {
+        fn apply(&mut self, _: &()) -> () { }
+    }
 
     #[tokio::test]
     async fn test_stash() 
     {
-        let mut actor1 = actum::<RaftMessage<u64>, _, _>(move |cell, me| async move {
+        // TODO: make state machine clone and remember how to clone stuff into the closure
+        let useless_state_machine_1 = VoidStateMachine::new();
+        let useless_state_machine_2 = VoidStateMachine::new();
+        let mut actor1 = actum::<RaftMessage<()>, _, _>(move |cell, me| async move {
             let actor = raft_server(
                 cell,
                 (0, me),
                 1,
+                useless_state_machine_1,
                 Duration::from_millis(100)..Duration::from_millis(100),
                 Duration::from_millis(50),
                 Duration::from_millis(50),
@@ -144,11 +166,12 @@ mod tests {
             actor
         });
 
-        let actor2 = actum::<RaftMessage<u64>, _, _>(move |cell, me| async move {
+        let actor2 = actum::<RaftMessage<()>, _, _>(move |cell, me| async move {
             let actor = raft_server(
                 cell,
                 (1, me),
                 1,
+                useless_state_machine_2,
                 Duration::from_millis(100)..Duration::from_millis(100),
                 Duration::from_millis(50),
                 Duration::from_millis(50),

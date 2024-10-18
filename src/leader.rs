@@ -11,6 +11,7 @@ use tokio::task::JoinSet;
 use crate::common_state::CommonState;
 use crate::messages::append_entries::AppendEntriesRequest;
 use crate::messages::*;
+use crate::state_machine::StateMachine;
 use crate::types::AppendEntriesClientResponse;
 
 mod peer_state;
@@ -19,16 +20,17 @@ mod peer_state;
 /// clients send messages to the leader, which is responsible for replicating them to the other nodes
 /// after receiving confirmation from the majority of the nodes, the leader commits the message as agreed
 /// returns when another leader or candidate with a higher term is detected
-pub async fn leader<'a, AB, LogEntry>(
+pub async fn leader<'a, AB, LogEntry, SM, StateMachineResult>(
     cell: &mut AB,
     me: u32,
-    common_state: &mut CommonState<LogEntry>,
+    common_state: &mut CommonState<LogEntry, SM, StateMachineResult>,
     peers: &'a mut BTreeMap<u32, ActorRef<RaftMessage<LogEntry>>>,
     heartbeat_period: Duration,
     _replication_period: Duration,
 ) where
     AB: ActorBounds<RaftMessage<LogEntry>>,
     LogEntry: Clone + Send + 'static,
+    SM: StateMachine<LogEntry, StateMachineResult> + Send + 'static,
 {
     let mut peers_state = BTreeMap::new();
     for (id, _) in peers.iter_mut() {
@@ -85,9 +87,9 @@ pub async fn leader<'a, AB, LogEntry>(
     }
 }
 
-fn send_append_entries_request<LogEntry>(
+fn send_append_entries_request<LogEntry, SM, StateMachineResult>(
     me: u32,
-    common_state: &CommonState<LogEntry>,
+    common_state: &CommonState<LogEntry, SM, StateMachineResult>,
     messages_len: &mut Queue<usize>,
     follower_ref: &mut ActorRef<RaftMessage<LogEntry>>,
     next_index: u64,
@@ -117,9 +119,9 @@ fn send_append_entries_request<LogEntry>(
 
 // handles one message as leader
 // returns true if we have to go back to a follower state, false otherwise
-fn handle_message<LogEntry>(
+fn handle_message<LogEntry, SM, StateMachineResult>(
     me: u32,
-    common_state: &mut CommonState<LogEntry>,
+    common_state: &mut CommonState<LogEntry, SM, StateMachineResult>,
     peers: &mut BTreeMap<u32, ActorRef<RaftMessage<LogEntry>>>,
     peers_state: &mut BTreeMap<u32, PeerState>,
     client_per_entry_group: &mut BTreeMap<usize, oneshot::Sender<AppendEntriesClientResponse<LogEntry>>>,
@@ -127,6 +129,7 @@ fn handle_message<LogEntry>(
 ) -> bool
 where
     LogEntry: Send + Clone + 'static,
+    SM: StateMachine<LogEntry, StateMachineResult> + Send + 'static,
 {
     tracing::trace!(message = ?message);
 
@@ -211,12 +214,13 @@ where
 }
 
 // commits all the log entries that are replicated on the majority of the nodes
-fn check_for_commits<LogEntry>(
-    common_data: &mut CommonState<LogEntry>,
+fn check_for_commits<LogEntry, SM, StateMachineResult>(
+    common_data: &mut CommonState<LogEntry, SM, StateMachineResult>,
     peers_state: &BTreeMap<u32, PeerState>,
     client_per_entry_group: &mut BTreeMap<usize, oneshot::Sender<AppendEntriesClientResponse<LogEntry>>>,
 ) where
     LogEntry: Send + Clone + 'static,
+    SM: StateMachine<LogEntry, StateMachineResult> + Send + 'static,
 {
     let mut i = common_data.commit_index + 1;
     while i <= common_data.log.len()

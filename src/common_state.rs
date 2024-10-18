@@ -1,23 +1,31 @@
-use std::fmt::{Debug, Formatter, Result};
+use std::{fmt::{Debug, Formatter, Result}, marker::PhantomData};
 
-use crate::log::Log;
+use crate::{log::Log, state_machine};
+use crate::state_machine::StateMachine;
 
-pub struct CommonState<LogEntry> {
+pub struct CommonState<LogEntry, SM, StateMachineResult> 
+{
     pub current_term: u64,
     pub log: Log<LogEntry>,
+    pub state_machine: SM,
     pub commit_index: usize,
     pub last_applied: usize,
     pub voted_for: Option<u32>,
+    _phantom: PhantomData<StateMachineResult>,
 }
 
-impl<LogEntry> CommonState<LogEntry> {
-    pub const fn new() -> Self {
+impl<LogEntry, SM, StateMachineResult> CommonState<LogEntry, SM, StateMachineResult> 
+where SM: StateMachine<LogEntry, StateMachineResult>,
+{
+    pub const fn new(state_machine: SM) -> Self {
         Self {
             current_term: 0,
             log: Log::new(),
+            state_machine: state_machine,
             commit_index: 0,
             last_applied: 0,
             voted_for: None,
+            _phantom: PhantomData,
         }
     }
 
@@ -27,6 +35,7 @@ impl<LogEntry> CommonState<LogEntry> {
     pub fn commit(&mut self, newly_committed_entries: &mut Option<Vec<usize>>) {
         for i in (self.last_applied + 1)..=self.commit_index {
             tracing::info!("Applying log entry {}", i);
+            self.state_machine.apply(&self.log[i]);
             if let Some(inner) = newly_committed_entries {
                 inner.push(i);
             }
@@ -35,7 +44,7 @@ impl<LogEntry> CommonState<LogEntry> {
     }
 }
 
-impl<LogEntry> Debug for CommonState<LogEntry> {
+impl<LogEntry, SM, StateMachineResult> Debug for CommonState<LogEntry, SM, StateMachineResult> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         f.debug_struct("CommonState")
             .field("current_term", &self.current_term)
@@ -51,11 +60,5 @@ impl<LogEntry> Debug for CommonState<LogEntry> {
                 },
             )
             .finish()
-    }
-}
-
-impl<LogEntry> Default for CommonState<LogEntry> {
-    fn default() -> Self {
-        Self::new()
     }
 }

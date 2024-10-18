@@ -12,18 +12,20 @@ use crate::common_state::CommonState;
 use crate::messages::append_entries::AppendEntriesReply;
 use crate::messages::request_vote::RequestVoteReply;
 use crate::messages::*;
+use crate::state_machine::StateMachine;
 
 /// follower nodes receive AppendEntry messages from the leader and duplicate them
 /// returns when no message is received from the leader after some time
-pub async fn follower<AB, LogEntry>(
+pub async fn follower<AB, LogEntry, SM, StateMachineResult>(
     cell: &mut AB,
     me: u32,
     peers: &mut BTreeMap<u32, ActorRef<RaftMessage<LogEntry>>>,
-    common_state: &mut CommonState<LogEntry>,
+    common_state: &mut CommonState<LogEntry, SM, StateMachineResult>,
     election_timeout: Range<Duration>,
 ) where
     AB: ActorBounds<RaftMessage<LogEntry>>,
     LogEntry: Clone + Send + 'static,
+    SM: StateMachine<LogEntry, StateMachineResult> + Send + 'static,
 {
     let election_timeout = thread_rng().gen_range(election_timeout);
     let mut leader_ref: Option<ActorRef<RaftMessage<LogEntry>>> = None;

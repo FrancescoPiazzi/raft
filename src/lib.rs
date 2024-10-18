@@ -1,6 +1,7 @@
 mod log;
 
 pub mod config;
+pub mod state_machine;
 pub mod messages;
 pub mod server;
 
