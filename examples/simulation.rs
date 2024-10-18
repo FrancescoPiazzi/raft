@@ -12,9 +12,9 @@ use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 use tracing::{info_span, instrument, Instrument};
 
-struct Server<LogEntry> {
+struct Server<SMin> {
     server_id: u32,
-    server_ref: ActorRef<RaftMessage<LogEntry>>,
+    server_ref: ActorRef<RaftMessage<SMin>>,
     #[allow(dead_code)] // guard is not used but must remain in scope or the actors are dropped as well
     guard: ActorDropGuard,
     handle: JoinHandle<()>,
@@ -39,20 +39,20 @@ impl StateMachine<u64, bool> for ExampleStateMachine {
     }
 }
 
-fn spawn_raft_servers<LogEntry, SM, StateMachineResult>(
+fn spawn_raft_servers<SM, SMin, SMout>(
     n_servers: usize, 
     state_machine: SM,
-) -> Vec<Server<LogEntry>>
+) -> Vec<Server<SMin>>
 where
-    LogEntry: Clone + Send + 'static,
-    SM: StateMachine<LogEntry, StateMachineResult> + Send + Clone + 'static,
-    StateMachineResult: Send + 'static,
+    SM: StateMachine<SMin, SMout> + Send + Clone + 'static,
+    SMin: Clone + Send + 'static,
+    SMout: Send + 'static,
 {
     let mut servers = Vec::with_capacity(n_servers);
 
     for id in 0..n_servers {
         let state_machine = state_machine.clone();
-        let actor = actum::<RaftMessage<LogEntry>, _, _>(move |cell, me| async move {
+        let actor = actum::<RaftMessage<SMin>, _, _>(move |cell, me| async move {
             let me = (id as u32, me);
             let actor = raft_server(
                 cell,
@@ -77,9 +77,9 @@ where
     servers
 }
 
-fn send_peer_refs<LogEntry>(servers: &[Server<LogEntry>])
+fn send_peer_refs<SMin>(servers: &[Server<SMin>])
 where
-    LogEntry: Send + 'static,
+    SMin: Send + 'static,
 {
     for i in 0..servers.len() {
         let (server_id, mut server_ref) = {
@@ -99,13 +99,13 @@ where
 }
 
 #[instrument(name = "client" skip(servers, entries, period, timeout))]
-async fn send_entries_to_duplicate<LogEntry>(
-    servers: &Vec<Server<LogEntry>>,
-    entries: Vec<LogEntry>,
+async fn send_entries_to_duplicate<SMin>(
+    servers: &Vec<Server<SMin>>,
+    entries: Vec<SMin>,
     period: Duration,
     timeout: Duration,
 ) where
-    LogEntry: Clone + Send + 'static,
+    SMin: Clone + Send + 'static,
 {
     let mut interval = tokio::time::interval(period);
     interval.tick().await; // first tick is immediate, skip it
@@ -115,7 +115,7 @@ async fn send_entries_to_duplicate<LogEntry>(
     loop {
         tracing::info!("Sending entries to replicate");
 
-        let (tx, rx) = oneshot::channel::<AppendEntriesClientResponse<LogEntry>>();
+        let (tx, rx) = oneshot::channel::<AppendEntriesClientResponse<SMin>>();
 
         let request = AppendEntriesClientRequest {
             entries_to_replicate: entries.clone(),

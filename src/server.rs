@@ -13,9 +13,9 @@ use crate::leader::leader;
 use crate::messages::*;
 use crate::state_machine::StateMachine;
 
-pub async fn raft_server<AB, LogEntry, SM, StateMachineResult>(
+pub async fn raft_server<AB, SM, SMin, SMout>(
     mut cell: AB,
-    mut me: (u32, ActorRef<RaftMessage<LogEntry>>),
+    mut me: (u32, ActorRef<RaftMessage<SMin>>),
     n_peers: usize,
     state_machine: SM,
     election_timeout: Range<Duration>,
@@ -23,15 +23,15 @@ pub async fn raft_server<AB, LogEntry, SM, StateMachineResult>(
     replication_period: Duration,
 ) -> AB
 where
-    AB: ActorBounds<RaftMessage<LogEntry>>,
-    SM: StateMachine<LogEntry, StateMachineResult> + Send + 'static,
-    LogEntry: Send + Clone + 'static,
-    StateMachineResult: Send + 'static,
+    AB: ActorBounds<RaftMessage<SMin>>,
+    SM: StateMachine<SMin, SMout>,
+    SMin: Send + Clone + 'static,
+    SMout: Send + 'static,
 {
     check_parameters(&election_timeout, &heartbeat_period, &replication_period);
 
-    let mut peers = BTreeMap::<u32, ActorRef<RaftMessage<LogEntry>>>::new();
-    let mut message_stash = Vec::<RaftMessage<LogEntry>>::new();
+    let mut peers = BTreeMap::<u32, ActorRef<RaftMessage<SMin>>>::new();
+    let mut message_stash = Vec::<RaftMessage<SMin>>::new();
 
     tracing::trace!("obtaining peer references");
 

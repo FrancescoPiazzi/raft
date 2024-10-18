@@ -15,16 +15,16 @@ use crate::messages::*;
 // if they receive a majority of votes, they become the leader
 // if they receive a message from a node with a higher term, they become a follower
 // returns true if the election was won, false if it was lost
-pub async fn candidate<AB, LogEntry, SM, StateMachineResult>(
+pub async fn candidate<AB, SM, SMin, SMout>(
     cell: &mut AB,
     me: u32,
-    common_data: &mut CommonState<LogEntry, SM, StateMachineResult>,
-    peers: &mut BTreeMap<u32, ActorRef<RaftMessage<LogEntry>>>,
+    common_data: &mut CommonState<SM, SMin, SMout>,
+    peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin>>>,
     election_timeout: Range<Duration>,
 ) -> bool
 where
-    AB: ActorBounds<RaftMessage<LogEntry>>,
-    LogEntry: Clone + Send + 'static,
+    AB: ActorBounds<RaftMessage<SMin>>,
+    SMin: Clone + Send + 'static,
 {
     let election_won;
 

@@ -4,12 +4,12 @@ use tokio::sync::oneshot;
 
 use crate::types::AppendEntriesClientResponse;
 
-pub struct AppendEntriesClientRequest<LogEntry> {
-    pub reply_to: oneshot::Sender<AppendEntriesClientResponse<LogEntry>>,
-    pub entries_to_replicate: Vec<LogEntry>,
+pub struct AppendEntriesClientRequest<SMin> {
+    pub reply_to: oneshot::Sender<AppendEntriesClientResponse<SMin>>,
+    pub entries_to_replicate: Vec<SMin>,
 }
 
-impl<LogEntry> Debug for AppendEntriesClientRequest<LogEntry> {
+impl<SMin> Debug for AppendEntriesClientRequest<SMin> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("AppendEntriesClientRequest").finish_non_exhaustive()
     }

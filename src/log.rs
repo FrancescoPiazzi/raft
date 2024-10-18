@@ -4,13 +4,13 @@ use std::ops::{Index, IndexMut, RangeFrom};
 const LOG_INDEX_STARTS_AT_1: &str = "Log index starts at 1";
 
 /// 1-indexed log to store log entries along with the term they were added in
-pub struct Log<LogEntry> {
-    log: Vec<LogEntry>,
+pub struct Log<SMin> {
+    log: Vec<SMin>,
     terms: Vec<u64>,
 }
 
-impl<LogEntry> Index<usize> for Log<LogEntry> {
-    type Output = LogEntry;
+impl<SMin> Index<usize> for Log<SMin> {
+    type Output = SMin;
 
     fn index(&self, index: usize) -> &Self::Output {
         if index == 0 {
@@ -20,11 +20,11 @@ impl<LogEntry> Index<usize> for Log<LogEntry> {
     }
 }
 
-impl<LogEntry> Index<RangeFrom<usize>> for Log<LogEntry>
+impl<SMin> Index<RangeFrom<usize>> for Log<SMin>
 where
-    LogEntry: Clone,
+    SMin: Clone,
 {
-    type Output = [LogEntry];
+    type Output = [SMin];
 
     fn index(&self, index: RangeFrom<usize>) -> &Self::Output {
         if index.start == 0 {
@@ -35,7 +35,7 @@ where
     }
 }
 
-impl<LogEntry> IndexMut<usize> for Log<LogEntry> {
+impl<SMin> IndexMut<usize> for Log<SMin> {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         if index == 0 {
             panic!("{}", LOG_INDEX_STARTS_AT_1);
@@ -44,7 +44,7 @@ impl<LogEntry> IndexMut<usize> for Log<LogEntry> {
     }
 }
 
-impl<LogEntry> Log<LogEntry> {
+impl<SMin> Log<SMin> {
     pub const fn new() -> Self {
         Self {
             log: Vec::new(),
@@ -67,11 +67,11 @@ impl<LogEntry> Log<LogEntry> {
         self.terms[index - 1]
     }
 
-    pub fn append(&mut self, entries: Vec<LogEntry>, term: u64) {
+    pub fn append(&mut self, entries: Vec<SMin>, term: u64) {
         self.insert(entries, self.len() as u64, term);
     }
 
-    pub fn insert(&mut self, mut entries: Vec<LogEntry>, prev_log_index: u64, term: u64) {
+    pub fn insert(&mut self, mut entries: Vec<SMin>, prev_log_index: u64, term: u64) {
         assert!(prev_log_index as usize <= self.log.len(), "Raft logs cannot have holes");
 
         let insert_index = prev_log_index as usize;
@@ -92,7 +92,7 @@ impl<LogEntry> Log<LogEntry> {
     }
 }
 
-impl<LogEntry> Default for Log<LogEntry> {
+impl<SMin> Default for Log<SMin> {
     fn default() -> Self {
         Self::new()
     }

@@ -1,15 +1,15 @@
 use std::fmt::{Debug, Formatter};
 
-pub struct AppendEntriesRequest<LogEntry> {
+pub struct AppendEntriesRequest<SMin> {
     pub term: u64,
     pub leader_id: u32,
     pub prev_log_index: u64,
     pub prev_log_term: u64,
-    pub entries: Vec<LogEntry>,
+    pub entries: Vec<SMin>,
     pub leader_commit: u64,
 }
 
-impl<LogEntry> Debug for AppendEntriesRequest<LogEntry> {
+impl<SMin> Debug for AppendEntriesRequest<SMin> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("AppendEntriesRequest")
             .field("term", &self.term)

@@ -1,21 +1,20 @@
 use std::{fmt::{Debug, Formatter, Result}, marker::PhantomData};
 
-use crate::{log::Log, state_machine};
+use crate::log::Log;
 use crate::state_machine::StateMachine;
 
-pub struct CommonState<LogEntry, SM, StateMachineResult> 
+pub struct CommonState<SM, SMin, SMout> 
 {
     pub current_term: u64,
-    pub log: Log<LogEntry>,
+    pub log: Log<SMin>,
     pub state_machine: SM,
     pub commit_index: usize,
     pub last_applied: usize,
     pub voted_for: Option<u32>,
-    _phantom: PhantomData<StateMachineResult>,
+    _phantom: PhantomData<SMout>,
 }
 
-impl<LogEntry, SM, StateMachineResult> CommonState<LogEntry, SM, StateMachineResult> 
-where SM: StateMachine<LogEntry, StateMachineResult>,
+impl<SM, SMin, SMout> CommonState<SM, SMin, SMout> 
 {
     pub const fn new(state_machine: SM) -> Self {
         Self {
@@ -32,7 +31,9 @@ where SM: StateMachine<LogEntry, StateMachineResult>,
     /// commit log entries up to the leader's commit index
     /// the entire common_data object is taken even if for now only the commit_index and last_applied are used
     /// because in the future I will want to access the log entries to actually apply them
-    pub fn commit(&mut self, newly_committed_entries: &mut Option<Vec<usize>>) {
+    pub fn commit(&mut self, newly_committed_entries: &mut Option<Vec<usize>>) 
+    where SM: StateMachine<SMin, SMout>
+    {
         for i in (self.last_applied + 1)..=self.commit_index {
             tracing::info!("Applying log entry {}", i);
             self.state_machine.apply(&self.log[i]);
@@ -44,7 +45,7 @@ where SM: StateMachine<LogEntry, StateMachineResult>,
     }
 }
 
-impl<LogEntry, SM, StateMachineResult> Debug for CommonState<LogEntry, SM, StateMachineResult> {
+impl<SM, SMin, SMout> Debug for CommonState<SM, SMin, SMout> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         f.debug_struct("CommonState")
             .field("current_term", &self.current_term)

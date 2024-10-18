@@ -10,16 +10,16 @@ use crate::messages::append_entries::{AppendEntriesReply, AppendEntriesRequest};
 use crate::messages::append_entries_client::AppendEntriesClientRequest;
 use crate::messages::request_vote::{RequestVoteReply, RequestVoteRequest};
 
-pub enum RaftMessage<LogEntry> {
-    AddPeer(AddPeer<LogEntry>),
-    AppendEntriesRequest(AppendEntriesRequest<LogEntry>),
+pub enum RaftMessage<SMin> {
+    AddPeer(AddPeer<SMin>),
+    AppendEntriesRequest(AppendEntriesRequest<SMin>),
     AppendEntriesReply(AppendEntriesReply),
     RequestVoteRequest(RequestVoteRequest),
     RequestVoteReply(RequestVoteReply),
-    AppendEntriesClientRequest(AppendEntriesClientRequest<LogEntry>),
+    AppendEntriesClientRequest(AppendEntriesClientRequest<SMin>),
 }
 
-impl<LogEntry> Debug for RaftMessage<LogEntry> {
+impl<SMin> Debug for RaftMessage<SMin> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::AddPeer(_) => "Add peer".fmt(f),
@@ -32,38 +32,38 @@ impl<LogEntry> Debug for RaftMessage<LogEntry> {
     }
 }
 
-impl<LogEntry> From<AddPeer<LogEntry>> for RaftMessage<LogEntry> {
-    fn from(value: AddPeer<LogEntry>) -> Self {
+impl<SMin> From<AddPeer<SMin>> for RaftMessage<SMin> {
+    fn from(value: AddPeer<SMin>) -> Self {
         Self::AddPeer(value)
     }
 }
 
-impl<LogEntry> From<AppendEntriesRequest<LogEntry>> for RaftMessage<LogEntry> {
-    fn from(value: AppendEntriesRequest<LogEntry>) -> Self {
+impl<SMin> From<AppendEntriesRequest<SMin>> for RaftMessage<SMin> {
+    fn from(value: AppendEntriesRequest<SMin>) -> Self {
         Self::AppendEntriesRequest(value)
     }
 }
 
-impl<LogEntry> From<AppendEntriesReply> for RaftMessage<LogEntry> {
+impl<SMin> From<AppendEntriesReply> for RaftMessage<SMin> {
     fn from(value: AppendEntriesReply) -> Self {
         Self::AppendEntriesReply(value)
     }
 }
 
-impl<LogEntry> From<RequestVoteRequest> for RaftMessage<LogEntry> {
+impl<SMin> From<RequestVoteRequest> for RaftMessage<SMin> {
     fn from(value: RequestVoteRequest) -> Self {
         Self::RequestVoteRequest(value)
     }
 }
 
-impl<LogEntry> From<RequestVoteReply> for RaftMessage<LogEntry> {
+impl<SMin> From<RequestVoteReply> for RaftMessage<SMin> {
     fn from(value: RequestVoteReply) -> Self {
         Self::RequestVoteReply(value)
     }
 }
 
-impl<LogEntry> From<AppendEntriesClientRequest<LogEntry>> for RaftMessage<LogEntry> {
-    fn from(value: AppendEntriesClientRequest<LogEntry>) -> Self {
+impl<SMin> From<AppendEntriesClientRequest<SMin>> for RaftMessage<SMin> {
+    fn from(value: AppendEntriesClientRequest<SMin>) -> Self {
         Self::AppendEntriesClientRequest(value)
     }
 }

@@ -16,19 +16,19 @@ use crate::state_machine::StateMachine;
 
 /// follower nodes receive AppendEntry messages from the leader and duplicate them
 /// returns when no message is received from the leader after some time
-pub async fn follower<AB, LogEntry, SM, StateMachineResult>(
+pub async fn follower<AB, SM, SMin, SMout>(
     cell: &mut AB,
     me: u32,
-    peers: &mut BTreeMap<u32, ActorRef<RaftMessage<LogEntry>>>,
-    common_state: &mut CommonState<LogEntry, SM, StateMachineResult>,
+    peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin>>>,
+    common_state: &mut CommonState<SM, SMin, SMout>,
     election_timeout: Range<Duration>,
 ) where
-    AB: ActorBounds<RaftMessage<LogEntry>>,
-    LogEntry: Clone + Send + 'static,
-    SM: StateMachine<LogEntry, StateMachineResult> + Send + 'static,
+    SM: StateMachine<SMin, SMout>,
+    AB: ActorBounds<RaftMessage<SMin>>,
+    SMin: Clone + Send + 'static,
 {
     let election_timeout = thread_rng().gen_range(election_timeout);
-    let mut leader_ref: Option<ActorRef<RaftMessage<LogEntry>>> = None;
+    let mut leader_ref: Option<ActorRef<RaftMessage<SMin>>> = None;
 
     loop {
         let Ok(message) = timeout(election_timeout, cell.recv()).await else {

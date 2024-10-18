@@ -20,17 +20,17 @@ mod peer_state;
 /// clients send messages to the leader, which is responsible for replicating them to the other nodes
 /// after receiving confirmation from the majority of the nodes, the leader commits the message as agreed
 /// returns when another leader or candidate with a higher term is detected
-pub async fn leader<'a, AB, LogEntry, SM, StateMachineResult>(
+pub async fn leader<'a, AB, SM, SMin, SMout>(
     cell: &mut AB,
     me: u32,
-    common_state: &mut CommonState<LogEntry, SM, StateMachineResult>,
-    peers: &'a mut BTreeMap<u32, ActorRef<RaftMessage<LogEntry>>>,
+    common_state: &mut CommonState<SM, SMin, SMout>,
+    peers: &'a mut BTreeMap<u32, ActorRef<RaftMessage<SMin>>>,
     heartbeat_period: Duration,
     _replication_period: Duration,
 ) where
-    AB: ActorBounds<RaftMessage<LogEntry>>,
-    LogEntry: Clone + Send + 'static,
-    SM: StateMachine<LogEntry, StateMachineResult> + Send + 'static,
+    SM: StateMachine<SMin, SMout>,
+    AB: ActorBounds<RaftMessage<SMin>>,
+    SMin: Clone + Send + 'static,
 {
     let mut peers_state = BTreeMap::new();
     for (id, _) in peers.iter_mut() {
@@ -47,7 +47,7 @@ pub async fn leader<'a, AB, LogEntry, SM, StateMachineResult>(
     }
 
     // Tracks the oneshot that we have to answer on per entry group
-    let mut client_per_entry_group = BTreeMap::<usize, oneshot::Sender<AppendEntriesClientResponse<LogEntry>>>::new();
+    let mut client_per_entry_group = BTreeMap::<usize, oneshot::Sender<AppendEntriesClientResponse<SMin>>>::new();
 
     loop {
         tokio::select! {
@@ -87,21 +87,21 @@ pub async fn leader<'a, AB, LogEntry, SM, StateMachineResult>(
     }
 }
 
-fn send_append_entries_request<LogEntry, SM, StateMachineResult>(
+fn send_append_entries_request<SM, SMin, SMout>(
     me: u32,
-    common_state: &CommonState<LogEntry, SM, StateMachineResult>,
+    common_state: &CommonState<SM, SMin, SMout>,
     messages_len: &mut Queue<usize>,
-    follower_ref: &mut ActorRef<RaftMessage<LogEntry>>,
+    follower_ref: &mut ActorRef<RaftMessage<SMin>>,
     next_index: u64,
 ) where
-    LogEntry: Clone + Send + 'static,
+    SMin: Clone + Send + 'static,
 {
     let entries_to_send = common_state.log[next_index as usize..].to_vec();
 
     messages_len.push_back(entries_to_send.len());
     tracing::trace!("Sending {} entries to follower", entries_to_send.len());
 
-    let request = AppendEntriesRequest::<LogEntry> {
+    let request = AppendEntriesRequest::<SMin> {
         term: common_state.current_term,
         leader_id: me,
         prev_log_index: next_index - 1,
@@ -119,17 +119,17 @@ fn send_append_entries_request<LogEntry, SM, StateMachineResult>(
 
 // handles one message as leader
 // returns true if we have to go back to a follower state, false otherwise
-fn handle_message<LogEntry, SM, StateMachineResult>(
+fn handle_message<SM, SMin, SMout>(
     me: u32,
-    common_state: &mut CommonState<LogEntry, SM, StateMachineResult>,
-    peers: &mut BTreeMap<u32, ActorRef<RaftMessage<LogEntry>>>,
+    common_state: &mut CommonState<SM, SMin, SMout>,
+    peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin>>>,
     peers_state: &mut BTreeMap<u32, PeerState>,
-    client_per_entry_group: &mut BTreeMap<usize, oneshot::Sender<AppendEntriesClientResponse<LogEntry>>>,
-    message: RaftMessage<LogEntry>,
+    client_per_entry_group: &mut BTreeMap<usize, oneshot::Sender<AppendEntriesClientResponse<SMin>>>,
+    message: RaftMessage<SMin>,
 ) -> bool
 where
-    LogEntry: Send + Clone + 'static,
-    SM: StateMachine<LogEntry, StateMachineResult> + Send + 'static,
+    SM: StateMachine<SMin, SMout>,
+    SMin: Send + Clone + 'static,
 {
     tracing::trace!(message = ?message);
 
@@ -214,13 +214,13 @@ where
 }
 
 // commits all the log entries that are replicated on the majority of the nodes
-fn check_for_commits<LogEntry, SM, StateMachineResult>(
-    common_data: &mut CommonState<LogEntry, SM, StateMachineResult>,
+fn check_for_commits<SM, SMin, SMout>(
+    common_data: &mut CommonState<SM, SMin, SMout>,
     peers_state: &BTreeMap<u32, PeerState>,
-    client_per_entry_group: &mut BTreeMap<usize, oneshot::Sender<AppendEntriesClientResponse<LogEntry>>>,
+    client_per_entry_group: &mut BTreeMap<usize, oneshot::Sender<AppendEntriesClientResponse<SMin>>>,
 ) where
-    LogEntry: Send + Clone + 'static,
-    SM: StateMachine<LogEntry, StateMachineResult> + Send + 'static,
+    SM: StateMachine<SMin, SMout>,
+    SMin: Clone,
 {
     let mut i = common_data.commit_index + 1;
     while i <= common_data.log.len()
