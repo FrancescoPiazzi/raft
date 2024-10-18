@@ -27,6 +27,7 @@ impl StateMachine<u64, bool> for ExampleStateMachine {
     }
 }
 
+/// example of a client that sends groups of random entries to be replicated
 #[instrument(name = "client" skip(servers, entries, period, timeout))]
 async fn send_entries_to_duplicate<SMin>(
     servers: &Vec<Server<SMin>>,
@@ -53,38 +54,27 @@ async fn send_entries_to_duplicate<SMin>(
 
         let _ = leader.try_send(request.into());
 
-        // these are too many nested Results and Options but I don't know how to reduce them without losing expressiveness
+        // these are too many nested Results but I don't know how to reduce them without losing expressiveness
         match tokio::time::timeout(timeout, rx).await {
-            // we recieved an answer
-            Ok(Ok(response)) => match response {
-                Ok(_) => {
-                    tracing::info!("Recieved confirmation of successful entry replication");
-                    interval.tick().await;
-                }
-                Err(Some(new_leader_ref)) => {
-                    tracing::trace!("interrogated server is not the leader, switching to the indicated one");
-                    leader = new_leader_ref;
-                }
-                Err(None) => {
-                    tracing::trace!(
-                        "interrogated server does not know who the leader is, switch to another random node"
-                    );
-                    let new_leader_index = rand::random::<usize>() % servers.len();
-                    leader = servers[new_leader_index].server_ref.clone();
-                    continue;
-                }
-            },
-            // channel closed, break the loop
+            Ok(Ok(Ok(_))) => {
+                tracing::info!("Recieved confirmation of successful entry replication");
+                interval.tick().await;
+            }
+            Ok(Ok(Err(Some(new_leader_ref)))) => {
+                tracing::trace!("Interrogated server is not the leader, switching to the indicated one");
+                leader = new_leader_ref;
+            }
+            Ok(Ok(Err(None))) | Err(_) => {
+                tracing::trace!(
+                    "Interrogated server does not know who the leader is or it did not answer, switch to another random node"
+                );
+                let new_leader_index = rand::random::<usize>() % servers.len();
+                leader = servers[new_leader_index].server_ref.clone();
+                continue;
+            }
             Ok(Err(_)) => {
                 tracing::error!("Channel closed, exiting");
                 break;
-            }
-            // no response, switch to another random node
-            Err(e) => {
-                tracing::warn!("No response from the interrogated server, switching to another random node");
-                tracing::warn!("Error: {:?}", e);
-                let new_leader_index = rand::random::<usize>() % servers.len();
-                leader = servers[new_leader_index].server_ref.clone();
             }
         }
     }
