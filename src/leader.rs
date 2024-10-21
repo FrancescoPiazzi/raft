@@ -150,9 +150,9 @@ where
         }
         RaftMessage::AppendEntriesRequest(append_entries_rpc) => {
             tracing::debug!("Received an AppendEntries message as the leader, somone challenged me");
-            if append_entries_rpc.term > common_state.current_term ||
-                (append_entries_rpc.term == common_state.current_term &&
-                append_entries_rpc.leader_commit >= common_state.commit_index as u64)
+            if append_entries_rpc.term > common_state.current_term
+                || (append_entries_rpc.term == common_state.current_term
+                    && append_entries_rpc.leader_commit >= common_state.commit_index as u64)
             {
                 tracing::debug!("They are right, I'm stepping down");
                 common_state.current_term = append_entries_rpc.term;
