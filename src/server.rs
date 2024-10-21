@@ -117,6 +117,7 @@ fn check_parameters(election_timeout: &Range<Duration>, heartbeat_period: &Durat
 
 #[cfg(test)]
 mod tests {
+    use std::clone;
     use std::time::Duration;
 
     use actum::actum;
@@ -130,6 +131,7 @@ mod tests {
     use crate::server::raft_server;
     use crate::state_machine::StateMachine;
 
+    #[derive(Clone)]
     struct VoidStateMachine;
 
     impl VoidStateMachine {
@@ -144,15 +146,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_stash() {
-        // TODO: make state machine clone and remember how to clone stuff into the closure
-        let useless_state_machine_1 = VoidStateMachine::new();
-        let useless_state_machine_2 = VoidStateMachine::new();
+        let void_state_machine_1 = VoidStateMachine::new();
+        let void_state_machine_2 = void_state_machine_1.clone();
         let mut actor1 = actum::<RaftMessage<()>, _, _>(move |cell, me| async move {
             let actor = raft_server(
                 cell,
                 (0, me),
                 1,
-                useless_state_machine_1,
+                void_state_machine_1,
                 Duration::from_millis(100)..Duration::from_millis(100),
                 Duration::from_millis(50),
                 Duration::from_millis(50),
@@ -166,7 +167,7 @@ mod tests {
                 cell,
                 (1, me),
                 1,
-                useless_state_machine_2,
+                void_state_machine_2,
                 Duration::from_millis(100)..Duration::from_millis(100),
                 Duration::from_millis(50),
                 Duration::from_millis(50),
