@@ -117,7 +117,6 @@ fn check_parameters(election_timeout: &Range<Duration>, heartbeat_period: &Durat
 
 #[cfg(test)]
 mod tests {
-    use std::clone;
     use std::time::Duration;
 
     use actum::actum;

@@ -150,9 +150,10 @@ where
         }
         RaftMessage::AppendEntriesRequest(append_entries_rpc) => {
             tracing::debug!("Received an AppendEntries message as the leader, somone challenged me");
-            // TOASK: should it be >= ?
-            // pretty sure it should be >, and if they are == we check commit_index
-            if append_entries_rpc.term > common_state.current_term {
+            if append_entries_rpc.term > common_state.current_term ||
+                (append_entries_rpc.term == common_state.current_term &&
+                append_entries_rpc.leader_commit >= common_state.commit_index as u64)
+            {
                 tracing::debug!("They are right, I'm stepping down");
                 common_state.current_term = append_entries_rpc.term;
                 return true;
@@ -162,8 +163,6 @@ where
         }
         RaftMessage::RequestVoteRequest(request_vote_rpc) => {
             tracing::debug!("Received a request vote message as the leader, somone challenged me");
-            // TOASK: should it be >= ?
-            // TODO: pretty sure it should be >, and if they are == we check commit_index
             let step_down_from_lead = request_vote_rpc.term > common_state.current_term;
             let msg = request_vote::RequestVoteReply {
                 from: me,
@@ -245,8 +244,8 @@ fn check_for_commits<SM, SMin, SMout>(
 }
 
 // returns true if most the followers have the log entry at index i
-// TODO: this could be optimized for large groups of entries being sent together
-// by getting the median match_index instead of checking all of them
+// TOASK: this could be optimized for large groups of entries being sent together
+// by getting the median match_index instead of checking all of them, worth it?
 fn majority(peers_state: &BTreeMap<u32, PeerState>, i: u64) -> bool {
     let mut count = 1; // count ourselves
     for peer_state in peers_state.values() {

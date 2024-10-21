@@ -76,10 +76,9 @@ where
                         break 'candidate;
                     }
                 }
-                // TOASK: >= or > ?
                 // reminder: candidates never vote for others, as they have already voted for themselves
                 RaftMessage::RequestVoteRequest(request_vote_rpc) => {
-                    if request_vote_rpc.term >= common_data.current_term {
+                    if request_vote_rpc.term > common_data.current_term {
                         election_won = false;
                         common_data.current_term = request_vote_rpc.term;
                         break 'candidate;

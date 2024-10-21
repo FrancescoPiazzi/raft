@@ -44,12 +44,7 @@ pub async fn follower<AB, SM, SMin, SMout>(
             RaftMessage::AppendEntriesRequest(request) => {
                 if request.term < common_state.current_term {
                     tracing::debug!("🚫 Received an AppendEntries message with an outdated term, ignoring");
-                    let msg = AppendEntriesReply {
-                        //TOASK: this is duplicated in the next if, should I make it into a function?
-                        from: me,
-                        term: common_state.current_term,
-                        success: false,
-                    };
+                    let msg = AppendEntriesReply::new(me, common_state.current_term, false);
                     let sender_ref = peers.get_mut(&request.leader_id).expect("all peers are known");
                     let _ = sender_ref.try_send(msg.into());
                     continue;
@@ -60,11 +55,7 @@ pub async fn follower<AB, SM, SMin, SMout>(
                         request.prev_log_index,
                         common_state.log.len()
                     );
-                    let msg = AppendEntriesReply {
-                        from: me,
-                        term: common_state.current_term,
-                        success: false,
-                    };
+                    let msg = AppendEntriesReply::new(me, common_state.current_term, false);
                     let sender_ref = peers.get_mut(&request.leader_id).expect("all peers are known");
                     let _ = sender_ref.try_send(msg.into());
                     continue;
