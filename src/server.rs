@@ -71,16 +71,9 @@ where
 
         if election_won {
             tracing::trace!("transition: candidate → leader");
-            leader(
-                &mut cell,
-                me.0,
-                &mut common_state,
-                &mut peers,
-                heartbeat_period,
-                replication_period,
-            )
-            .instrument(info_span!("leader👑"))
-            .await;
+            leader(&mut cell, me.0, &mut common_state, &mut peers, heartbeat_period)
+                .instrument(info_span!("leader👑"))
+                .await;
         } else {
             tracing::trace!("transition: candidate → follower");
         }

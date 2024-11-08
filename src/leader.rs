@@ -26,7 +26,6 @@ pub async fn leader<'a, AB, SM, SMin, SMout>(
     common_state: &mut CommonState<SM, SMin, SMout>,
     peers: &'a mut BTreeMap<u32, ActorRef<RaftMessage<SMin>>>,
     heartbeat_period: Duration,
-    _replication_period: Duration,
 ) where
     SM: StateMachine<SMin, SMout> + Send,
     AB: ActorBounds<RaftMessage<SMin>>,
