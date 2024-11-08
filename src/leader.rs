@@ -198,7 +198,7 @@ where
                 *peer_match_idx = request_len as u64 + *peer_next_idx - 1;
                 *peer_next_idx = *peer_match_idx + 1;
 
-                check_for_commits(common_state, peers_state, client_per_entry_group);
+                try_commit_log_entries(common_state, peers_state, client_per_entry_group);
             } else {
                 *peer_next_idx -= 1;
             }
@@ -212,8 +212,8 @@ where
     false
 }
 
-// commits all the log entries that are replicated on the majority of the nodes
-fn check_for_commits<SM, SMin, SMout>(
+/// Commits the log entries that have been replicated on the majority of the servrers.
+fn try_commit_log_entries<SM, SMin, SMout>(
     common_data: &mut CommonState<SM, SMin, SMout>,
     peers_state: &BTreeMap<u32, PeerState>,
     client_per_entry_group: &mut BTreeMap<usize, oneshot::Sender<AppendEntriesClientResponse<SMin>>>,
