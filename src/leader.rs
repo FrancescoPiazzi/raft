@@ -198,7 +198,7 @@ where
                 *peer_match_idx = request_len as u64 + *peer_next_idx - 1;
                 *peer_next_idx = *peer_match_idx + 1;
 
-                try_commit_log_entries(common_state, peers_state, client_per_entry_group);
+                commit_log_entries_replicated_on_majority(common_state, peers_state, client_per_entry_group);
             } else {
                 *peer_next_idx -= 1;
             }
@@ -212,8 +212,8 @@ where
     false
 }
 
-/// Commits the log entries that have been replicated on the majority of the servrers.
-fn try_commit_log_entries<SM, SMin, SMout>(
+/// Commits the log entries that have been replicated on the majority of the servers.
+fn commit_log_entries_replicated_on_majority<SM, SMin, SMout>(
     common_data: &mut CommonState<SM, SMin, SMout>,
     peers_state: &BTreeMap<u32, PeerState>,
     client_per_entry_group: &mut BTreeMap<usize, oneshot::Sender<AppendEntriesClientResponse<SMin>>>,
@@ -224,7 +224,7 @@ fn try_commit_log_entries<SM, SMin, SMout>(
     let mut i = common_data.commit_index + 1;
     while i <= common_data.log.len()
         && common_data.log.get_term(i) == common_data.current_term
-        && majority(peers_state, i as u64)
+        && majority_of_servers_have_log_entry(peers_state, i as u64)
     {
         i += 1;
     }
@@ -242,15 +242,10 @@ fn try_commit_log_entries<SM, SMin, SMout>(
     }
 }
 
-// returns true if most the followers have the log entry at index i
-// TOASK: this could be optimized for large groups of entries being sent together
-// by getting the median match_index instead of checking all of them, worth it?
-fn majority(peers_state: &BTreeMap<u32, PeerState>, i: u64) -> bool {
-    let mut count = 1; // count ourselves
-    for peer_state in peers_state.values() {
-        if peer_state.match_index >= i {
-            count += 1;
-        }
-    }
-    count > (peers_state.len() + 1) / 2
+/// Returns whether the majority of servers, including self, have the log entry at the given index.
+fn majority_of_servers_have_log_entry(peers_state: &BTreeMap<u32, PeerState>, index: u64) -> bool {
+    // TOASK: this could be optimized for large groups of entries being sent together
+    // by getting the median match_index instead of checking all of them, worth it?
+    let count_including_self = 1 + peers_state.values().filter(|state| state.match_index >= index).count();
+    count_including_self > (peers_state.len() + 1) / 2
 }
