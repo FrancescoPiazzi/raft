@@ -1,4 +1,4 @@
-use std::collections::VecDeque as Queue;
+use std::collections::VecDeque;
 
 pub struct PeerState {
     pub next_index: u64,
@@ -9,7 +9,7 @@ pub struct PeerState {
     // will correct us if next_index is too high, or overwrite logs if it's too low.
     // The queue handles multiple messages sent before receiving a response, assuming
     // replies are generally in order. If not, the same correction logic applies.
-    pub messages_len: Queue<usize>,
+    pub messages_len: VecDeque<usize>,
 }
 
 impl PeerState {
@@ -17,7 +17,7 @@ impl PeerState {
         Self {
             next_index: initial_next_index,
             match_index: 0,
-            messages_len: Queue::new(),
+            messages_len: VecDeque::new(),
         }
     }
 }
