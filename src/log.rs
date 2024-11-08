@@ -85,8 +85,9 @@ impl<SMin> Log<SMin> {
         self.log.append(&mut entries);
         self.terms.extend(repeat(term).take(n_new_entries));
 
-        assert!(
-            self.log.len() == self.terms.len(),
+        assert_eq!(
+            self.log.len(),
+            self.terms.len(),
             "Log and term vectors must have the same length"
         );
     }
