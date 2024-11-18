@@ -46,6 +46,9 @@ pub async fn leader<'a, AB, SM, SMin, SMout>(
         });
     }
 
+    // optimization: used as buffer where to append newly commited entries.
+    let mut newly_committed_entries_buf = Vec::<usize>::new();
+
     // Tracks the oneshot that we have to answer on per entry group
     let mut client_per_entry_group = BTreeMap::<usize, oneshot::Sender<AppendEntriesClientResponse<SMin>>>::new();
 
@@ -59,6 +62,7 @@ pub async fn leader<'a, AB, SM, SMin, SMout>(
                     peers,
                     &mut peers_state,
                     &mut client_per_entry_group,
+                    &mut newly_committed_entries_buf,
                     message
                 );
                 if become_follower {
@@ -126,6 +130,7 @@ fn handle_message<SM, SMin, SMout>(
     peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin>>>,
     peers_state: &mut BTreeMap<u32, PeerState>,
     client_per_entry_group: &mut BTreeMap<usize, oneshot::Sender<AppendEntriesClientResponse<SMin>>>,
+    newly_committed_entries_buf: &mut Vec<usize>,
     message: RaftMessage<SMin>,
 ) -> bool
 where
@@ -186,7 +191,12 @@ where
                 *peer_match_idx = request_len as u64 + *peer_next_idx - 1;
                 *peer_next_idx = *peer_match_idx + 1;
 
-                commit_log_entries_replicated_on_majority(common_state, peers_state, client_per_entry_group);
+                commit_log_entries_replicated_on_majority(
+                    common_state,
+                    peers_state,
+                    client_per_entry_group,
+                    newly_committed_entries_buf,
+                );
             } else {
                 *peer_next_idx -= 1;
             }
@@ -204,6 +214,7 @@ fn commit_log_entries_replicated_on_majority<SM, SMin, SMout>(
     common_data: &mut CommonState<SM, SMin, SMout>,
     peers_state: &BTreeMap<u32, PeerState>,
     client_per_entry_group: &mut BTreeMap<usize, oneshot::Sender<AppendEntriesClientResponse<SMin>>>,
+    newly_committed_entries_buf: &mut Vec<usize>,
 ) where
     SM: StateMachine<SMin, SMout> + Send,
     SMin: Clone,
@@ -217,13 +228,10 @@ fn commit_log_entries_replicated_on_majority<SM, SMin, SMout>(
     }
     common_data.commit_index = max(i - 1, 0);
 
-    // TODO: this here does not help performance, but moving it out would mean taking
-    // an empty parameter for "no reason"
-    let mut newly_committed_entries = Some(Vec::new());
-    common_data.commit_log_entries_up_to_commit_index(&mut newly_committed_entries);
+    common_data.commit_log_entries_up_to_commit_index(Some(newly_committed_entries_buf));
 
-    for i in newly_committed_entries.unwrap() {
-        if let Some(sender) = client_per_entry_group.remove(&i) {
+    for entry in newly_committed_entries_buf {
+        if let Some(sender) = client_per_entry_group.remove(&entry) {
             let _ = sender.send(AppendEntriesClientResponse::Ok(()));
         }
     }

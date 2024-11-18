@@ -73,7 +73,7 @@ pub async fn follower<AB, SM, SMin, SMout>(
                     tracing::trace!("leader commit is greater than follower commit, updating commit index");
                     let new_commit_index = min(leader_commit, common_state.log.len());
                     common_state.commit_index = new_commit_index;
-                    common_state.commit_log_entries_up_to_commit_index(&mut None);
+                    common_state.commit_log_entries_up_to_commit_index(None);
                 }
 
                 leader_ref = Some(peers.get_mut(&request.leader_id).expect("all peers are known").clone());

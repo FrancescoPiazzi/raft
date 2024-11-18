@@ -31,20 +31,26 @@ impl<SM, SMin, SMout> CommonState<SM, SMin, SMout> {
 
     /// Commit the log entries up to the leader's commit index.
     ///
-    /// Newly commited entries are appended in the `newly_committed_entries_out` buffer.
-    /// It is responsibility of the caller to clear the buffer beforehand.
+    /// Newly commited entries are appended to `newly_committed_entries_buf` buffer.
+    /// This is done for optimization purposes, instead of returning a new vector containing the newly commited entries.
+    /// Note that the buffer is cleared by the function.
     #[tracing::instrument(level = "trace", skip(self, newly_committed_entries_buf), fields(self.last_applied = %self.last_applied, self.commit_index = %self.commit_index))]
-    pub fn commit_log_entries_up_to_commit_index(&mut self, newly_committed_entries_buf: &mut Option<Vec<usize>>)
+    pub fn commit_log_entries_up_to_commit_index(&mut self, mut newly_committed_entries_buf: Option<&mut Vec<usize>>)
     where
         SM: StateMachine<SMin, SMout> + Send,
     {
+        if let Some(newly_committed_entries_buf) = newly_committed_entries_buf.as_mut() {
+            newly_committed_entries_buf.clear();
+        }
+
         for i in (self.last_applied + 1)..=self.commit_index {
             tracing::info!("Applying log entry {}", i);
             self.state_machine.apply(&self.log[i]);
-            if let Some(inner) = newly_committed_entries_buf {
+            if let Some(inner) = newly_committed_entries_buf.as_mut() {
                 inner.push(i);
             }
         }
+
         self.last_applied = self.commit_index;
     }
 }
