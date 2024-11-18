@@ -14,9 +14,10 @@ use crate::messages::request_vote::RequestVoteReply;
 use crate::messages::*;
 use crate::state_machine::StateMachine;
 
-/// follower nodes receive AppendEntry messages from the leader and duplicate them
-/// returns when no message is received from the leader after some time
-pub async fn follower<AB, SM, SMin, SMout>(
+/// Behavior of the Raft server in follower state.
+///
+/// Returns when no message from the leader is received after `election_timeout`.
+pub async fn follower_behavior<AB, SM, SMin, SMout>(
     cell: &mut AB,
     me: u32,
     peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin>>>,

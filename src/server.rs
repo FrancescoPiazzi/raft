@@ -6,10 +6,10 @@ use actum::actor_bounds::ActorBounds;
 use actum::actor_ref::ActorRef;
 use tracing::{info_span, Instrument};
 
-use crate::candidate::candidate;
+use crate::candidate::candidate_behavior;
 use crate::common_state::CommonState;
-use crate::follower::follower;
-use crate::leader::leader;
+use crate::follower::follower_behavior;
+use crate::leader::leader_behavior;
 use crate::messages::*;
 use crate::state_machine::StateMachine;
 
@@ -60,18 +60,18 @@ where
     }
 
     loop {
-        follower(&mut cell, me.0, &mut peers, &mut common_state, election_timeout.clone())
+        follower_behavior(&mut cell, me.0, &mut peers, &mut common_state, election_timeout.clone())
             .instrument(info_span!("follower"))
             .await;
 
         tracing::trace!("transition: follower → candidate");
-        let election_won = candidate(&mut cell, me.0, &mut common_state, &mut peers, election_timeout.clone())
+        let election_won = candidate_behavior(&mut cell, me.0, &mut common_state, &mut peers, election_timeout.clone())
             .instrument(info_span!("candidate"))
             .await;
 
         if election_won {
             tracing::trace!("transition: candidate → leader");
-            leader(&mut cell, me.0, &mut common_state, &mut peers, heartbeat_period)
+            leader_behavior(&mut cell, me.0, &mut common_state, &mut peers, heartbeat_period)
                 .instrument(info_span!("leader👑"))
                 .await;
         } else {

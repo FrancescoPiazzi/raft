@@ -14,7 +14,7 @@ use crate::messages::*;
 /// Behavior of the Raft server in candidate state.
 ///
 /// Returns true if the candidate has won the election, false otherwise.
-pub async fn candidate<AB, SM, SMin, SMout>(
+pub async fn candidate_behavior<AB, SM, SMin, SMout>(
     cell: &mut AB,
     me: u32,
     common_state: &mut CommonState<SM, SMin, SMout>,
