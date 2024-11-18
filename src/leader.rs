@@ -209,7 +209,7 @@ where
 
 /// Commits the log entries that have been replicated on the majority of the servers.
 fn commit_log_entries_replicated_on_majority<SM, SMin, SMout>(
-    common_data: &mut CommonState<SM, SMin, SMout>,
+    common_state: &mut CommonState<SM, SMin, SMout>,
     peers_state: &BTreeMap<u32, PeerState>,
     client_per_entry_group: &mut BTreeMap<usize, oneshot::Sender<AppendEntriesClientResponse<SMin>>>,
     newly_committed_entries_buf: &mut Vec<usize>,
@@ -217,16 +217,16 @@ fn commit_log_entries_replicated_on_majority<SM, SMin, SMout>(
     SM: StateMachine<SMin, SMout> + Send,
     SMin: Clone,
 {
-    let mut i = common_data.commit_index + 1;
-    while i <= common_data.log.len()
-        && common_data.log.get_term(i) == common_data.current_term
+    let mut i = common_state.commit_index + 1;
+    while i <= common_state.log.len()
+        && common_state.log.get_term(i) == common_state.current_term
         && majority_of_servers_have_log_entry(peers_state, i as u64)
     {
         i += 1;
     }
-    common_data.commit_index = max(i - 1, 0);
+    common_state.commit_index = max(i - 1, 0);
 
-    common_data.commit_log_entries_up_to_commit_index(Some(newly_committed_entries_buf));
+    common_state.commit_log_entries_up_to_commit_index(Some(newly_committed_entries_buf));
 
     for entry in newly_committed_entries_buf {
         if let Some(sender) = client_per_entry_group.remove(&entry) {
