@@ -45,7 +45,11 @@ pub async fn follower_behavior<AB, SM, SMin, SMout>(
             RaftMessage::AppendEntriesRequest(request) => {
                 if request.term < common_state.current_term {
                     tracing::trace!("term is outdated: ignoring");
-                    let reply = AppendEntriesReply::new(me, common_state.current_term, false);
+                    let reply = AppendEntriesReply {
+                        from: me,
+                        term: common_state.current_term,
+                        success: false,
+                    };
                     let sender_ref = peers.get_mut(&request.leader_id).expect("all peers are known");
                     let _ = sender_ref.try_send(reply.into());
                     continue;
@@ -56,7 +60,11 @@ pub async fn follower_behavior<AB, SM, SMin, SMout>(
                         request.prev_log_index,
                         common_state.log.len()
                     );
-                    let reply = AppendEntriesReply::new(me, common_state.current_term, false);
+                    let reply = AppendEntriesReply {
+                        from: me,
+                        term: common_state.current_term,
+                        success: false,
+                    };
                     let sender_ref = peers.get_mut(&request.leader_id).expect("all peers are known");
                     let _ = sender_ref.try_send(reply.into());
                     continue;

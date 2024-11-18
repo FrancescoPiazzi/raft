@@ -27,9 +27,3 @@ pub struct AppendEntriesReply {
     pub term: u64,
     pub success: bool,
 }
-
-impl AppendEntriesReply {
-    pub const fn new(from: u32, term: u64, success: bool) -> Self {
-        Self { from, term, success }
-    }
-}
