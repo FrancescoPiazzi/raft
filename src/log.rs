@@ -2,9 +2,17 @@ use std::fmt::{Debug, Formatter};
 use std::iter::repeat;
 use std::ops::{Index, IndexMut, RangeFrom};
 
-const LOG_INDEX_STARTS_AT_1: &str = "Log index starts at 1";
+fn check_log_index(index: usize) {
+    if index == 0 {
+        panic!("attempted to access the log at index 0");
+    }
+}
 
-/// 1-indexed log to store log entries along with the term they were added in
+/// 1-indexed log to store log entries and their term.
+///
+/// # Panic
+///
+/// Panics at the attempt to access the log at index 0.
 pub struct Log<SMin> {
     log: Vec<SMin>,
     terms: Vec<u64>,
@@ -23,9 +31,7 @@ impl<SMin> Index<usize> for Log<SMin> {
     type Output = SMin;
 
     fn index(&self, index: usize) -> &Self::Output {
-        if index == 0 {
-            panic!("{}", LOG_INDEX_STARTS_AT_1);
-        }
+        check_log_index(index);
         &self.log[index - 1]
     }
 }
@@ -47,9 +53,7 @@ where
 
 impl<SMin> IndexMut<usize> for Log<SMin> {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        if index == 0 {
-            panic!("{}", LOG_INDEX_STARTS_AT_1);
-        }
+        check_log_index(index);
         &mut self.log[index - 1]
     }
 }
@@ -71,9 +75,7 @@ impl<SMin> Log<SMin> {
     }
 
     pub fn get_term(&self, index: usize) -> u64 {
-        if index == 0 {
-            panic!("{}", LOG_INDEX_STARTS_AT_1);
-        }
+        check_log_index(index);
         self.terms[index - 1]
     }
 
@@ -125,7 +127,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Log index starts at 1")]
+    #[should_panic(expected = "attempted to access the log at index 0")]
     fn test_log_indexing_0() {
         let log = Log::<u32>::new();
         let _ = log[0];
@@ -162,7 +164,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Log index starts at 1")]
+    #[should_panic(expected = "attempted to access the log at index 0")]
     fn test_log_indexing_mut_0() {
         let mut log = Log::<u32>::new();
         log[0] = 1;
