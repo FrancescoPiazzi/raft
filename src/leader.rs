@@ -20,11 +20,11 @@ mod peer_state;
 /// clients send messages to the leader, which is responsible for replicating them to the other nodes
 /// after receiving confirmation from the majority of the nodes, the leader commits the message as agreed
 /// returns when another leader or candidate with a higher term is detected
-pub async fn leader<'a, AB, SM, SMin, SMout>(
+pub async fn leader<AB, SM, SMin, SMout>(
     cell: &mut AB,
     me: u32,
     common_state: &mut CommonState<SM, SMin, SMout>,
-    peers: &'a mut BTreeMap<u32, ActorRef<RaftMessage<SMin>>>,
+    peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin>>>,
     heartbeat_period: Duration,
 ) where
     SM: StateMachine<SMin, SMout> + Send,
