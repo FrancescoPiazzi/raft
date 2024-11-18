@@ -11,10 +11,9 @@ use crate::common_state::CommonState;
 use crate::messages::request_vote::RequestVoteRequest;
 use crate::messages::*;
 
-// candidate nodes start an election by sending RequestVote messages to the other nodes
-// if they receive a majority of votes, they become the leader
-// if they receive a message from a node with a higher term, they become a follower
-// returns true if the election was won, false if it was lost
+/// Behavior of the Raft server in candidate state.
+///
+/// Returns true if the candidate has won the election, false otherwise.
 pub async fn candidate<AB, SM, SMin, SMout>(
     cell: &mut AB,
     me: u32,
@@ -31,9 +30,9 @@ where
     let election_won;
 
     'candidate: loop {
-        tracing::info!("📦 Starting an election");
+        tracing::info!("starting a new election");
 
-        let mut votes = 1;
+        let mut n_votes_including_self = 1;
 
         let mut remaining_time_to_wait = thread_rng().gen_range(election_timeout.clone());
 
@@ -50,10 +49,10 @@ where
             let _ = peer.try_send(request.clone().into());
         }
 
-        'election: loop {
+        'current_election: loop {
             let Ok(message) = timeout(remaining_time_to_wait, cell.recv()).await else {
                 tracing::info!("election timeout");
-                break 'election;
+                break 'current_election;
             };
 
             let message = message.message().expect("raft runs indefinitely");
@@ -62,8 +61,8 @@ where
             match message {
                 RaftMessage::RequestVoteReply(request_vote_reply) => {
                     if request_vote_reply.vote_granted {
-                        votes += 1;
-                        if votes > peers.len() / 2 + 1 {
+                        n_votes_including_self += 1;
+                        if n_votes_including_self > peers.len() / 2 + 1 {
                             election_won = true;
                             break 'candidate;
                         }
@@ -93,7 +92,7 @@ where
                 remaining_time_to_wait = new_remaining_time_to_wait;
             } else {
                 tracing::info!("election timeout");
-                break 'election;
+                break 'current_election;
             }
         }
     }
