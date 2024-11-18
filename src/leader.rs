@@ -1,5 +1,5 @@
 use std::cmp::max;
-use std::collections::{BTreeMap, VecDeque as Queue};
+use std::collections::{BTreeMap, VecDeque};
 use std::time::Duration;
 
 use actum::actor_bounds::ActorBounds;
@@ -95,7 +95,7 @@ pub async fn leader<'a, AB, SM, SMin, SMout>(
 fn send_append_entries_request<SM, SMin, SMout>(
     me: u32,
     common_state: &CommonState<SM, SMin, SMout>,
-    messages_len: &mut Queue<usize>,
+    messages_len: &mut VecDeque<usize>,
     follower_ref: &mut ActorRef<RaftMessage<SMin>>,
     next_index: u64,
 ) where
