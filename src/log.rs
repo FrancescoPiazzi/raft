@@ -1,3 +1,4 @@
+use std::fmt::{Debug, Formatter};
 use std::iter::repeat;
 use std::ops::{Index, IndexMut, RangeFrom};
 
@@ -7,6 +8,15 @@ const LOG_INDEX_STARTS_AT_1: &str = "Log index starts at 1";
 pub struct Log<SMin> {
     log: Vec<SMin>,
     terms: Vec<u64>,
+}
+
+impl<SMin> Debug for Log<SMin> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Log")
+            .field("length", &self.log.len())
+            .field("terms", &self.terms)
+            .finish()
+    }
 }
 
 impl<SMin> Index<usize> for Log<SMin> {
