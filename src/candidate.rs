@@ -27,16 +27,20 @@ where
     SMin: Clone + Send + 'static,
     SMout: Send,
 {
-    let election_won;
+    let mut election_won = false;
+
+    common_data.voted_for = Some(me);
+
+    let mut votes_from_others = BTreeMap::<u32, bool>::new();
 
     'candidate: loop {
-        tracing::info!("starting a new election");
-
-        let mut n_votes_including_self = 1;
-
-        let mut remaining_time_to_wait = thread_rng().gen_range(election_timeout.clone());
+        tracing::trace!("starting a new election");
 
         common_data.current_term += 1;
+
+        votes_from_others.clear();
+
+        let mut remaining_time_to_wait = thread_rng().gen_range(election_timeout.clone());
 
         let request = RequestVoteRequest {
             term: common_data.current_term,
@@ -51,21 +55,22 @@ where
 
         'current_election: loop {
             let Ok(message) = timeout(remaining_time_to_wait, cell.recv()).await else {
-                tracing::info!("election timeout");
+                tracing::trace!("election timeout");
                 break 'current_election;
             };
 
             let message = message.message().expect("raft runs indefinitely");
-            tracing::info!(message = ?message);
+            tracing::trace!(message = ?message);
 
             match message {
                 RaftMessage::RequestVoteReply(request_vote_reply) => {
-                    if request_vote_reply.vote_granted {
-                        n_votes_including_self += 1;
-                        if n_votes_including_self > peers.len() / 2 + 1 {
-                            election_won = true;
-                            break 'candidate;
-                        }
+                    votes_from_others.insert(request_vote_reply.from, request_vote_reply.vote_granted);
+                    let n_granted_votes_including_self =
+                        votes_from_others.values().filter(|granted| **granted).count() + 1;
+
+                    if n_granted_votes_including_self > peers.len() / 2 + 1 {
+                        election_won = true;
+                        break 'candidate;
                     }
                 }
                 RaftMessage::AppendEntriesRequest(append_entry_rpc) => {
@@ -75,8 +80,8 @@ where
                         break 'candidate;
                     }
                 }
-                // reminder: candidates never vote for others, as they have already voted for themselves
                 RaftMessage::RequestVoteRequest(request_vote_rpc) => {
+                    // reminder: candidates never vote for others, as they have already voted for themselves
                     if request_vote_rpc.term > common_data.current_term {
                         election_won = false;
                         common_data.current_term = request_vote_rpc.term;
@@ -91,7 +96,7 @@ where
             if let Some(new_remaining_time_to_wait) = remaining_time_to_wait.checked_sub(Instant::now().elapsed()) {
                 remaining_time_to_wait = new_remaining_time_to_wait;
             } else {
-                tracing::info!("election timeout");
+                tracing::trace!("election timeout");
                 break 'current_election;
             }
         }
