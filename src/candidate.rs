@@ -17,7 +17,7 @@ use crate::messages::*;
 pub async fn candidate<AB, SM, SMin, SMout>(
     cell: &mut AB,
     me: u32,
-    common_data: &mut CommonState<SM, SMin, SMout>,
+    common_state: &mut CommonState<SM, SMin, SMout>,
     peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin>>>,
     election_timeout: Range<Duration>,
 ) -> bool
@@ -29,21 +29,21 @@ where
 {
     let mut election_won = false;
 
-    common_data.voted_for = Some(me);
+    common_state.voted_for = Some(me);
 
     let mut votes_from_others = BTreeMap::<u32, bool>::new();
 
     'candidate: loop {
         tracing::trace!("starting a new election");
 
-        common_data.current_term += 1;
+        common_state.current_term += 1;
 
         votes_from_others.clear();
 
         let mut remaining_time_to_wait = thread_rng().gen_range(election_timeout.clone());
 
         let request = RequestVoteRequest {
-            term: common_data.current_term,
+            term: common_state.current_term,
             candidate_id: me,
             last_log_index: 0,
             last_log_term: 0,
@@ -74,17 +74,17 @@ where
                     }
                 }
                 RaftMessage::AppendEntriesRequest(append_entry_rpc) => {
-                    if append_entry_rpc.term >= common_data.current_term {
+                    if append_entry_rpc.term >= common_state.current_term {
                         election_won = false;
-                        common_data.current_term = append_entry_rpc.term;
+                        common_state.current_term = append_entry_rpc.term;
                         break 'candidate;
                     }
                 }
                 RaftMessage::RequestVoteRequest(request_vote_rpc) => {
                     // reminder: candidates never vote for others, as they have already voted for themselves
-                    if request_vote_rpc.term > common_data.current_term {
+                    if request_vote_rpc.term > common_state.current_term {
                         election_won = false;
-                        common_data.current_term = request_vote_rpc.term;
+                        common_state.current_term = request_vote_rpc.term;
                         break 'candidate;
                     }
                 }
