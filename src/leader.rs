@@ -220,7 +220,7 @@ fn commit_log_entries_replicated_on_majority<SM, SMin, SMout>(
     // TODO: this here does not help performance, but moving it out would mean taking
     // an empty parameter for "no reason"
     let mut newly_committed_entries = Some(Vec::new());
-    common_data.commit(&mut newly_committed_entries);
+    common_data.commit_log_entries_up_to_commit_index(&mut newly_committed_entries);
 
     for i in newly_committed_entries.unwrap() {
         if let Some(sender) = client_per_entry_group.remove(&i) {

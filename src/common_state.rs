@@ -29,17 +29,19 @@ impl<SM, SMin, SMout> CommonState<SM, SMin, SMout> {
         }
     }
 
-    /// commit log entries up to the leader's commit index
-    /// the entire common_data object is taken even if for now only the commit_index and last_applied are used
-    /// because in the future I will want to access the log entries to actually apply them
-    pub fn commit(&mut self, newly_committed_entries: &mut Option<Vec<usize>>)
+    /// Commit the log entries up to the leader's commit index.
+    ///
+    /// Newly commited entries are appended in the `newly_committed_entries_out` buffer.
+    /// It is responsibility of the caller to clear the buffer beforehand.
+    #[tracing::instrument(level = "trace", skip(self, newly_committed_entries_buf), fields(self.last_applied = %self.last_applied, self.commit_index = %self.commit_index))]
+    pub fn commit_log_entries_up_to_commit_index(&mut self, newly_committed_entries_buf: &mut Option<Vec<usize>>)
     where
         SM: StateMachine<SMin, SMout> + Send,
     {
         for i in (self.last_applied + 1)..=self.commit_index {
             tracing::info!("Applying log entry {}", i);
             self.state_machine.apply(&self.log[i]);
-            if let Some(inner) = newly_committed_entries {
+            if let Some(inner) = newly_committed_entries_buf {
                 inner.push(i);
             }
         }
