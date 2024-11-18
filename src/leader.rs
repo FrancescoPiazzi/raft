@@ -62,6 +62,7 @@ pub async fn leader<'a, AB, SM, SMin, SMout>(
                     message
                 );
                 if become_follower {
+                    tracing::trace!("step down");
                     break;
                 }
             },
@@ -135,7 +136,7 @@ where
 
     match message {
         RaftMessage::AppendEntriesClientRequest(append_entries_client) => {
-            tracing::debug!("Received a client message, replicating it");
+            tracing::trace!("Received a client message, replicating it");
 
             // empty requests can cause problems when keeping track of the sender per request
             if append_entries_client.entries_to_replicate.is_empty() {
@@ -148,20 +149,15 @@ where
             client_per_entry_group.insert(common_state.log.len(), append_entries_client.reply_to);
         }
         RaftMessage::AppendEntriesRequest(append_entries_rpc) => {
-            tracing::debug!("Received an AppendEntries message as the leader, somone challenged me");
             if append_entries_rpc.term > common_state.current_term
                 || (append_entries_rpc.term == common_state.current_term
                     && append_entries_rpc.leader_commit >= common_state.commit_index as u64)
             {
-                tracing::debug!("They are right, I'm stepping down");
                 common_state.current_term = append_entries_rpc.term;
                 return true;
-            } else {
-                tracing::debug!("They are wrong, long live the king!");
             }
         }
         RaftMessage::RequestVoteRequest(request_vote_rpc) => {
-            tracing::debug!("Received a request vote message as the leader, somone challenged me");
             let step_down_from_lead = request_vote_rpc.term > common_state.current_term;
             let msg = request_vote::RequestVoteReply {
                 from: me,
@@ -169,32 +165,24 @@ where
             };
             let candidate_ref = peers
                 .get_mut(&request_vote_rpc.candidate_id)
-                .expect("recieved a message from an unkown peer");
+                .expect("received a message from an unknown peer");
             let _ = candidate_ref.try_send(msg.into());
             if step_down_from_lead {
-                tracing::debug!("They are right, granted vote and stepping down");
                 common_state.voted_for = Some(request_vote_rpc.candidate_id);
                 common_state.current_term = request_vote_rpc.term;
                 return true;
-            } else {
-                tracing::debug!("They are wrong, long live the king!");
             }
         }
         RaftMessage::AppendEntriesReply(reply) => {
             let peer_state = peers_state
                 .get_mut(&reply.from)
-                .expect("recieved a message from an unkown peer");
+                .expect("received a message from an unknown peer");
             let peer_next_idx = &mut peer_state.next_index;
             let peer_match_idx = &mut peer_state.match_index;
 
             if reply.success {
                 // should always be Some, since we always push a value before each append entries request
                 let request_len = peer_state.messages_len.pop_front().unwrap_or(0);
-                tracing::trace!(
-                    "Received success from follower {} for {} entries",
-                    reply.from,
-                    request_len
-                );
                 *peer_match_idx = request_len as u64 + *peer_next_idx - 1;
                 *peer_next_idx = *peer_match_idx + 1;
 
@@ -203,8 +191,7 @@ where
                 *peer_next_idx -= 1;
             }
         }
-        // normal to recieve some extra votes if we just got elected but we don't care
-        RaftMessage::RequestVoteReply(_) => {}
+        RaftMessage::RequestVoteReply(_) => {} // ignore extra votes if we were already elected
         _ => {
             tracing::trace!(unhandled = ?message);
         }
