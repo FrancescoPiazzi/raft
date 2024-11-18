@@ -56,7 +56,7 @@ pub async fn leader<'a, AB, SM, SMin, SMout>(
         tokio::select! {
             message = cell.recv() => {
                 let message = message.message().expect("raft runs indefinitely");
-                let become_follower = handle_message_as_leader(
+                let step_down = handle_message_as_leader(
                     me,
                     common_state,
                     peers,
@@ -65,7 +65,7 @@ pub async fn leader<'a, AB, SM, SMin, SMout>(
                     &mut newly_committed_entries_buf,
                     message
                 );
-                if become_follower {
+                if step_down {
                     tracing::trace!("step down");
                     break;
                 }
