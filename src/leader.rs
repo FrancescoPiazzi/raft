@@ -56,7 +56,7 @@ pub async fn leader<'a, AB, SM, SMin, SMout>(
         tokio::select! {
             message = cell.recv() => {
                 let message = message.message().expect("raft runs indefinitely");
-                let become_follower = handle_message(
+                let become_follower = handle_message_as_leader(
                     me,
                     common_state,
                     peers,
@@ -122,9 +122,8 @@ fn send_append_entries_request<SM, SMin, SMout>(
     let _ = follower_ref.try_send(request.into());
 }
 
-// handles one message as leader
-// returns true if we have to go back to a follower state, false otherwise
-fn handle_message<SM, SMin, SMout>(
+/// Returns true if we should step down, false otherwise.
+fn handle_message_as_leader<SM, SMin, SMout>(
     me: u32,
     common_state: &mut CommonState<SM, SMin, SMout>,
     peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin>>>,
