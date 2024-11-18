@@ -44,9 +44,9 @@ pub async fn follower<AB, SM, SMin, SMout>(
             RaftMessage::AppendEntriesRequest(request) => {
                 if request.term < common_state.current_term {
                     tracing::debug!("🚫 Received an AppendEntries message with an outdated term, ignoring");
-                    let msg = AppendEntriesReply::new(me, common_state.current_term, false);
+                    let reply = AppendEntriesReply::new(me, common_state.current_term, false);
                     let sender_ref = peers.get_mut(&request.leader_id).expect("all peers are known");
-                    let _ = sender_ref.try_send(msg.into());
+                    let _ = sender_ref.try_send(reply.into());
                     continue;
                 }
                 if request.prev_log_index > common_state.log.len() as u64 {
@@ -55,9 +55,9 @@ pub async fn follower<AB, SM, SMin, SMout>(
                         request.prev_log_index,
                         common_state.log.len()
                     );
-                    let msg = AppendEntriesReply::new(me, common_state.current_term, false);
+                    let reply = AppendEntriesReply::new(me, common_state.current_term, false);
                     let sender_ref = peers.get_mut(&request.leader_id).expect("all peers are known");
-                    let _ = sender_ref.try_send(msg.into());
+                    let _ = sender_ref.try_send(reply.into());
                     continue;
                 }
 
