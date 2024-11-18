@@ -81,6 +81,7 @@ impl<SMin> Log<SMin> {
         self.insert(entries, self.len() as u64, term);
     }
 
+    #[tracing::instrument(level = "trace", skip(entries))]
     pub fn insert(&mut self, mut entries: Vec<SMin>, prev_log_index: u64, term: u64) {
         assert!(prev_log_index as usize <= self.log.len(), "Raft logs cannot have holes");
 

@@ -33,7 +33,7 @@ pub async fn follower<AB, SM, SMin, SMout>(
 
     loop {
         let Ok(message) = timeout(election_timeout, cell.recv()).await else {
-            tracing::info!("election timeout");
+            tracing::trace!("election timeout");
             return;
         };
 
@@ -43,15 +43,15 @@ pub async fn follower<AB, SM, SMin, SMout>(
         match message {
             RaftMessage::AppendEntriesRequest(request) => {
                 if request.term < common_state.current_term {
-                    tracing::debug!("🚫 Received an AppendEntries message with an outdated term, ignoring");
+                    tracing::trace!("term is outdated: ignoring");
                     let reply = AppendEntriesReply::new(me, common_state.current_term, false);
                     let sender_ref = peers.get_mut(&request.leader_id).expect("all peers are known");
                     let _ = sender_ref.try_send(reply.into());
                     continue;
                 }
                 if request.prev_log_index > common_state.log.len() as u64 {
-                    tracing::debug!(
-                        "🚫 Received an AppendEntries message with an invalid prev_log_index (received: {}, log length: {}), ignoring",
+                    tracing::trace!(
+                        "prev_log_index is invalid (received: {}, log length: {}): ignoring",
                         request.prev_log_index,
                         common_state.log.len()
                     );
@@ -64,7 +64,6 @@ pub async fn follower<AB, SM, SMin, SMout>(
                 common_state.current_term = request.term;
 
                 if !request.entries.is_empty() {
-                    tracing::debug!("AppendEntries has entries to append");
                     common_state
                         .log
                         .insert(request.entries, request.prev_log_index, request.term);
@@ -98,7 +97,7 @@ pub async fn follower<AB, SM, SMin, SMout>(
                 let _ = candidate_ref.try_send(reply.into());
             }
             RaftMessage::AppendEntriesClientRequest(append_entries_client_request) => {
-                tracing::trace!("Received a client message, redirecting the client to the leader");
+                tracing::trace!("redirecting the client to the leader");
                 let _ = append_entries_client_request.reply_to.send(Err(leader_ref.clone()));
             }
             other => {
