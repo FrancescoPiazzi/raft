@@ -9,8 +9,9 @@ use rand::{thread_rng, Rng};
 use tokio::time::timeout;
 
 use crate::common_state::CommonState;
-use crate::messages::append_entries::AppendEntriesReply;
-use crate::messages::request_vote::RequestVoteReply;
+use crate::messages::append_entries::{AppendEntriesReply, AppendEntriesRequest};
+use crate::messages::append_entries_client::AppendEntriesClientRequest;
+use crate::messages::request_vote::{RequestVoteReply, RequestVoteRequest};
 use crate::messages::*;
 use crate::state_machine::StateMachine;
 
@@ -43,110 +44,147 @@ pub async fn follower_behavior<AB, SM, SMin, SMout>(
 
         match message {
             RaftMessage::AppendEntriesRequest(request) => {
-                if request.term < common_state.current_term {
-                    tracing::trace!("request term < current term = {}", common_state.current_term);
-
-                    if let Some(sender_ref) = peers.get_mut(&request.leader_id) {
-                        let reply = AppendEntriesReply {
-                            from: me,
-                            term: common_state.current_term,
-                            success: false,
-                        };
-                        let _ = sender_ref.try_send(reply.into());
-                    }
-
-                    continue;
-                }
-
-                if request.term > common_state.current_term {
-                    tracing::trace!("previous term = {}, new term = {}",
-                        common_state.current_term, request.term);
-                    common_state.current_term = request.term;
-                    common_state.voted_for = None;
-
-                    if let Some(old_leader_id) = leader_id.replace(request.leader_id) {
-                        tracing::trace!("previous leader = {}, new leader = {}",
-                            old_leader_id,
-                            request.leader_id
-                        );
-                    }
-                }
-
-                if request.term == common_state.current_term {
-                    if let Some(old_leader_id) = leader_id.replace(request.leader_id) {
-                        assert_eq!(request.leader_id, old_leader_id);
-                    }
-                }
-
-                if request.prev_log_index > common_state.log.len() as u64 {
-                    tracing::trace!("previous log index = {}, log length: {}: ignoring",
-                        request.prev_log_index, common_state.log.len());
-
-                    if let Some(sender_ref) = peers.get_mut(&request.leader_id) {
-                        let reply = AppendEntriesReply {
-                            from: me,
-                            term: common_state.current_term,
-                            success: false,
-                        };
-                        let _ = sender_ref.try_send(reply.into());
-                    }
-                    continue;
-                }
-
-                if !request.is_heartbeat() {
-                    common_state
-                        .log
-                        .insert(request.entries, request.prev_log_index, request.term);
-                }
-
-                let leader_commit: usize = request.leader_commit.try_into().unwrap();
-                
-                if leader_commit > common_state.commit_index {
-                    tracing::trace!("leader commit is greater than follower commit, updating commit index");
-                    let new_commit_index = min(leader_commit, common_state.log.len());
-                    tracing::trace!("previous log index = {}, log length: {}: ignoring",
-                        request.prev_log_index, common_state.log.len());
-                    
-                    common_state.commit_index = new_commit_index;
-                    common_state.commit_log_entries_up_to_commit_index(None);
-                }
-
-                if let Some(prev_leader_id) = leader_id.replace(request.leader_id) {
-                    if prev_leader_id != request.leader_id { /* leader changed */ }
-                }
-
-                let reply = AppendEntriesReply {
-                    from: me,
-                    term: common_state.current_term,
-                    success: true,
-                };
-
-                if let Some(leader_ref) = peers.get_mut(&request.leader_id) {
-                    let _ = leader_ref.try_send(reply.into());
-                }
+                handle_append_entries_request(me, common_state, peers, leader_id.as_mut(), request);
             }
             RaftMessage::RequestVoteRequest(request) => {
-                let vote_granted = request.term >= common_state.current_term
-                    && (common_state.voted_for.is_none()
-                        || *common_state.voted_for.as_ref().unwrap() == request.candidate_id);
-                let reply = RequestVoteReply { from: me, vote_granted };
-
-                if let Some(candidate_ref) = peers.get_mut(&request.candidate_id) {
-                    let _ = candidate_ref.try_send(reply.into());
-                }
+                handle_vote_request(me, common_state, peers, request);
             }
             RaftMessage::AppendEntriesClientRequest(request) => {
-                if let Some(leader_id) = leader_id {
-                    if let Some(leader_ref) = peers.get_mut(&leader_id) {
-                        tracing::trace!("redirecting the client to the leader");
-                        let reply = Err(Some(leader_ref.clone()));
-                        let _ = request.reply_to.send(reply);
-                    }
-                }
+                handle_append_entries_client_request(peers, leader_id.as_mut(), request);
             }
             other => {
                 tracing::trace!(unhandled = ?other);
             }
+        }
+    }
+}
+
+fn handle_append_entries_request<SM, SMin, SMout>(
+    me: u32,
+    common_state: &mut CommonState<SM, SMin, SMout>,
+    peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin>>>,
+    mut leader_id: Option<&mut u32>,
+    request: AppendEntriesRequest<SMin>,
+) where
+    SM: StateMachine<SMin, SMout> + Send,
+    SMin: Clone + Send + 'static,
+    SMout: Send,
+{
+    if request.term < common_state.current_term {
+        tracing::trace!("request term < current term = {}", common_state.current_term);
+
+        if let Some(sender_ref) = peers.get_mut(&request.leader_id) {
+            let reply = AppendEntriesReply {
+                from: me,
+                term: common_state.current_term,
+                success: false,
+            };
+            let _ = sender_ref.try_send(reply.into());
+        }
+
+        return;
+    }
+
+    if request.term > common_state.current_term {
+        tracing::trace!("previous term = {}, new term = {}",
+                        common_state.current_term, request.term);
+        common_state.current_term = request.term;
+        common_state.voted_for = None;
+
+        if let Some(leader_id) = leader_id {
+            tracing::trace!("previous leader = {}, new leader = {}",
+                            leader_id, request.leader_id);
+            *leader_id = request.leader_id;
+        }
+    }
+
+    if request.term == common_state.current_term {
+        if let Some(leader_id) = leader_id {
+            assert_eq!(request.leader_id, *leader_id);
+        }
+    }
+
+    if request.prev_log_index > common_state.log.len() as u64 {
+        tracing::trace!("previous log index = {}, log length: {}: ignoring",
+                        request.prev_log_index, common_state.log.len());
+
+        if let Some(sender_ref) = peers.get_mut(&request.leader_id) {
+            let reply = AppendEntriesReply {
+                from: me,
+                term: common_state.current_term,
+                success: false,
+            };
+            let _ = sender_ref.try_send(reply.into());
+        }
+        return;
+    }
+
+    if !request.is_heartbeat() {
+        common_state
+            .log
+            .insert(request.entries, request.prev_log_index, request.term);
+    }
+
+    let leader_commit: usize = request.leader_commit.try_into().unwrap();
+
+    if leader_commit > common_state.commit_index {
+        tracing::trace!("leader commit is greater than follower commit, updating commit index");
+        let new_commit_index = min(leader_commit, common_state.log.len());
+        tracing::trace!("previous log index = {}, log length: {}: ignoring",
+                        request.prev_log_index, common_state.log.len());
+
+        common_state.commit_index = new_commit_index;
+        common_state.commit_log_entries_up_to_commit_index(None);
+    }
+
+    if let Some(leader_id) = leader_id {
+        if request.leader_id != *leader_id { /* leader changed */ }
+    }
+
+    let reply = AppendEntriesReply {
+        from: me,
+        term: common_state.current_term,
+        success: true,
+    };
+
+    if let Some(leader_ref) = peers.get_mut(&request.leader_id) {
+        let _ = leader_ref.try_send(reply.into());
+    }
+}
+
+fn handle_vote_request<SM, SMin, SMout>(
+    me: u32,
+    common_state: &mut CommonState<SM, SMin, SMout>,
+    peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin>>>,
+    request: RequestVoteRequest,
+) where
+    SM: StateMachine<SMin, SMout> + Send,
+    SMin: Clone + Send + 'static,
+    SMout: Send,
+{
+    let vote_granted = request.term >= common_state.current_term
+        && (common_state.voted_for.is_none() || *common_state.voted_for.as_ref().unwrap() == request.candidate_id);
+    let reply = RequestVoteReply { from: me, vote_granted };
+
+    if let Some(candidate_ref) = peers.get_mut(&request.candidate_id) {
+        let _ = candidate_ref.try_send(reply.into());
+    }
+}
+
+fn handle_append_entries_client_request<SM, SMin, SMout>(
+    peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin>>>,
+    mut leader_id: Option<&mut u32>,
+    request: AppendEntriesClientRequest<SMin>,
+) where
+    SM: StateMachine<SMin, SMout> + Send,
+    SMin: Clone + Send + 'static,
+    SMout: Send,
+{
+    if let Some(leader_id) = leader_id {
+        if let Some(leader_ref) = peers.get_mut(&leader_id) {
+            tracing::trace!("redirecting the client to the leader");
+            let reply = Err(Some(leader_ref.clone()));
+            let _ = request.reply_to.send(reply);
         }
     }
 }
