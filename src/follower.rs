@@ -101,23 +101,22 @@ pub async fn follower_behavior<AB, SM, SMin, SMout>(
                     let _ = leader_ref.try_send(reply.into());
                 }
             }
-            RaftMessage::RequestVoteRequest(request_vote_request) => {
-                let vote_granted = request_vote_request.term >= common_state.current_term
+            RaftMessage::RequestVoteRequest(request) => {
+                let vote_granted = request.term >= common_state.current_term
                     && (common_state.voted_for.is_none()
-                        || *common_state.voted_for.as_ref().unwrap() == request_vote_request.candidate_id);
+                        || *common_state.voted_for.as_ref().unwrap() == request.candidate_id);
                 let reply = RequestVoteReply { from: me, vote_granted };
 
-                if let Some(candidate_ref) = peers.get_mut(&request_vote_request.candidate_id) {
+                if let Some(candidate_ref) = peers.get_mut(&request.candidate_id) {
                     let _ = candidate_ref.try_send(reply.into());
                 }
             }
-            RaftMessage::AppendEntriesClientRequest(append_entries_client_request) => {
+            RaftMessage::AppendEntriesClientRequest(request) => {
                 if let Some(leader_id) = leader_id {
                     if let Some(leader_ref) = peers.get_mut(&leader_id) {
                         tracing::trace!("redirecting the client to the leader");
-                        let _ = append_entries_client_request
-                            .reply_to
-                            .send(Err(Some(leader_ref.clone())));
+                        let reply = Err(Some(leader_ref.clone()));
+                        let _ = request.reply_to.send(reply);
                     }
                 }
             }

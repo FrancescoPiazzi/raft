@@ -63,8 +63,8 @@ where
             tracing::trace!(message = ?message);
 
             match message {
-                RaftMessage::RequestVoteReply(request_vote_reply) => {
-                    votes_from_others.insert(request_vote_reply.from, request_vote_reply.vote_granted);
+                RaftMessage::RequestVoteReply(reply) => {
+                    votes_from_others.insert(reply.from, reply.vote_granted);
                     let n_granted_votes_including_self =
                         votes_from_others.values().filter(|granted| **granted).count() + 1;
 
@@ -73,18 +73,18 @@ where
                         break 'candidate;
                     }
                 }
-                RaftMessage::AppendEntriesRequest(append_entry_rpc) => {
-                    if append_entry_rpc.term >= common_state.current_term {
+                RaftMessage::AppendEntriesRequest(request) => {
+                    if request.term >= common_state.current_term {
                         election_won = false;
-                        common_state.current_term = append_entry_rpc.term;
+                        common_state.current_term = request.term;
                         break 'candidate;
                     }
                 }
-                RaftMessage::RequestVoteRequest(request_vote_rpc) => {
+                RaftMessage::RequestVoteRequest(request) => {
                     // reminder: candidates never vote for others, as they have already voted for themselves
-                    if request_vote_rpc.term > common_state.current_term {
+                    if request.term > common_state.current_term {
                         election_won = false;
-                        common_state.current_term = request_vote_rpc.term;
+                        common_state.current_term = request.term;
                         break 'candidate;
                     }
                 }

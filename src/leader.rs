@@ -161,15 +161,15 @@ where
             }
         }
         RaftMessage::RequestVoteRequest(request_vote_rpc) => {
-            let step_down_from_lead = request_vote_rpc.term > common_state.current_term;
-            let msg = request_vote::RequestVoteReply {
+            let step_down = request_vote_rpc.term > common_state.current_term;
+            let reply = request_vote::RequestVoteReply {
                 from: me,
-                vote_granted: step_down_from_lead,
+                vote_granted: step_down,
             };
             if let Some(candidate_ref) = peers.get_mut(&request_vote_rpc.candidate_id) {
-                let _ = candidate_ref.try_send(msg.into());
+                let _ = candidate_ref.try_send(reply.into());
             }
-            if step_down_from_lead {
+            if step_down {
                 common_state.voted_for = Some(request_vote_rpc.candidate_id);
                 common_state.current_term = request_vote_rpc.term;
                 return true;
