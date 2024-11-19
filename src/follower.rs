@@ -44,45 +44,69 @@ pub async fn follower_behavior<AB, SM, SMin, SMout>(
         match message {
             RaftMessage::AppendEntriesRequest(request) => {
                 if request.term < common_state.current_term {
-                    tracing::trace!("term is outdated: ignoring");
-                    let reply = AppendEntriesReply {
-                        from: me,
-                        term: common_state.current_term,
-                        success: false,
-                    };
+                    tracing::trace!("request term < current term = {}", common_state.current_term);
+
                     if let Some(sender_ref) = peers.get_mut(&request.leader_id) {
+                        let reply = AppendEntriesReply {
+                            from: me,
+                            term: common_state.current_term,
+                            success: false,
+                        };
                         let _ = sender_ref.try_send(reply.into());
                     }
+
                     continue;
                 }
+
+                if request.term > common_state.current_term {
+                    tracing::trace!("previous term = {}, new term = {}",
+                        common_state.current_term, request.term);
+                    common_state.current_term = request.term;
+                    common_state.voted_for = None;
+
+                    if let Some(old_leader_id) = leader_id.replace(request.leader_id) {
+                        tracing::trace!("previous leader = {}, new leader = {}",
+                            old_leader_id,
+                            request.leader_id
+                        );
+                    }
+                }
+
+                if request.term == common_state.current_term {
+                    if let Some(old_leader_id) = leader_id.replace(request.leader_id) {
+                        assert_eq!(request.leader_id, old_leader_id);
+                    }
+                }
+
                 if request.prev_log_index > common_state.log.len() as u64 {
-                    tracing::trace!(
-                        "prev_log_index is invalid (received: {}, log length: {}): ignoring",
-                        request.prev_log_index,
-                        common_state.log.len()
-                    );
-                    let reply = AppendEntriesReply {
-                        from: me,
-                        term: common_state.current_term,
-                        success: false,
-                    };
+                    tracing::trace!("previous log index = {}, log length: {}: ignoring",
+                        request.prev_log_index, common_state.log.len());
+
                     if let Some(sender_ref) = peers.get_mut(&request.leader_id) {
+                        let reply = AppendEntriesReply {
+                            from: me,
+                            term: common_state.current_term,
+                            success: false,
+                        };
                         let _ = sender_ref.try_send(reply.into());
                     }
                     continue;
                 }
 
-                common_state.current_term = request.term;
-
-                if !request.entries.is_empty() {
+                if !request.is_heartbeat() {
                     common_state
                         .log
                         .insert(request.entries, request.prev_log_index, request.term);
                 }
+
                 let leader_commit: usize = request.leader_commit.try_into().unwrap();
+                
                 if leader_commit > common_state.commit_index {
                     tracing::trace!("leader commit is greater than follower commit, updating commit index");
                     let new_commit_index = min(leader_commit, common_state.log.len());
+                    tracing::trace!("previous log index = {}, log length: {}: ignoring",
+                        request.prev_log_index, common_state.log.len());
+                    
                     common_state.commit_index = new_commit_index;
                     common_state.commit_log_entries_up_to_commit_index(None);
                 }
