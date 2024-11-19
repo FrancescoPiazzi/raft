@@ -25,6 +25,12 @@ impl<SMin> Debug for AppendEntriesRequest<SMin> {
     }
 }
 
+impl<SMin> AppendEntriesRequest<SMin> {
+    pub fn is_heartbeat(&self) -> bool {
+        self.entries.is_empty()
+    }
+}
+
 #[derive(Debug)]
 pub struct AppendEntriesReply {
     pub from: u32,
