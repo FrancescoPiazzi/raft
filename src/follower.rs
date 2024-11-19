@@ -3,17 +3,17 @@ use std::collections::BTreeMap;
 use std::ops::Range;
 use std::time::Duration;
 
-use actum::actor_bounds::ActorBounds;
-use actum::actor_ref::ActorRef;
-use rand::{thread_rng, Rng};
-use tokio::time::timeout;
-
 use crate::common_state::CommonState;
 use crate::messages::append_entries::{AppendEntriesReply, AppendEntriesRequest};
 use crate::messages::append_entries_client::AppendEntriesClientRequest;
 use crate::messages::request_vote::{RequestVoteReply, RequestVoteRequest};
 use crate::messages::*;
 use crate::state_machine::StateMachine;
+use actum::actor_bounds::ActorBounds;
+use actum::actor_ref::ActorRef;
+use rand::{thread_rng, Rng};
+use tokio::time::timeout;
+use tracing::instrument;
 
 /// Behavior of the Raft server in follower state.
 ///
@@ -59,6 +59,7 @@ pub async fn follower_behavior<AB, SM, SMin, SMout>(
     }
 }
 
+#[tracing::instrument(level = "trace", skip_all)]
 fn handle_append_entries_request<SM, SMin, SMout>(
     me: u32,
     common_state: &mut CommonState<SM, SMin, SMout>,
@@ -152,6 +153,7 @@ fn handle_append_entries_request<SM, SMin, SMout>(
     }
 }
 
+#[tracing::instrument(level = "trace", skip_all)]
 fn handle_vote_request<SM, SMin, SMout>(
     me: u32,
     common_state: &mut CommonState<SM, SMin, SMout>,
@@ -171,6 +173,7 @@ fn handle_vote_request<SM, SMin, SMout>(
     }
 }
 
+#[tracing::instrument(level = "trace", skip_all)]
 fn handle_append_entries_client_request<SM, SMin, SMout>(
     peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin>>>,
     mut leader_id: Option<&mut u32>,
