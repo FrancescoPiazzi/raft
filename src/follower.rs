@@ -1,4 +1,4 @@
-use std::cmp::{min, Ordering};
+use std::cmp::min;
 use std::collections::BTreeMap;
 use std::ops::Range;
 use std::time::Duration;
@@ -13,7 +13,6 @@ use actum::actor_bounds::ActorBounds;
 use actum::actor_ref::ActorRef;
 use rand::{thread_rng, Rng};
 use tokio::time::timeout;
-use tracing::instrument;
 
 /// Behavior of the Raft server in follower state.
 ///
@@ -92,16 +91,16 @@ fn handle_append_entries_request<SM, SMin, SMout>(
         common_state.current_term = request.term;
         common_state.voted_for = None;
 
-        if let Some(leader_id) = leader_id {
+        if let Some(leader_id) = leader_id.as_mut() {
             tracing::trace!("previous leader = {}, new leader = {}",
                             leader_id, request.leader_id);
-            *leader_id = request.leader_id;
+            **leader_id = request.leader_id;
         }
     }
 
     if request.term == common_state.current_term {
-        if let Some(leader_id) = leader_id {
-            assert_eq!(request.leader_id, *leader_id);
+        if let Some(leader_id) = leader_id.as_mut() {
+            assert_eq!(request.leader_id, **leader_id);
         }
     }
 
@@ -138,8 +137,8 @@ fn handle_append_entries_request<SM, SMin, SMout>(
         common_state.commit_log_entries_up_to_commit_index(None);
     }
 
-    if let Some(leader_id) = leader_id {
-        if request.leader_id != *leader_id { /* leader changed */ }
+    if let Some(leader_id) = leader_id.as_mut() {
+        if request.leader_id != **leader_id { /* leader changed */ }
     }
 
     if let Some(leader_ref) = peers.get_mut(&request.leader_id) {
@@ -175,14 +174,12 @@ fn handle_vote_request<SM, SMin, SMout>(
 }
 
 #[tracing::instrument(level = "trace", skip_all)]
-fn handle_append_entries_client_request<SM, SMin, SMout>(
+fn handle_append_entries_client_request<SMin>(
     peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin>>>,
-    mut leader_id: Option<&mut u32>,
+    leader_id: Option<&mut u32>,
     request: AppendEntriesClientRequest<SMin>,
 ) where
-    SM: StateMachine<SMin, SMout> + Send,
     SMin: Clone + Send + 'static,
-    SMout: Send,
 {
     if let Some(leader_id) = leader_id {
         if let Some(leader_ref) = peers.get_mut(&leader_id) {
