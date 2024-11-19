@@ -166,10 +166,9 @@ where
                 from: me,
                 vote_granted: step_down_from_lead,
             };
-            let candidate_ref = peers
-                .get_mut(&request_vote_rpc.candidate_id)
-                .expect("received a message from an unknown peer");
-            let _ = candidate_ref.try_send(msg.into());
+            if let Some(candidate_ref) = peers.get_mut(&request_vote_rpc.candidate_id) {
+                let _ = candidate_ref.try_send(msg.into());
+            }
             if step_down_from_lead {
                 common_state.voted_for = Some(request_vote_rpc.candidate_id);
                 common_state.current_term = request_vote_rpc.term;
@@ -177,9 +176,9 @@ where
             }
         }
         RaftMessage::AppendEntriesReply(reply) => {
-            let peer_state = peers_state
-                .get_mut(&reply.from)
-                .expect("received a message from an unknown peer");
+            let Some(peer_state) = peers_state.get_mut(&reply.from) else {
+                return false;
+            };
             let peer_next_idx = &mut peer_state.next_index;
             let peer_match_idx = &mut peer_state.match_index;
 

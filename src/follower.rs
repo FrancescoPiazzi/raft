@@ -1,4 +1,4 @@
-use std::cmp::min;
+use std::cmp::{min, Ordering};
 use std::collections::BTreeMap;
 use std::ops::Range;
 use std::time::Duration;
@@ -30,7 +30,7 @@ pub async fn follower_behavior<AB, SM, SMin, SMout>(
     SMout: Send,
 {
     let election_timeout = thread_rng().gen_range(election_timeout);
-    let mut leader_ref: Option<ActorRef<RaftMessage<SMin>>> = None;
+    let mut leader_id: Option<u32> = None;
 
     loop {
         let Ok(message) = timeout(election_timeout, cell.recv()).await else {
@@ -50,8 +50,9 @@ pub async fn follower_behavior<AB, SM, SMin, SMout>(
                         term: common_state.current_term,
                         success: false,
                     };
-                    let sender_ref = peers.get_mut(&request.leader_id).expect("all peers are known");
-                    let _ = sender_ref.try_send(reply.into());
+                    if let Some(sender_ref) = peers.get_mut(&request.leader_id) {
+                        let _ = sender_ref.try_send(reply.into());
+                    }
                     continue;
                 }
                 if request.prev_log_index > common_state.log.len() as u64 {
@@ -65,8 +66,9 @@ pub async fn follower_behavior<AB, SM, SMin, SMout>(
                         term: common_state.current_term,
                         success: false,
                     };
-                    let sender_ref = peers.get_mut(&request.leader_id).expect("all peers are known");
-                    let _ = sender_ref.try_send(reply.into());
+                    if let Some(sender_ref) = peers.get_mut(&request.leader_id) {
+                        let _ = sender_ref.try_send(reply.into());
+                    }
                     continue;
                 }
 
@@ -85,14 +87,19 @@ pub async fn follower_behavior<AB, SM, SMin, SMout>(
                     common_state.commit_log_entries_up_to_commit_index(None);
                 }
 
-                leader_ref = Some(peers.get_mut(&request.leader_id).expect("all peers are known").clone());
+                if let Some(prev_leader_id) = leader_id.replace(request.leader_id) {
+                    if prev_leader_id != request.leader_id { /* leader changed */ }
+                }
 
                 let reply = AppendEntriesReply {
                     from: me,
                     term: common_state.current_term,
                     success: true,
                 };
-                let _ = leader_ref.as_mut().unwrap().try_send(reply.into());
+
+                if let Some(leader_ref) = peers.get_mut(&request.leader_id) {
+                    let _ = leader_ref.try_send(reply.into());
+                }
             }
             RaftMessage::RequestVoteRequest(request_vote_request) => {
                 let vote_granted = request_vote_request.term >= common_state.current_term
@@ -100,14 +107,19 @@ pub async fn follower_behavior<AB, SM, SMin, SMout>(
                         || *common_state.voted_for.as_ref().unwrap() == request_vote_request.candidate_id);
                 let reply = RequestVoteReply { from: me, vote_granted };
 
-                let candidate_ref = peers
-                    .get_mut(&request_vote_request.candidate_id)
-                    .expect("all peers are known");
-                let _ = candidate_ref.try_send(reply.into());
+                if let Some(candidate_ref) = peers.get_mut(&request_vote_request.candidate_id) {
+                    let _ = candidate_ref.try_send(reply.into());
+                }
             }
             RaftMessage::AppendEntriesClientRequest(append_entries_client_request) => {
-                tracing::trace!("redirecting the client to the leader");
-                let _ = append_entries_client_request.reply_to.send(Err(leader_ref.clone()));
+                if let Some(leader_id) = leader_id {
+                    if let Some(leader_ref) = peers.get_mut(&leader_id) {
+                        tracing::trace!("redirecting the client to the leader");
+                        let _ = append_entries_client_request
+                            .reply_to
+                            .send(Err(Some(leader_ref.clone())));
+                    }
+                }
             }
             other => {
                 tracing::trace!(unhandled = ?other);
