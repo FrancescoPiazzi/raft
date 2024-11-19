@@ -11,13 +11,17 @@ pub struct AppendEntriesRequest<SMin> {
 
 impl<SMin> Debug for AppendEntriesRequest<SMin> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("AppendEntriesRequest")
-            .field("term", &self.term)
-            .field("leader_id", &self.leader_id)
-            .field("prev_log_index", &self.prev_log_index)
-            .field("prev_log_term", &self.prev_log_term)
-            .field("leader_commit", &self.leader_commit)
-            .finish_non_exhaustive()
+        if self.entries.is_empty() {
+            f.debug_struct("AppendEntriesRequest ♥")
+        } else {
+            f.debug_struct("AppendEntriesRequest")
+        }
+        .field("term", &self.term)
+        .field("leader_id", &self.leader_id)
+        .field("prev_log_index", &self.prev_log_index)
+        .field("prev_log_term", &self.prev_log_term)
+        .field("leader_commit", &self.leader_commit)
+        .finish_non_exhaustive()
     }
 }
 
