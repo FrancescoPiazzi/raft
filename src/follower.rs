@@ -142,13 +142,12 @@ fn handle_append_entries_request<SM, SMin, SMout>(
         if request.leader_id != *leader_id { /* leader changed */ }
     }
 
-    let reply = AppendEntriesReply {
-        from: me,
-        term: common_state.current_term,
-        success: true,
-    };
-
     if let Some(leader_ref) = peers.get_mut(&request.leader_id) {
+        let reply = AppendEntriesReply {
+            from: me,
+            term: common_state.current_term,
+            success: true,
+        };
         let _ = leader_ref.try_send(reply.into());
     }
 }
@@ -166,9 +165,11 @@ fn handle_vote_request<SM, SMin, SMout>(
 {
     let vote_granted = request.term >= common_state.current_term
         && (common_state.voted_for.is_none() || *common_state.voted_for.as_ref().unwrap() == request.candidate_id);
-    let reply = RequestVoteReply { from: me, vote_granted };
+    tracing::trace!(vote_granted);
 
     if let Some(candidate_ref) = peers.get_mut(&request.candidate_id) {
+        let reply = RequestVoteReply { from: me, vote_granted };
+
         let _ = candidate_ref.try_send(reply.into());
     }
 }
@@ -185,9 +186,13 @@ fn handle_append_entries_client_request<SM, SMin, SMout>(
 {
     if let Some(leader_id) = leader_id {
         if let Some(leader_ref) = peers.get_mut(&leader_id) {
-            tracing::trace!("redirecting the client to the leader");
+            tracing::trace!("redirecting the client to leader {}", leader_id);
             let reply = Err(Some(leader_ref.clone()));
             let _ = request.reply_to.send(reply);
+        } else {
+            tracing::trace!("no leader to redirect the client to");
         }
+    } else {
+        tracing::trace!("no leader to redirect the client to");
     }
 }
