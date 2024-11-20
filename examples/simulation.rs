@@ -63,11 +63,11 @@ async fn send_entries_to_duplicate<SMin>(
                 interval.tick().await;
             }
             Ok(Ok(Err(Some(new_leader_ref)))) => {
-                tracing::trace!("Interrogated server is not the leader, switching to the indicated one");
+                tracing::debug!("Interrogated server is not the leader, switching to the indicated one");
                 leader = new_leader_ref;
             }
             Ok(Ok(Err(None))) | Err(_) => {
-                tracing::trace!(
+                tracing::debug!(
                     "Interrogated server does not know who the leader is or it did not answer, 
                     switching to another random node"
                 );

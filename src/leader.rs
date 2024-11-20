@@ -100,7 +100,11 @@ fn send_append_entries_request<SM, SMin, SMout>(
 ) where
     SMin: Clone + Send + 'static,
 {
-    let entries_to_send = common_state.log[next_index as usize..].to_vec();
+    let mut entries_to_send = Vec::new();
+    // TODO/TOASK: this should always be the case (I think), but it's not
+    if next_index <= common_state.log.len() as u64{
+        entries_to_send = common_state.log[next_index as usize..].to_vec();
+    }
 
     messages_len.push_back(entries_to_send.len());
     tracing::trace!("Sending {} entries to follower", entries_to_send.len());
