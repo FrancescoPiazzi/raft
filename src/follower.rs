@@ -183,13 +183,15 @@ fn handle_append_entries_client_request<SMin>(
 {
     if let Some(leader_id) = leader_id {
         if let Some(leader_ref) = peers.get_mut(&leader_id) {
-            tracing::trace!("redirecting the client to leader {}", leader_id);
+            tracing::debug!("redirecting the client to leader {}", leader_id);
             let reply = Err(Some(leader_ref.clone()));
             let _ = request.reply_to.send(reply);
         } else {
-            tracing::trace!("no leader to redirect the client to");
+            tracing::debug!("no leader to redirect the client to");
+            let _ = request.reply_to.send(Err(None));
         }
     } else {
-        tracing::trace!("no leader to redirect the client to");
+        tracing::debug!("no leader to redirect the client to");
+        let _ = request.reply_to.send(Err(None));
     }
 }
