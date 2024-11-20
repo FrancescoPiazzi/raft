@@ -4,6 +4,7 @@ use std::ops::Range;
 use std::time::Duration;
 
 use crate::common_state::CommonState;
+use crate::message_handling::update_term;
 use crate::messages::append_entries::{AppendEntriesReply, AppendEntriesRequest};
 use crate::messages::append_entries_client::AppendEntriesClientRequest;
 use crate::messages::request_vote::{RequestVoteReply, RequestVoteRequest};
@@ -43,7 +44,7 @@ pub async fn follower_behavior<AB, SM, SMin, SMout>(
 
         match message {
             RaftMessage::AppendEntriesRequest(request) => {
-                handle_append_entries_request(me, common_state, peers, leader_id.as_mut(), request);
+                handle_append_entries_request(me, common_state, peers, &mut leader_id, request);
             }
             RaftMessage::RequestVoteRequest(request) => {
                 handle_vote_request(me, common_state, peers, request);
@@ -63,7 +64,7 @@ fn handle_append_entries_request<SM, SMin, SMout>(
     me: u32,
     common_state: &mut CommonState<SM, SMin, SMout>,
     peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin>>>,
-    mut leader_id: Option<&mut u32>,
+    leader_id: &mut Option<u32>,
     request: AppendEntriesRequest<SMin>,
 ) where
     SM: StateMachine<SMin, SMout> + Send,
@@ -81,27 +82,21 @@ fn handle_append_entries_request<SM, SMin, SMout>(
             };
             let _ = sender_ref.try_send(reply.into());
         }
-
         return;
     }
 
-    if request.term > common_state.current_term {
-        tracing::trace!("previous term = {}, new term = {}",
-                        common_state.current_term, request.term);
-        common_state.current_term = request.term;
-        common_state.voted_for = None;
-
-        if let Some(leader_id) = leader_id.as_mut() {
-            tracing::trace!("previous leader = {}, new leader = {}",
-                            leader_id, request.leader_id);
-            **leader_id = request.leader_id;
-        }
+    let step_down = update_term(common_state, request.term);
+    if step_down {
+        *leader_id = None;
+        return;
     }
 
-    if request.term == common_state.current_term {
-        if let Some(leader_id) = leader_id.as_mut() {
-            assert_eq!(request.leader_id, **leader_id);
-        }
+    // Record the leader id as a hint for clients.
+    if let Some(leader_id) = leader_id {
+        assert_eq!(request.leader_id, *leader_id);
+    } else {
+        tracing::trace!("new leader = {}", request.leader_id);
+        *leader_id = Some(request.leader_id);
     }
 
     if request.prev_log_index > common_state.log.len() as u64 {
