@@ -102,9 +102,9 @@ fn send_append_entries_request<SM, SMin, SMout>(
 {
     let mut entries_to_send = Vec::new();
     // TODO/TOASK: this should always be the case (I think), but it's not
-    if next_index <= common_state.log.len() as u64{
+    // if next_index <= common_state.log.len() as u64{
         entries_to_send = common_state.log[next_index as usize..].to_vec();
-    }
+    // }
 
     messages_len.push_back(entries_to_send.len());
     tracing::trace!("Sending {} entries to follower", entries_to_send.len());
@@ -191,6 +191,8 @@ where
                 let request_len = peer_state.messages_len.pop_front().unwrap_or(0);
                 *peer_match_idx = request_len as u64 + *peer_next_idx - 1;
                 *peer_next_idx = *peer_match_idx + 1;
+
+                tracing::trace!("----> match idx: {}, next idx: {}", peer_match_idx, peer_next_idx);
 
                 commit_log_entries_replicated_on_majority(
                     common_state,
