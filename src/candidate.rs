@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 use actum::actor_ref::ActorRef;
 use actum::prelude::ActorBounds;
 use rand::{thread_rng, Rng};
+use request_vote::RequestVoteReply;
 use tokio::time::timeout;
 
 use crate::common_state::CommonState;
@@ -61,36 +62,10 @@ where
 
             let message = message.message().expect("raft runs indefinitely");
             tracing::trace!(message = ?message);
-
-            match message {
-                RaftMessage::RequestVoteReply(reply) => {
-                    votes_from_others.insert(reply.from, reply.vote_granted);
-                    let n_granted_votes_including_self =
-                        votes_from_others.values().filter(|granted| **granted).count() + 1;
-
-                    if n_granted_votes_including_self > peers.len() / 2 + 1 {
-                        election_won = true;
-                        break 'candidate;
-                    }
-                }
-                RaftMessage::AppendEntriesRequest(request) => {
-                    if request.term >= common_state.current_term {
-                        election_won = false;
-                        common_state.current_term = request.term;
-                        break 'candidate;
-                    }
-                }
-                RaftMessage::RequestVoteRequest(request) => {
-                    // reminder: candidates never vote for others, as they have already voted for themselves
-                    if request.term > common_state.current_term {
-                        election_won = false;
-                        common_state.current_term = request.term;
-                        break 'candidate;
-                    }
-                }
-                _ => {
-                    tracing::trace!(unhandled = ?message);
-                }
+            
+            if let Some(election_result) = handle_message_as_candidate(common_state,peers, &mut votes_from_others, message){
+                election_won = election_result;
+                break 'candidate;
             }
 
             if let Some(new_remaining_time_to_wait) = remaining_time_to_wait.checked_sub(Instant::now().elapsed()) {
@@ -103,4 +78,60 @@ where
     }
 
     election_won
+}
+
+/// Process a single message as the candidate
+/// 
+/// Returns Some(true) if election is won, Some(false) if it is lost, and None if it's still ongoing
+fn handle_message_as_candidate<SM, SMin, SMout>(
+    common_state: &mut CommonState<SM, SMin, SMout>,
+    peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin>>>,
+    votes_from_others: &mut BTreeMap<u32, bool>,
+    message: RaftMessage<SMin>
+) -> Option<bool> 
+{
+    match message {
+        RaftMessage::RequestVoteReply(reply) => {
+            votes_from_others.insert(reply.from, reply.vote_granted);
+            let n_granted_votes_including_self =
+                votes_from_others.values().filter(|granted| **granted).count() + 1;
+            
+            // +1 before sub. or it always underflows 
+            // TOTHINK: why always? It should only happen when everyone votes for me, which is usually not the case, 
+            // since I will win the election before that happens
+            tracing::trace!("others len: {}, n votes including self: {}", votes_from_others.len(), n_granted_votes_including_self);
+            let n_votes_against = votes_from_others.len() + 1 - n_granted_votes_including_self;
+
+            if n_granted_votes_including_self > peers.len() / 2 + 1 {
+                Some(true)
+            } else if n_votes_against > peers.len() / 2 + 1 {
+                Some(false)
+            } else {
+                None
+            }
+        }
+        RaftMessage::AppendEntriesRequest(request) => {
+            if request.term >= common_state.current_term {
+                common_state.current_term = request.term;
+                Some(false)
+            } else {
+                None
+            }
+        }
+        RaftMessage::RequestVoteRequest(request) => {
+            // reminder: candidates never vote for others, as they have already voted for themselves
+            // TOTHINK: do they? one would argue that they will vote for somone on a different term, so it doesn't count
+            // but the formal specifications seem to imply they don't (it also seems to imply noone ever votes tough)
+            if request.term > common_state.current_term {
+                common_state.current_term = request.term;
+                Some(false)
+            } else {
+                None
+            }
+        }
+        _ => {
+            tracing::trace!(unhandled = ?message);
+            None
+        }
+    }
 }

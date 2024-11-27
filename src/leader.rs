@@ -9,10 +9,13 @@ use tokio::sync::oneshot;
 use tokio::task::JoinSet;
 
 use crate::common_state::CommonState;
-use crate::messages::append_entries::AppendEntriesRequest;
+use crate::messages::append_entries::{AppendEntriesReply, AppendEntriesRequest};
+use crate::messages::append_entries_client::AppendEntriesClientRequest;
+use crate::messages::request_vote::RequestVoteRequest;
 use crate::messages::*;
 use crate::state_machine::StateMachine;
 use crate::types::AppendEntriesClientResponse;
+
 
 mod peer_state;
 
@@ -125,7 +128,7 @@ fn send_append_entries_request<SM, SMin, SMout>(
     let _ = follower_ref.try_send(request.into());
 }
 
-/// Returns true if we should step down, false otherwise.
+/// Returns true if we should step down, false otherwise. TOASK: maybe a function is not needed anymore since we moved all behaviours into other functions?
 fn handle_message_as_leader<SM, SMin, SMout>(
     me: u32,
     common_state: &mut CommonState<SM, SMin, SMout>,
@@ -143,66 +146,16 @@ where
 
     match message {
         RaftMessage::AppendEntriesClientRequest(append_entries_client) => {
-            tracing::trace!("Received a client message, replicating it");
-
-            // empty requests can cause problems when keeping track of the sender per request
-            if append_entries_client.entries_to_replicate.is_empty() {
-                return false;
-            }
-
-            common_state
-                .log
-                .append(append_entries_client.entries_to_replicate, common_state.current_term);
-            client_per_entry_group.insert(common_state.log.len(), append_entries_client.reply_to);
+            handle_append_entries_client_request(common_state, client_per_entry_group, append_entries_client);
         }
         RaftMessage::AppendEntriesRequest(append_entries_rpc) => {
-            if append_entries_rpc.term > common_state.current_term
-                || (append_entries_rpc.term == common_state.current_term
-                    && append_entries_rpc.leader_commit >= common_state.commit_index as u64)
-            {
-                common_state.current_term = append_entries_rpc.term;
-                return true;
-            }
+            if handle_append_entries_request(me, common_state, peers, append_entries_rpc) { return true };
         }
         RaftMessage::RequestVoteRequest(request_vote_rpc) => {
-            let step_down = request_vote_rpc.term > common_state.current_term;
-            let reply = request_vote::RequestVoteReply {
-                from: me,
-                vote_granted: step_down,
-            };
-            if let Some(candidate_ref) = peers.get_mut(&request_vote_rpc.candidate_id) {
-                let _ = candidate_ref.try_send(reply.into());
-            }
-            if step_down {
-                common_state.voted_for = Some(request_vote_rpc.candidate_id);
-                common_state.current_term = request_vote_rpc.term;
-                return true;
-            }
+            if handle_request_vote_request(me, common_state, peers, request_vote_rpc) { return true };
         }
         RaftMessage::AppendEntriesReply(reply) => {
-            let Some(peer_state) = peers_state.get_mut(&reply.from) else {
-                return false;
-            };
-            let peer_next_idx = &mut peer_state.next_index;
-            let peer_match_idx = &mut peer_state.match_index;
-
-            if reply.success {
-                // should always be Some, since we always push a value before each append entries request
-                let request_len = peer_state.messages_len.pop_front().unwrap_or(0);
-                *peer_match_idx = request_len as u64 + *peer_next_idx - 1;
-                *peer_next_idx = *peer_match_idx + 1;
-
-                tracing::trace!("----> match idx: {}, next idx: {}", peer_match_idx, peer_next_idx);
-
-                commit_log_entries_replicated_on_majority(
-                    common_state,
-                    peers_state,
-                    client_per_entry_group,
-                    newly_committed_entries_buf,
-                );
-            } else {
-                *peer_next_idx -= 1;
-            }
+            handle_append_entries_reply(common_state, peers_state, client_per_entry_group, newly_committed_entries_buf, reply);
         }
         RaftMessage::RequestVoteReply(_) => {} // ignore extra votes if we were already elected
         _ => {
@@ -210,6 +163,115 @@ where
         }
     }
     false
+}
+
+#[tracing::instrument(level = "trace", skip_all)]
+fn handle_append_entries_client_request<SM, SMin, SMout>(
+    common_state: &mut CommonState<SM, SMin, SMout>,
+    client_per_entry_group: &mut BTreeMap<usize, oneshot::Sender<AppendEntriesClientResponse<SMin>>>,
+    request: AppendEntriesClientRequest<SMin>,
+) where
+    SM: StateMachine<SMin, SMout> + Send,
+    SMin: Send + Clone + 'static,
+{
+    tracing::trace!("Received a client message, replicating it");
+    // empty requests can cause problems when keeping track of the sender per request
+    if request.entries_to_replicate.is_empty() {
+        return;
+    }
+
+    common_state
+        .log
+        .append(request.entries_to_replicate, common_state.current_term);
+    client_per_entry_group.insert(common_state.log.len(), request.reply_to);
+}
+
+/// Returns true if we should step down, false otherwise.
+#[tracing::instrument(level = "trace", skip_all)]
+fn handle_append_entries_request<SM, SMin, SMout>(
+    me: u32,
+    common_state: &mut CommonState<SM, SMin, SMout>,
+    peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin>>>,
+    request: AppendEntriesRequest<SMin>,
+) -> bool where
+    SM: StateMachine<SMin, SMout> + Send,
+    SMin: Clone + Send + 'static,
+{
+    if request.term > common_state.current_term
+        || (request.term == common_state.current_term
+            && request.leader_commit >= common_state.commit_index as u64)
+    {
+        common_state.current_term = request.term;
+        true
+    } else {
+        false
+    }
+}
+
+/// Returns true if we should step down, false otherwise.
+#[tracing::instrument(level = "trace", skip_all)]
+fn handle_request_vote_request<SM, SMin, SMout>(
+    me: u32,
+    common_state: &mut CommonState<SM, SMin, SMout>,
+    peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin>>>,
+    request: RequestVoteRequest,
+) -> bool
+where
+    SM: StateMachine<SMin, SMout> + Send,
+    SMin: Clone + Send + 'static,
+{
+    let step_down = request.term > common_state.current_term;
+    let reply = request_vote::RequestVoteReply {
+        from: me,
+        vote_granted: step_down,
+    };
+    if let Some(candidate_ref) = peers.get_mut(&request.candidate_id) {
+        let _ = candidate_ref.try_send(reply.into());
+    }
+    if step_down {
+        common_state.voted_for = Some(request.candidate_id);
+        common_state.current_term = request.term;
+        true
+    } else {
+        false
+    }
+}
+
+#[tracing::instrument(level = "trace", skip_all)]
+fn handle_append_entries_reply<SM, SMin, SMout>(
+    common_state: &mut CommonState<SM, SMin, SMout>,
+    peers_state: &mut BTreeMap<u32, PeerState>,
+    client_per_entry_group: &mut BTreeMap<usize, oneshot::Sender<AppendEntriesClientResponse<SMin>>>,
+    newly_committed_entries_buf: &mut Vec<usize>,
+    reply: AppendEntriesReply,
+) where
+    SM: StateMachine<SMin, SMout> + Send,
+    SMin: Clone,
+{
+    let Some(peer_state) = peers_state.get_mut(&reply.from) else {
+        tracing::error!("Couldn't get the state of peer {}", reply.from);
+        return;
+    };
+    let peer_next_idx = &mut peer_state.next_index;
+    let peer_match_idx = &mut peer_state.match_index;
+
+    if reply.success {
+        // should always be Some, since we always push a value before each append entries request
+        let request_len = peer_state.messages_len.pop_front().unwrap_or(0);
+        *peer_match_idx = request_len as u64 + *peer_next_idx - 1;
+        *peer_next_idx = *peer_match_idx + 1;
+
+        tracing::trace!("----> match idx: {}, next idx: {}", peer_match_idx, peer_next_idx);
+
+        commit_log_entries_replicated_on_majority(
+            common_state,
+            peers_state,
+            client_per_entry_group,
+            newly_committed_entries_buf,
+        );
+    } else {
+        *peer_next_idx -= 1;
+    }
 }
 
 /// Commits the log entries that have been replicated on the majority of the servers.
