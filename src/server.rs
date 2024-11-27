@@ -64,18 +64,18 @@ where
             .instrument(info_span!("follower"))
             .await;
 
-        tracing::trace!("transition: follower → candidate");
+        tracing::debug!("transition: follower → candidate");
         let election_won = candidate_behavior(&mut cell, me.0, &mut common_state, &mut peers, election_timeout.clone())
             .instrument(info_span!("candidate"))
             .await;
 
         if election_won {
-            tracing::trace!("transition: candidate → leader");
+            tracing::debug!("transition: candidate → leader");
             leader_behavior(&mut cell, me.0, &mut common_state, &mut peers, heartbeat_period)
                 .instrument(info_span!("leader👑"))
                 .await;
         } else {
-            tracing::trace!("transition: candidate → follower");
+            tracing::debug!("transition: candidate → follower");
         }
     }
 }

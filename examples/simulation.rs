@@ -45,7 +45,7 @@ async fn send_entries_to_duplicate<SMin>(
     let mut rng = rand::thread_rng();
 
     loop {
-        tracing::info!("Sending entries to replicate");
+        tracing::debug!("Sending entries to replicate");
 
         let (tx, rx) = oneshot::channel::<AppendEntriesClientResponse<SMin>>();
 
@@ -59,7 +59,7 @@ async fn send_entries_to_duplicate<SMin>(
         // these are too many nested Results but I don't know how to reduce them without losing expressiveness
         match tokio::time::timeout(timeout, rx).await {
             Ok(Ok(Ok(_))) => {
-                tracing::info!("Recieved confirmation of successful entry replication");
+                tracing::debug!("✅ Recieved confirmation of successful entry replication");
                 interval.tick().await;
             }
             Ok(Ok(Err(Some(new_leader_ref)))) => {

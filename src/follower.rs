@@ -34,7 +34,7 @@ pub async fn follower_behavior<AB, SM, SMin, SMout>(
 
     loop {
         let Ok(message) = timeout(election_timeout, cell.recv()).await else {
-            tracing::trace!("election timeout");
+            tracing::debug!("election timeout");
             return;
         };
 
@@ -71,7 +71,7 @@ fn handle_append_entries_request<SM, SMin, SMout>(
     SMout: Send,
 {
     if request.term < common_state.current_term {
-        tracing::trace!("request term < current term = {}", common_state.current_term);
+        tracing::trace!("request term = {} < current term = {}", request.term, common_state.current_term);
 
         if let Some(sender_ref) = peers.get_mut(&request.leader_id) {
             let reply = AppendEntriesReply {
@@ -131,13 +131,15 @@ fn handle_append_entries_request<SM, SMin, SMout>(
         tracing::trace!("leader commit is greater than follower commit, updating commit index");
         let new_commit_index = min(leader_commit, common_state.log.len());
         tracing::trace!("previous log index = {}, log length: {}: ignoring",
-                        request.prev_log_index, common_state.log.len());
+                        request.prev_log_index, common_state.log.len());    // TOASK: what is that ignoring? Did I put it there?
 
         common_state.commit_index = new_commit_index;
         common_state.commit_log_entries_up_to_commit_index(None);
     }
 
     if let Some(leader_id) = leader_id.as_mut() {
+        // TOASK: this can happen? If the leader changes and we get a new term, we update it earlier, 
+        // how can the leader change without the term progressing?
         if request.leader_id != *leader_id { /* leader changed */ }
     }
 

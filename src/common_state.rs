@@ -44,7 +44,7 @@ impl<SM, SMin, SMout> CommonState<SM, SMin, SMout> {
         }
 
         for i in (self.last_applied + 1)..=self.commit_index {
-            tracing::info!("Applying log entry {}", i);
+            tracing::debug!("Applying log entry {}", i);
             self.state_machine.apply(&self.log[i]);
             if let Some(inner) = newly_committed_entries_buf.as_mut() {
                 inner.push(i);

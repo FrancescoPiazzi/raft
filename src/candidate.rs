@@ -35,7 +35,7 @@ where
     let mut votes_from_others = BTreeMap::<u32, bool>::new();
 
     'candidate: loop {
-        tracing::trace!("starting a new election");
+        tracing::debug!("starting a new election");
 
         common_state.current_term += 1;
 
