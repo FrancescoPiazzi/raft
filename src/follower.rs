@@ -43,7 +43,7 @@ pub async fn follower_behavior<AB, SM, SMin, SMout>(
 
         match message {
             RaftMessage::AppendEntriesRequest(request) => {
-                handle_append_entries_request(me, common_state, peers, leader_id, request);
+                handle_append_entries_request(me, common_state, peers, &mut leader_id, request);
             }
             RaftMessage::RequestVoteRequest(request) => {
                 handle_vote_request(me, common_state, peers, request);
@@ -63,7 +63,7 @@ fn handle_append_entries_request<SM, SMin, SMout>(
     me: u32,
     common_state: &mut CommonState<SM, SMin, SMout>,
     peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin>>>,
-    mut leader_id: Option<u32>,
+    leader_id: &mut Option<u32>,
     request: AppendEntriesRequest<SMin>,
 ) where
     SM: StateMachine<SMin, SMout> + Send,
@@ -91,15 +91,15 @@ fn handle_append_entries_request<SM, SMin, SMout>(
         common_state.current_term = request.term;
         common_state.voted_for = None;
 
-        if let Some(leader_id) = leader_id.as_mut() {
+        if let Some(leader_id) = leader_id{
             tracing::trace!("previous leader = {}, new leader = {}",
                             leader_id, request.leader_id);
         }
-        leader_id = Some(request.leader_id);
+        *leader_id = Some(request.leader_id);
     }
 
     if request.term == common_state.current_term {
-        if let Some(leader_id) = leader_id.as_mut() {
+        if let Some(leader_id) = leader_id.as_ref() {
             assert_eq!(request.leader_id, *leader_id);
         }
     }
