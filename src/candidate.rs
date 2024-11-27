@@ -5,7 +5,6 @@ use std::time::{Duration, Instant};
 use actum::actor_ref::ActorRef;
 use actum::prelude::ActorBounds;
 use rand::{thread_rng, Rng};
-use request_vote::RequestVoteReply;
 use tokio::time::timeout;
 
 use crate::common_state::CommonState;
@@ -42,12 +41,13 @@ where
         votes_from_others.clear();
 
         let mut remaining_time_to_wait = thread_rng().gen_range(election_timeout.clone());
+        let last_applied = common_state.last_applied;
 
         let request = RequestVoteRequest {
             term: common_state.current_term,
             candidate_id: me,
-            last_log_index: 0,
-            last_log_term: 0,
+            last_log_index: last_applied as u64,
+            last_log_term: if last_applied == 0 { 0 } else { common_state.log.get_term(last_applied) },
         };
 
         for peer in peers.values_mut() {

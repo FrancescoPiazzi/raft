@@ -103,11 +103,7 @@ fn send_append_entries_request<SM, SMin, SMout>(
 ) where
     SMin: Clone + Send + 'static,
 {
-    let mut entries_to_send = Vec::new();
-    // TODO/TOASK: this should always be the case (I think), but it's not
-    // if next_index <= common_state.log.len() as u64{
-        entries_to_send = common_state.log[next_index as usize..].to_vec();
-    // }
+    let entries_to_send = common_state.log[next_index as usize..].to_vec();
 
     messages_len.push_back(entries_to_send.len());
     tracing::trace!("Sending {} entries to follower", entries_to_send.len());
@@ -149,7 +145,7 @@ where
             handle_append_entries_client_request(common_state, client_per_entry_group, append_entries_client);
         }
         RaftMessage::AppendEntriesRequest(append_entries_rpc) => {
-            if handle_append_entries_request(me, common_state, peers, append_entries_rpc) { return true };
+            if handle_append_entries_request(common_state, append_entries_rpc) { return true };
         }
         RaftMessage::RequestVoteRequest(request_vote_rpc) => {
             if handle_request_vote_request(me, common_state, peers, request_vote_rpc) { return true };
@@ -189,9 +185,7 @@ fn handle_append_entries_client_request<SM, SMin, SMout>(
 /// Returns true if we should step down, false otherwise.
 #[tracing::instrument(level = "trace", skip_all)]
 fn handle_append_entries_request<SM, SMin, SMout>(
-    me: u32,
     common_state: &mut CommonState<SM, SMin, SMout>,
-    peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin>>>,
     request: AppendEntriesRequest<SMin>,
 ) -> bool where
     SM: StateMachine<SMin, SMout> + Send,
