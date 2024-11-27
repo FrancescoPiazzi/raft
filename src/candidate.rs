@@ -108,6 +108,10 @@ fn handle_message_as_candidate<SM, SMin, SMout>(
             if reply.term != common_state.current_term {
                 return None;
             }
+            if votes_from_others.contains_key(&reply.from){
+                tracing::error!("Candidate {} voted for me twice", reply.from);
+                return None;
+            }
 
             votes_from_others.insert(reply.from, reply.vote_granted);
             let n_granted_votes_including_self =
@@ -115,6 +119,9 @@ fn handle_message_as_candidate<SM, SMin, SMout>(
             let n_votes_against =
                 votes_from_others.values().filter(|granted| !**granted).count();
             
+            // tracing::trace!("votes needed to win:  {}/{}", n_granted_votes_including_self, peers.len() / 2 + 1);
+            // tracing::trace!("votes needed to lose: {}/{}", n_votes_against, peers.len() / 2 + 1);
+
             if n_granted_votes_including_self >= peers.len() / 2 + 1 {
                 Some(true)
             } else if n_votes_against >= peers.len() / 2 + 1 {

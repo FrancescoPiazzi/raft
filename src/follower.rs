@@ -90,18 +90,7 @@ fn handle_append_entries_request<SM, SMin, SMout>(
         return;
     }
 
-    if request.term > common_state.current_term {
-        tracing::trace!("previous term = {}, new term = {}",
-                        common_state.current_term, request.term);
-        common_state.current_term = request.term;
-        common_state.voted_for = None;
-
-        if let Some(leader_id) = leader_id{
-            tracing::trace!("previous leader = {}, new leader = {}",
-                            leader_id, request.leader_id);
-        }
-        *leader_id = Some(request.leader_id);
-    }
+    *leader_id = Some(request.leader_id);
 
     if request.term == common_state.current_term {
         if let Some(leader_id) = leader_id.as_ref() {
