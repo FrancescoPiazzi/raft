@@ -23,14 +23,14 @@ use tokio::time::timeout;
 pub async fn follower_behavior<AB, SM, SMin, SMout>(
     cell: &mut AB,
     me: u32,
-    peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin>>>,
+    peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin, SMout>>>,
     common_state: &mut CommonState<SM, SMin, SMout>,
     election_timeout: Range<Duration>,
 ) where
-    AB: ActorBounds<RaftMessage<SMin>>,
+    AB: ActorBounds<RaftMessage<SMin, SMout>>,
     SM: StateMachine<SMin, SMout> + Send,
     SMin: Clone + Send + 'static,
-    SMout: Send,
+    SMout: Send + 'static,
 {
     let election_timeout = thread_rng().gen_range(election_timeout);
     let mut leader_id: Option<u32> = None;
@@ -67,13 +67,13 @@ pub async fn follower_behavior<AB, SM, SMin, SMout>(
 fn handle_append_entries_request<SM, SMin, SMout>(
     me: u32,
     common_state: &mut CommonState<SM, SMin, SMout>,
-    peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin>>>,
+    peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin, SMout>>>,
     leader_id: &mut Option<u32>,
     request: AppendEntriesRequest<SMin>,
 ) where
     SM: StateMachine<SMin, SMout> + Send,
     SMin: Clone + Send + 'static,
-    SMout: Send,
+    SMout: Send + 'static,
 {
     if request.term < common_state.current_term {
         tracing::trace!("request term = {} < current term = {}", request.term, common_state.current_term);
@@ -152,12 +152,12 @@ fn handle_append_entries_request<SM, SMin, SMout>(
 fn handle_vote_request<SM, SMin, SMout>(
     me: u32,
     common_state: &mut CommonState<SM, SMin, SMout>,
-    peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin>>>,
+    peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin, SMout>>>,
     request: RequestVoteRequest,
 ) where
     SM: StateMachine<SMin, SMout> + Send,
     SMin: Clone + Send + 'static,
-    SMout: Send,
+    SMout: Send + 'static,
 {
     // TODO: this should implement "and candidate’s log is at least as up-to-date as receiver's log", the term being >= is not enough
     let vote_granted = request.term >= common_state.current_term
@@ -174,10 +174,10 @@ fn handle_vote_request<SM, SMin, SMout>(
 }
 
 #[tracing::instrument(level = "trace", skip_all)]
-fn handle_append_entries_client_request<SMin>(
-    peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin>>>,
+fn handle_append_entries_client_request<SMin, SMout>(
+    peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin, SMout>>>,
     leader_id: Option<&mut u32>,
-    request: AppendEntriesClientRequest<SMin>,
+    request: AppendEntriesClientRequest<SMin, SMout>,
 ) where
     SMin: Clone + Send + 'static,
 {

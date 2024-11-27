@@ -1,4 +1,5 @@
 use std::collections::HashSet as Set;
+use std::fmt::Debug;
 use std::time::Duration;
 
 use raft::messages::append_entries_client::AppendEntriesClientRequest;
@@ -29,20 +30,20 @@ impl ExampleStateMachine {
 impl StateMachine<u64, usize> for ExampleStateMachine {
     fn apply(&mut self, entry: &u64) -> usize {
         self.set.insert(*entry);
-        tracing::trace!("State machine size: {}", self.set.len());
         self.set.len()
     }
 }
 
 /// example of a client that sends groups of random entries to be replicated
 #[instrument(name = "client" skip(servers, entries, period, timeout))]
-async fn send_entries_to_duplicate<SMin>(
-    servers: &Vec<Server<SMin>>,
+async fn send_entries_to_duplicate<SMin, SMout>(
+    servers: &Vec<Server<SMin, SMout>>,
     entries: Set<Vec<SMin>>,
     period: Duration,
     timeout: Duration,
 ) where
     SMin: Clone + Send + 'static,
+    SMout: Send + Debug + 'static
 {
     let mut interval = tokio::time::interval(period);
     interval.tick().await; // first tick is immediate, skip it
@@ -53,7 +54,7 @@ async fn send_entries_to_duplicate<SMin>(
     loop {
         tracing::debug!("Sending entries to replicate");
 
-        let (tx, rx) = oneshot::channel::<AppendEntriesClientResponse<SMin>>();
+        let (tx, rx) = oneshot::channel::<AppendEntriesClientResponse<SMin, SMout>>();
 
         let request = AppendEntriesClientRequest {
             entries_to_replicate: entries.iter().choose(&mut rng).unwrap().clone(),
@@ -64,8 +65,8 @@ async fn send_entries_to_duplicate<SMin>(
 
         // these are too many nested Results but I don't know how to reduce them without losing expressiveness
         match tokio::time::timeout(timeout, rx).await {
-            Ok(Ok(AppendEntriesClientResponse(Ok(_)))) => {
-                tracing::debug!("✅ Recieved confirmation of successful entry replication");
+            Ok(Ok(AppendEntriesClientResponse(Ok(result)))) => {
+                tracing::debug!("✅ Recieved confirmation of successful entry replication, result is: {:?}", result);
                 interval.tick().await;
             }
             Ok(Ok(AppendEntriesClientResponse(Err(Some(new_leader_ref))))) => {

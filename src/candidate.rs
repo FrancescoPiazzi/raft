@@ -20,14 +20,14 @@ pub async fn candidate_behavior<AB, SM, SMin, SMout>(
     cell: &mut AB,
     me: u32,
     common_state: &mut CommonState<SM, SMin, SMout>,
-    peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin>>>,
+    peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin, SMout>>>,
     election_timeout: Range<Duration>,
 ) -> bool
 where
-    AB: ActorBounds<RaftMessage<SMin>>,
+    AB: ActorBounds<RaftMessage<SMin, SMout>>,
     SM: Send,
     SMin: Clone + Send + 'static,
-    SMout: Send,
+    SMout: Send + 'static,
 {
     let mut election_won = false;
 
@@ -97,9 +97,9 @@ where
 /// Returns Some(true) if election is won, Some(false) if it is lost, and None if it's still ongoing
 fn handle_message_as_candidate<SM, SMin, SMout>(
     common_state: &mut CommonState<SM, SMin, SMout>,
-    peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin>>>,
+    peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin, SMout>>>,
     votes_from_others: &mut BTreeMap<u32, bool>,
-    message: RaftMessage<SMin>
+    message: RaftMessage<SMin, SMout>
 ) -> Option<bool> 
 {
     match message {

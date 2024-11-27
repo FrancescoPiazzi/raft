@@ -28,13 +28,13 @@ pub async fn leader_behavior<AB, SM, SMin, SMout>(
     cell: &mut AB,
     me: u32,
     common_state: &mut CommonState<SM, SMin, SMout>,
-    peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin>>>,
+    peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin, SMout>>>,
     heartbeat_period: Duration,
 ) where
     SM: StateMachine<SMin, SMout> + Send,
-    AB: ActorBounds<RaftMessage<SMin>>,
+    AB: ActorBounds<RaftMessage<SMin, SMout>>,
     SMin: Clone + Send + 'static,
-    SMout: Send,
+    SMout: Send + 'static,
 {
     let mut peers_state = BTreeMap::new();
     for (id, _) in peers.iter_mut() {
@@ -50,11 +50,11 @@ pub async fn leader_behavior<AB, SM, SMin, SMout>(
         });
     }
 
-    // optimization: used as buffer where to append newly commited entries.
-    let mut newly_committed_entries_buf = Vec::<usize>::new();
+    // optimization: used as buffer where to append the output of the state machine given the newly commited entries.
+    let mut committed_entries_smout_buf = Vec::<SMout>::new();
 
     // Tracks the oneshot that we have to answer on per entry group
-    let mut client_per_entry_group = BTreeMap::<usize, oneshot::Sender<AppendEntriesClientResponse<SMin>>>::new();
+    let mut client_per_entry_group = BTreeMap::<usize, oneshot::Sender<AppendEntriesClientResponse<SMin, SMout>>>::new();
 
     loop {
         tokio::select! {
@@ -70,7 +70,7 @@ pub async fn leader_behavior<AB, SM, SMin, SMout>(
                     peers,
                     &mut peers_state,
                     &mut client_per_entry_group,
-                    &mut newly_committed_entries_buf,
+                    &mut committed_entries_smout_buf,
                     message
                 );
             },
@@ -100,10 +100,11 @@ fn send_append_entries_request<SM, SMin, SMout>(
     me: u32,
     common_state: &CommonState<SM, SMin, SMout>,
     messages_len: &mut VecDeque<usize>,
-    follower_ref: &mut ActorRef<RaftMessage<SMin>>,
+    follower_ref: &mut ActorRef<RaftMessage<SMin, SMout>>,
     next_index: u64,
 ) where
     SMin: Clone + Send + 'static,
+    SMout: Send + 'static
 {
     let entries_to_send = common_state.log[next_index as usize..].to_vec();
 
@@ -130,15 +131,16 @@ fn send_append_entries_request<SM, SMin, SMout>(
 fn handle_message_as_leader<SM, SMin, SMout>(
     me: u32,
     common_state: &mut CommonState<SM, SMin, SMout>,
-    peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin>>>,
+    peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin, SMout>>>,
     peers_state: &mut BTreeMap<u32, PeerState>,
-    client_per_entry_group: &mut BTreeMap<usize, oneshot::Sender<AppendEntriesClientResponse<SMin>>>,
-    newly_committed_entries_buf: &mut Vec<usize>,
-    message: RaftMessage<SMin>,
+    client_per_entry_group: &mut BTreeMap<usize, oneshot::Sender<AppendEntriesClientResponse<SMin, SMout>>>,
+    committed_entries_smout_buf: &mut Vec<SMout>,
+    message: RaftMessage<SMin, SMout>,
 )
 where
     SM: StateMachine<SMin, SMout> + Send,
     SMin: Send + Clone + 'static,
+    SMout: Send + 'static,
 {
     tracing::trace!(message = ?message);
 
@@ -152,7 +154,7 @@ where
             handle_request_vote_request(me, common_state, peers, request_vote_rpc)
         }
         RaftMessage::AppendEntriesReply(reply) => {
-            handle_append_entries_reply(common_state, peers_state, client_per_entry_group, newly_committed_entries_buf, reply);
+            handle_append_entries_reply(common_state, peers_state, client_per_entry_group, committed_entries_smout_buf, reply);
         }
         RaftMessage::RequestVoteReply(_) => {} // ignore extra votes if we were already elected
         _ => {
@@ -164,8 +166,8 @@ where
 #[tracing::instrument(level = "trace", skip_all)]
 fn handle_append_entries_client_request<SM, SMin, SMout>(
     common_state: &mut CommonState<SM, SMin, SMout>,
-    client_per_entry_group: &mut BTreeMap<usize, oneshot::Sender<AppendEntriesClientResponse<SMin>>>,
-    request: AppendEntriesClientRequest<SMin>,
+    client_per_entry_group: &mut BTreeMap<usize, oneshot::Sender<AppendEntriesClientResponse<SMin, SMout>>>,
+    request: AppendEntriesClientRequest<SMin, SMout>,
 ) where
     SM: StateMachine<SMin, SMout> + Send,
     SMin: Send + Clone + 'static,
@@ -188,12 +190,13 @@ fn handle_append_entries_client_request<SM, SMin, SMout>(
 fn handle_request_vote_request<SM, SMin, SMout>(
     me: u32,
     common_state: &mut CommonState<SM, SMin, SMout>,
-    peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin>>>,
+    peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin, SMout>>>,
     request: RequestVoteRequest,
 )
 where
     SM: StateMachine<SMin, SMout> + Send,
     SMin: Clone + Send + 'static,
+    SMout: Send + 'static
 {
     if let Some(candidate_ref) = peers.get_mut(&request.candidate_id) {
         let _ = candidate_ref.try_send(RequestVoteReply {
@@ -208,8 +211,8 @@ where
 fn handle_append_entries_reply<SM, SMin, SMout>(
     common_state: &mut CommonState<SM, SMin, SMout>,
     peers_state: &mut BTreeMap<u32, PeerState>,
-    client_per_entry_group: &mut BTreeMap<usize, oneshot::Sender<AppendEntriesClientResponse<SMin>>>,
-    newly_committed_entries_buf: &mut Vec<usize>,
+    client_per_entry_group: &mut BTreeMap<usize, oneshot::Sender<AppendEntriesClientResponse<SMin, SMout>>>,
+    committed_entries_smout_buf: &mut Vec<SMout>,
     reply: AppendEntriesReply,
 ) where
     SM: StateMachine<SMin, SMout> + Send,
@@ -234,7 +237,7 @@ fn handle_append_entries_reply<SM, SMin, SMout>(
             common_state,
             peers_state,
             client_per_entry_group,
-            newly_committed_entries_buf,
+            committed_entries_smout_buf,
         );
     } else {
         *peer_next_idx -= 1;
@@ -245,8 +248,8 @@ fn handle_append_entries_reply<SM, SMin, SMout>(
 fn commit_log_entries_replicated_on_majority<SM, SMin, SMout>(
     common_state: &mut CommonState<SM, SMin, SMout>,
     peers_state: &BTreeMap<u32, PeerState>,
-    client_per_entry_group: &mut BTreeMap<usize, oneshot::Sender<AppendEntriesClientResponse<SMin>>>,
-    newly_committed_entries_buf: &mut Vec<usize>,
+    client_per_entry_group: &mut BTreeMap<usize, oneshot::Sender<AppendEntriesClientResponse<SMin, SMout>>>,
+    committed_entries_smout_buf: &mut Vec<SMout>,
 ) where
     SM: StateMachine<SMin, SMout> + Send,
     SMin: Clone,
@@ -260,11 +263,13 @@ fn commit_log_entries_replicated_on_majority<SM, SMin, SMout>(
     }
     common_state.commit_index = max(i - 1, 0);
 
-    common_state.commit_log_entries_up_to_commit_index(Some(newly_committed_entries_buf));
+    let old_last_applied = common_state.last_applied;
 
-    for entry in newly_committed_entries_buf {
-        if let Some(sender) = client_per_entry_group.remove(&entry) {
-            let _ = sender.send(AppendEntriesClientResponse(Ok(())));
+    common_state.commit_log_entries_up_to_commit_index(Some(committed_entries_smout_buf));
+
+    for i in (old_last_applied + 1)..=common_state.commit_index{
+        if let Some(sender) = client_per_entry_group.remove(&i) {
+            let _ = sender.send(AppendEntriesClientResponse(Ok(committed_entries_smout_buf.pop().unwrap())));
         }
     }
 }

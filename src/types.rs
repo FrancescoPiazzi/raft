@@ -2,10 +2,10 @@ use actum::prelude::ActorRef;
 
 use crate::messages::RaftMessage;
 
-pub struct AppendEntriesClientResponse<SMin>(pub Result<(), Option<ActorRef<RaftMessage<SMin>>>>);
+pub struct AppendEntriesClientResponse<SMin, SMout>(pub Result<SMout, Option<ActorRef<RaftMessage<SMin, SMout>>>>);
 
-impl<SMin> std::ops::Deref for AppendEntriesClientResponse<SMin> {
-    type Target = Result<(), Option<ActorRef<RaftMessage<SMin>>>>;
+impl<SMin, SMout> std::ops::Deref for AppendEntriesClientResponse<SMin, SMout> {
+    type Target = Result<SMout, Option<ActorRef<RaftMessage<SMin, SMout>>>>;
 
     fn deref(&self) -> &Self::Target {
         &self.0

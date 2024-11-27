@@ -15,7 +15,7 @@ use crate::state_machine::StateMachine;
 
 pub async fn raft_server<AB, SM, SMin, SMout>(
     mut cell: AB,
-    mut me: (u32, ActorRef<RaftMessage<SMin>>),
+    mut me: (u32, ActorRef<RaftMessage<SMin, SMout>>),
     n_peers: usize,
     state_machine: SM,
     election_timeout: Range<Duration>,
@@ -23,15 +23,15 @@ pub async fn raft_server<AB, SM, SMin, SMout>(
     replication_period: Duration,
 ) -> AB
 where
-    AB: ActorBounds<RaftMessage<SMin>>,
+    AB: ActorBounds<RaftMessage<SMin, SMout>>,
     SM: StateMachine<SMin, SMout> + Send,
     SMin: Send + Clone + 'static,
     SMout: Send + 'static,
 {
     check_parameters(&election_timeout, &heartbeat_period, &replication_period);
 
-    let mut peers = BTreeMap::<u32, ActorRef<RaftMessage<SMin>>>::new();
-    let mut message_stash = Vec::<RaftMessage<SMin>>::new();
+    let mut peers = BTreeMap::<u32, ActorRef<RaftMessage<SMin, SMout>>>::new();
+    let mut message_stash = Vec::<RaftMessage<SMin, SMout>>::new();
 
     tracing::trace!("obtaining peer references");
 
@@ -140,7 +140,7 @@ mod tests {
     async fn test_stash() {
         let void_state_machine_1 = VoidStateMachine::new();
         let void_state_machine_2 = void_state_machine_1.clone();
-        let mut actor1 = actum::<RaftMessage<()>, _, _>(move |cell, me| async move {
+        let mut actor1 = actum::<RaftMessage<_, _>, _, _>(move |cell, me| async move {
             let actor = raft_server(
                 cell,
                 (0, me),
@@ -154,7 +154,7 @@ mod tests {
             actor
         });
 
-        let actor2 = actum::<RaftMessage<()>, _, _>(move |cell, me| async move {
+        let actor2 = actum::<RaftMessage<_, _>, _, _>(move |cell, me| async move {
             let actor = raft_server(
                 cell,
                 (1, me),

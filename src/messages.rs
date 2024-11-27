@@ -18,16 +18,16 @@ pub(crate) trait TermProvider{
     fn get_term(&self) -> Option<u64>;
 }
 
-pub enum RaftMessage<SMin> {
-    AddPeer(AddPeer<SMin>),
+pub enum RaftMessage<SMin, SMout> {
+    AddPeer(AddPeer<SMin, SMout>),
     AppendEntriesRequest(AppendEntriesRequest<SMin>),
     AppendEntriesReply(AppendEntriesReply),
     RequestVoteRequest(RequestVoteRequest),
     RequestVoteReply(RequestVoteReply),
-    AppendEntriesClientRequest(AppendEntriesClientRequest<SMin>),
+    AppendEntriesClientRequest(AppendEntriesClientRequest<SMin, SMout>),
 }
 
-impl<SMin> Debug for RaftMessage<SMin> {
+impl<SMin, SMout> Debug for RaftMessage<SMin, SMout> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::AddPeer(_) => "Add peer".fmt(f),
@@ -40,43 +40,43 @@ impl<SMin> Debug for RaftMessage<SMin> {
     }
 }
 
-impl<SMin> From<AddPeer<SMin>> for RaftMessage<SMin> {
-    fn from(value: AddPeer<SMin>) -> Self {
+impl<SMin, SMout> From<AddPeer<SMin, SMout>> for RaftMessage<SMin, SMout> {
+    fn from(value: AddPeer<SMin, SMout>) -> Self {
         Self::AddPeer(value)
     }
 }
 
-impl<SMin> From<AppendEntriesRequest<SMin>> for RaftMessage<SMin> {
+impl<SMin, SMout> From<AppendEntriesRequest<SMin>> for RaftMessage<SMin, SMout> {
     fn from(value: AppendEntriesRequest<SMin>) -> Self {
         Self::AppendEntriesRequest(value)
     }
 }
 
-impl<SMin> From<AppendEntriesReply> for RaftMessage<SMin> {
+impl<SMin, SMout> From<AppendEntriesReply> for RaftMessage<SMin, SMout> {
     fn from(value: AppendEntriesReply) -> Self {
         Self::AppendEntriesReply(value)
     }
 }
 
-impl<SMin> From<RequestVoteRequest> for RaftMessage<SMin> {
+impl<SMin, SMout> From<RequestVoteRequest> for RaftMessage<SMin, SMout> {
     fn from(value: RequestVoteRequest) -> Self {
         Self::RequestVoteRequest(value)
     }
 }
 
-impl<SMin> From<RequestVoteReply> for RaftMessage<SMin> {
+impl<SMin, SMout> From<RequestVoteReply> for RaftMessage<SMin, SMout> {
     fn from(value: RequestVoteReply) -> Self {
         Self::RequestVoteReply(value)
     }
 }
 
-impl<SMin> From<AppendEntriesClientRequest<SMin>> for RaftMessage<SMin> {
-    fn from(value: AppendEntriesClientRequest<SMin>) -> Self {
+impl<SMin, SMout> From<AppendEntriesClientRequest<SMin, SMout>> for RaftMessage<SMin, SMout> {
+    fn from(value: AppendEntriesClientRequest<SMin, SMout>) -> Self {
         Self::AppendEntriesClientRequest(value)
     }
 }
 
-impl<SMin> TermProvider for RaftMessage<SMin> {
+impl<SMin, SMout> TermProvider for RaftMessage<SMin, SMout> {
     fn get_term(&self) -> Option<u64> {
         match &self {
             RaftMessage::AddPeer(_) => {None}

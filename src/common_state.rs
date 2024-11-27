@@ -35,7 +35,7 @@ impl<SM, SMin, SMout> CommonState<SM, SMin, SMout> {
     /// This is done for optimization purposes, instead of returning a new vector containing the newly commited entries.
     /// Note that the buffer is cleared by the function.
     #[tracing::instrument(level = "trace", skip(self, newly_committed_entries_buf), fields(self.last_applied = %self.last_applied, self.commit_index = %self.commit_index))]
-    pub fn commit_log_entries_up_to_commit_index(&mut self, mut newly_committed_entries_buf: Option<&mut Vec<usize>>)
+    pub fn commit_log_entries_up_to_commit_index(&mut self, mut newly_committed_entries_buf: Option<&mut Vec<SMout>>)
     where
         SM: StateMachine<SMin, SMout> + Send,
     {
@@ -44,10 +44,10 @@ impl<SM, SMin, SMout> CommonState<SM, SMin, SMout> {
         }
 
         for i in (self.last_applied + 1)..=self.commit_index {
-            tracing::debug!("Applying log entry {}", i);
-            self.state_machine.apply(&self.log[i]);
+            tracing::trace!("Applying log entry {}", i);
+            let state_machine_output = self.state_machine.apply(&self.log[i]);
             if let Some(inner) = newly_committed_entries_buf.as_mut() {
-                inner.push(i);
+                inner.push(state_machine_output);
             }
         }
 
