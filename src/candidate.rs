@@ -127,7 +127,7 @@ fn handle_message_as_candidate<SM, SMin, SMout>(
             }
         }
         RaftMessage::AppendEntriesClientRequest(request) => {
-            let _ = request.reply_to.send(Err(None));
+            let _ = request.reply_to.send(AppendEntriesClientResponse(Err(None)));
             None
         }
         _ => {

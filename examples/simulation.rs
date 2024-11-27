@@ -63,15 +63,15 @@ async fn send_entries_to_duplicate<SMin>(
 
         // these are too many nested Results but I don't know how to reduce them without losing expressiveness
         match tokio::time::timeout(timeout, rx).await {
-            Ok(Ok(Ok(_))) => {
+            Ok(Ok(AppendEntriesClientResponse(Ok(_)))) => {
                 tracing::debug!("✅ Recieved confirmation of successful entry replication");
                 interval.tick().await;
             }
-            Ok(Ok(Err(Some(new_leader_ref)))) => {
+            Ok(Ok(AppendEntriesClientResponse(Err(Some(new_leader_ref))))) => {
                 tracing::debug!("Interrogated server is not the leader, switching to the indicated one");
                 leader = new_leader_ref;
             }
-            Ok(Ok(Err(None))) | Err(_) => {
+            Ok(Ok(AppendEntriesClientResponse(Err(None)))) | Err(_) => {
                 tracing::debug!(
                     "Interrogated server does not know who the leader is or it did not answer, \
                     switching to another random node"

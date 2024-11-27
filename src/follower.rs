@@ -9,6 +9,8 @@ use crate::messages::append_entries_client::AppendEntriesClientRequest;
 use crate::messages::request_vote::{RequestVoteReply, RequestVoteRequest};
 use crate::messages::*;
 use crate::state_machine::StateMachine;
+use crate::types::AppendEntriesClientResponse;
+
 use actum::actor_bounds::ActorBounds;
 use actum::actor_ref::ActorRef;
 use rand::{thread_rng, Rng};
@@ -190,13 +192,13 @@ fn handle_append_entries_client_request<SMin>(
         if let Some(leader_ref) = peers.get_mut(&leader_id) {
             tracing::debug!("redirecting the client to leader {}", leader_id);
             let reply = Err(Some(leader_ref.clone()));
-            let _ = request.reply_to.send(reply);
+            let _ = request.reply_to.send(AppendEntriesClientResponse(reply));
         } else {
             tracing::debug!("no leader to redirect the client to");
-            let _ = request.reply_to.send(Err(None));
+            let _ = request.reply_to.send(AppendEntriesClientResponse(Err(None)));
         }
     } else {
         tracing::debug!("no leader to redirect the client to");
-        let _ = request.reply_to.send(Err(None));
+        let _ = request.reply_to.send(AppendEntriesClientResponse(Err(None)));
     }
 }

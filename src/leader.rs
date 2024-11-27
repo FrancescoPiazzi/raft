@@ -291,7 +291,7 @@ fn commit_log_entries_replicated_on_majority<SM, SMin, SMout>(
 
     for entry in newly_committed_entries_buf {
         if let Some(sender) = client_per_entry_group.remove(&entry) {
-            let _ = sender.send(AppendEntriesClientResponse::Ok(()));
+            let _ = sender.send(AppendEntriesClientResponse(Ok(())));
         }
     }
 }
