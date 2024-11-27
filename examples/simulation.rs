@@ -28,7 +28,7 @@ impl ExampleStateMachine {
 impl StateMachine<u64, usize> for ExampleStateMachine {
     fn apply(&mut self, entry: &u64) -> usize {
         self.set.insert(*entry);
-        tracing::debug!("State machine size: {}", self.set.len());
+        tracing::trace!("State machine size: {}", self.set.len());
         self.set.len()
     }
 }
@@ -91,17 +91,18 @@ async fn send_entries_to_duplicate<SMin>(
 async fn main() {
     tracing_subscriber::fmt()
         .with_span_events(
-            tracing_subscriber::fmt::format::FmtSpan::NEW | tracing_subscriber::fmt::format::FmtSpan::CLOSE,
+            tracing_subscriber::fmt::format::FmtSpan::NONE
+            // tracing_subscriber::fmt::format::FmtSpan::NEW | tracing_subscriber::fmt::format::FmtSpan::CLOSE,
         )
         .with_target(false)
-        .with_line_number(true)
-        .with_max_level(tracing::Level::DEBUG)
+        .with_line_number(false)
+        .with_max_level(tracing::Level::TRACE)
         .init();
 
     let servers = spawn_raft_servers(5, ExampleStateMachine::new());
     send_peer_refs(&servers);
 
-    tokio::time::sleep(Duration::from_millis(2500)).await; // give the servers a moment to elect a leader
+    tokio::time::sleep(Duration::from_millis(10000)).await; // give the servers a moment to elect a leader
 
     send_entries_to_duplicate(
         &servers,

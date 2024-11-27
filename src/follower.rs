@@ -100,7 +100,8 @@ fn handle_append_entries_request<SM, SMin, SMout>(
 
     if request.term == common_state.current_term {
         if let Some(leader_id) = leader_id.as_ref() {
-            assert_eq!(request.leader_id, *leader_id);
+            assert_eq!(request.leader_id, *leader_id, 
+                "two leaders with the same term detected: {} and {}", request.leader_id, *leader_id);
         }
     }
 
@@ -166,11 +167,13 @@ fn handle_vote_request<SM, SMin, SMout>(
 {
     let vote_granted = request.term >= common_state.current_term
         && (common_state.voted_for.is_none() || *common_state.voted_for.as_ref().unwrap() == request.candidate_id);
-    tracing::trace!(vote_granted);
+    tracing::trace!("vote granted: {} for id: {}", vote_granted, request.candidate_id);
 
     if let Some(candidate_ref) = peers.get_mut(&request.candidate_id) {
+        if vote_granted {
+            common_state.voted_for = Some(request.candidate_id);
+        }
         let reply = RequestVoteReply { from: me, vote_granted };
-
         let _ = candidate_ref.try_send(reply.into());
     }
 }

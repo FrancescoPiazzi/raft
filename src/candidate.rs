@@ -10,6 +10,7 @@ use tokio::time::timeout;
 use crate::common_state::CommonState;
 use crate::messages::request_vote::RequestVoteRequest;
 use crate::messages::*;
+use crate::types::AppendEntriesClientResponse;
 
 /// Behavior of the Raft server in candidate state.
 ///
@@ -95,13 +96,9 @@ fn handle_message_as_candidate<SM, SMin, SMout>(
             votes_from_others.insert(reply.from, reply.vote_granted);
             let n_granted_votes_including_self =
                 votes_from_others.values().filter(|granted| **granted).count() + 1;
+            let n_votes_against =
+                votes_from_others.values().filter(|granted| !**granted).count();
             
-            // +1 before sub. or it always underflows 
-            // TOTHINK: why always? It should only happen when everyone votes for me, which is usually not the case, 
-            // since I will win the election before that happens
-            tracing::trace!("others len: {}, n votes including self: {}", votes_from_others.len(), n_granted_votes_including_self);
-            let n_votes_against = votes_from_others.len() + 1 - n_granted_votes_including_self;
-
             if n_granted_votes_including_self > peers.len() / 2 + 1 {
                 Some(true)
             } else if n_votes_against > peers.len() / 2 + 1 {
@@ -128,6 +125,10 @@ fn handle_message_as_candidate<SM, SMin, SMout>(
             } else {
                 None
             }
+        }
+        RaftMessage::AppendEntriesClientRequest(request) => {
+            let _ = request.reply_to.send(Err(None));
+            None
         }
         _ => {
             tracing::trace!(unhandled = ?message);
