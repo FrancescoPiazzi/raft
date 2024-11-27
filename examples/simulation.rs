@@ -9,22 +9,27 @@ use rand::seq::IteratorRandom;
 use tokio::sync::oneshot;
 use tracing::instrument;
 
+
 #[derive(Clone)]
 struct ExampleStateMachine {
-    sum: u64,
+    set: Set<u64>,
 }
 
 impl ExampleStateMachine {
     fn new() -> Self {
-        ExampleStateMachine { sum: 0 }
+        ExampleStateMachine {
+            set: Set::new(),
+        }
     }
 }
 
-impl StateMachine<u64, bool> for ExampleStateMachine {
-    fn apply(&mut self, entry: &u64) -> bool {
-        self.sum += entry;
-        tracing::debug!("State machine sum: {}", self.sum);
-        self.sum % 2 == 0
+// reminder: the apply method MUST be idempotent, meaning that
+// calling it with the same input more than once must not have any effect
+impl StateMachine<u64, usize> for ExampleStateMachine {
+    fn apply(&mut self, entry: &u64) -> usize {
+        self.set.insert(*entry);
+        tracing::debug!("State machine size: {}", self.set.len());
+        self.set.len()
     }
 }
 
@@ -68,7 +73,7 @@ async fn send_entries_to_duplicate<SMin>(
             }
             Ok(Ok(Err(None))) | Err(_) => {
                 tracing::debug!(
-                    "Interrogated server does not know who the leader is or it did not answer, 
+                    "Interrogated server does not know who the leader is or it did not answer, \
                     switching to another random node"
                 );
                 leader = servers.iter().choose(&mut rng).unwrap().server_ref.clone();
@@ -90,7 +95,7 @@ async fn main() {
         )
         .with_target(false)
         .with_line_number(true)
-        .with_max_level(tracing::Level::TRACE)
+        .with_max_level(tracing::Level::DEBUG)
         .init();
 
     let servers = spawn_raft_servers(5, ExampleStateMachine::new());
