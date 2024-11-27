@@ -53,6 +53,16 @@ impl<SM, SMin, SMout> CommonState<SM, SMin, SMout> {
 
         self.last_applied = self.commit_index;
     }
+
+    /// Method to call every time a new term is detected
+    pub fn new_term(&mut self, term: u64){
+        assert!(self.current_term < term, 
+            "new term called with something that is not a new term: current: {}, new: {}", 
+            self.current_term, term
+        );
+        self.current_term = term;
+        self.voted_for = None;
+    }
 }
 
 impl<SM, SMin, SMout> Debug for CommonState<SM, SMin, SMout> {

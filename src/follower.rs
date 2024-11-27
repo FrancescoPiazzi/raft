@@ -159,6 +159,7 @@ fn handle_vote_request<SM, SMin, SMout>(
     SMin: Clone + Send + 'static,
     SMout: Send,
 {
+    // TODO: this should implement "and candidate’s log is at least as up-to-date as receiver's log", the term being >= is not enough
     let vote_granted = request.term >= common_state.current_term
         && (common_state.voted_for.is_none() || *common_state.voted_for.as_ref().unwrap() == request.candidate_id);
     tracing::trace!("vote granted: {} for id: {}", vote_granted, request.candidate_id);

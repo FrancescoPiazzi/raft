@@ -8,8 +8,7 @@ TP: TermProvider
 {
     if let Some(inner) = msg.get_term(){
         if inner > common_state.current_term {
-            common_state.current_term = inner;
-            common_state.voted_for = None;
+            common_state.new_term(inner);
             return true;
         } else {
             return false;

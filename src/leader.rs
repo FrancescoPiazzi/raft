@@ -5,6 +5,7 @@ use std::time::Duration;
 use actum::actor_bounds::ActorBounds;
 use actum::actor_ref::ActorRef;
 use peer_state::PeerState;
+use request_vote::RequestVoteReply;
 use tokio::sync::oneshot;
 use tokio::task::JoinSet;
 
@@ -58,23 +59,20 @@ pub async fn leader_behavior<AB, SM, SMin, SMout>(
     loop {
         tokio::select! {
             message = cell.recv() => {
-                let message = message.message().expect("raft runs indefinitely");
-                let step_down = update_term(common_state, &message);
-                if !step_down{  // TOASK (style) lazy eval with an OR here?
-                    handle_message_as_leader(
-                        me,
-                        common_state,
-                        peers,
-                        &mut peers_state,
-                        &mut client_per_entry_group,
-                        &mut newly_committed_entries_buf,
-                        message
-                    );
-                }
-                if step_down {
+                let message = message.message().expect("raft runs indefinitely");                    
+                if  update_term(common_state, &message) {
                     tracing::trace!("step down");
                     break;
                 }
+                handle_message_as_leader(
+                    me,
+                    common_state,
+                    peers,
+                    &mut peers_state,
+                    &mut client_per_entry_group,
+                    &mut newly_committed_entries_buf,
+                    message
+                );
             },
             timed_out_follower_id = follower_timeouts.join_next() => {
                 let Some(timed_out_follower_id) = timed_out_follower_id else {
@@ -137,7 +135,7 @@ fn handle_message_as_leader<SM, SMin, SMout>(
     client_per_entry_group: &mut BTreeMap<usize, oneshot::Sender<AppendEntriesClientResponse<SMin>>>,
     newly_committed_entries_buf: &mut Vec<usize>,
     message: RaftMessage<SMin>,
-) -> bool
+)
 where
     SM: StateMachine<SMin, SMout> + Send,
     SMin: Send + Clone + 'static,
@@ -148,11 +146,10 @@ where
         RaftMessage::AppendEntriesClientRequest(append_entries_client) => {
             handle_append_entries_client_request(common_state, client_per_entry_group, append_entries_client);
         }
-        RaftMessage::AppendEntriesRequest(append_entries_rpc) => {
-            if handle_append_entries_request(common_state, append_entries_rpc) { return true };
-        }
+        // the term is surely too low so I ignore it, had it been too high I would have caught it in the update_term check before
+        RaftMessage::AppendEntriesRequest(_) => { }
         RaftMessage::RequestVoteRequest(request_vote_rpc) => {
-            if handle_request_vote_request(me, common_state, peers, request_vote_rpc) { return true };
+            handle_request_vote_request(me, common_state, peers, request_vote_rpc)
         }
         RaftMessage::AppendEntriesReply(reply) => {
             handle_append_entries_reply(common_state, peers_state, client_per_entry_group, newly_committed_entries_buf, reply);
@@ -162,7 +159,6 @@ where
             tracing::trace!(unhandled = ?message);
         }
     }
-    false
 }
 
 #[tracing::instrument(level = "trace", skip_all)]
@@ -186,53 +182,25 @@ fn handle_append_entries_client_request<SM, SMin, SMout>(
     client_per_entry_group.insert(common_state.log.len(), request.reply_to);
 }
 
-/// Returns true if we should step down, false otherwise.
-#[tracing::instrument(level = "trace", skip_all)]
-fn handle_append_entries_request<SM, SMin, SMout>(
-    common_state: &mut CommonState<SM, SMin, SMout>,
-    request: AppendEntriesRequest<SMin>,
-) -> bool where
-    SM: StateMachine<SMin, SMout> + Send,
-    SMin: Clone + Send + 'static,
-{
-    if request.term > common_state.current_term
-        || (request.term == common_state.current_term
-            && request.leader_commit >= common_state.commit_index as u64)
-    {
-        common_state.current_term = request.term;
-        true
-    } else {
-        false
-    }
-}
-
-/// Returns true if we should step down, false otherwise.
+/// request vote requests are always refused as leaders, because if the term of the request
+/// had been higher, we would have already turned back into a follower at the update_term check
 #[tracing::instrument(level = "trace", skip_all)]
 fn handle_request_vote_request<SM, SMin, SMout>(
     me: u32,
     common_state: &mut CommonState<SM, SMin, SMout>,
     peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin>>>,
     request: RequestVoteRequest,
-) -> bool
+)
 where
     SM: StateMachine<SMin, SMout> + Send,
     SMin: Clone + Send + 'static,
 {
-    let step_down = request.term > common_state.current_term;
-    let reply = request_vote::RequestVoteReply {
-        from: me,
-        term: common_state.current_term,
-        vote_granted: step_down,
-    };
     if let Some(candidate_ref) = peers.get_mut(&request.candidate_id) {
-        let _ = candidate_ref.try_send(reply.into());
-    }
-    if step_down {
-        common_state.voted_for = Some(request.candidate_id);
-        common_state.current_term = request.term;
-        true
-    } else {
-        false
+        let _ = candidate_ref.try_send(RequestVoteReply {
+            from: me,
+            term: common_state.current_term,
+            vote_granted: false,
+        }.into());
     }
 }
 
