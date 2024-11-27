@@ -115,9 +115,9 @@ fn handle_message_as_candidate<SM, SMin, SMout>(
             let n_votes_against =
                 votes_from_others.values().filter(|granted| !**granted).count();
             
-            if n_granted_votes_including_self > peers.len() / 2 + 1 {
+            if n_granted_votes_including_self >= peers.len() / 2 + 1 {
                 Some(true)
-            } else if n_votes_against > peers.len() / 2 + 1 {
+            } else if n_votes_against >= peers.len() / 2 + 1 {
                 Some(false)
             } else {
                 None
