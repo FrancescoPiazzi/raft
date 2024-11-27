@@ -10,6 +10,14 @@ use crate::messages::append_entries::{AppendEntriesReply, AppendEntriesRequest};
 use crate::messages::append_entries_client::AppendEntriesClientRequest;
 use crate::messages::request_vote::{RequestVoteReply, RequestVoteRequest};
 
+/// Every message exchanged that strictly belongs to the Raft algorithm has a term
+/// this trait is used to get the term of a message I don't know the type of
+/// the optional wrapper allows for types that aren't exactly part of the algorithm
+/// like AddPeer and AppendEntriesClientRequest to return cleanly
+pub(crate) trait TermProvider{
+    fn get_term(&self) -> Option<u64>;
+}
+
 pub enum RaftMessage<SMin> {
     AddPeer(AddPeer<SMin>),
     AppendEntriesRequest(AppendEntriesRequest<SMin>),
@@ -65,5 +73,18 @@ impl<SMin> From<RequestVoteReply> for RaftMessage<SMin> {
 impl<SMin> From<AppendEntriesClientRequest<SMin>> for RaftMessage<SMin> {
     fn from(value: AppendEntriesClientRequest<SMin>) -> Self {
         Self::AppendEntriesClientRequest(value)
+    }
+}
+
+impl<SMin> TermProvider for RaftMessage<SMin> {
+    fn get_term(&self) -> Option<u64> {
+        match &self {
+            RaftMessage::AddPeer(_) => {None}
+            RaftMessage::AppendEntriesClientRequest(_) => None,
+            RaftMessage::AppendEntriesReply(msg) => Some(msg.term),
+            RaftMessage::AppendEntriesRequest(msg) => Some(msg.term),
+            RaftMessage::RequestVoteRequest(msg) => Some(msg.term),
+            RaftMessage::RequestVoteReply(msg) => Some(msg.term),
+        }
     }
 }

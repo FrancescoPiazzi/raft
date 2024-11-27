@@ -8,6 +8,7 @@ use peer_state::PeerState;
 use tokio::sync::oneshot;
 use tokio::task::JoinSet;
 
+use crate::common::update_term;
 use crate::common_state::CommonState;
 use crate::messages::append_entries::{AppendEntriesReply, AppendEntriesRequest};
 use crate::messages::append_entries_client::AppendEntriesClientRequest;
@@ -58,15 +59,18 @@ pub async fn leader_behavior<AB, SM, SMin, SMout>(
         tokio::select! {
             message = cell.recv() => {
                 let message = message.message().expect("raft runs indefinitely");
-                let step_down = handle_message_as_leader(
-                    me,
-                    common_state,
-                    peers,
-                    &mut peers_state,
-                    &mut client_per_entry_group,
-                    &mut newly_committed_entries_buf,
-                    message
-                );
+                let step_down = update_term(common_state, &message);
+                if !step_down{  // TOASK (style) lazy eval with an OR here?
+                    handle_message_as_leader(
+                        me,
+                        common_state,
+                        peers,
+                        &mut peers_state,
+                        &mut client_per_entry_group,
+                        &mut newly_committed_entries_buf,
+                        message
+                    );
+                }
                 if step_down {
                     tracing::trace!("step down");
                     break;
@@ -217,6 +221,7 @@ where
     let step_down = request.term > common_state.current_term;
     let reply = request_vote::RequestVoteReply {
         from: me,
+        term: common_state.current_term,
         vote_granted: step_down,
     };
     if let Some(candidate_ref) = peers.get_mut(&request.candidate_id) {

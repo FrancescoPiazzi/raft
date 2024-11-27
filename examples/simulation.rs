@@ -7,6 +7,7 @@ use raft::types::AppendEntriesClientResponse;
 use raft::util::{send_peer_refs, spawn_raft_servers, Server};
 use rand::seq::IteratorRandom;
 use tokio::sync::oneshot;
+use tokio::time::sleep;
 use tracing::instrument;
 
 
@@ -77,6 +78,7 @@ async fn send_entries_to_duplicate<SMin>(
                     switching to another random node"
                 );
                 leader = servers.iter().choose(&mut rng).unwrap().server_ref.clone();
+                sleep(Duration::from_millis(1000)).await;
                 continue;
             }
             Ok(Err(_)) => {
@@ -102,7 +104,7 @@ async fn main() {
     let servers = spawn_raft_servers(5, ExampleStateMachine::new());
     send_peer_refs(&servers);
 
-    tokio::time::sleep(Duration::from_millis(10000)).await; // give the servers a moment to elect a leader
+    tokio::time::sleep(Duration::from_millis(2000)).await; // give the servers a moment to elect a leader
 
     send_entries_to_duplicate(
         &servers,

@@ -5,8 +5,9 @@ use std::time::{Duration, Instant};
 use actum::actor_ref::ActorRef;
 use actum::prelude::ActorBounds;
 use rand::{thread_rng, Rng};
-use tokio::time::timeout;
+use tokio::time::{timeout, sleep};
 
+use crate::common::*;
 use crate::common_state::CommonState;
 use crate::messages::request_vote::RequestVoteRequest;
 use crate::messages::*;
@@ -64,6 +65,11 @@ where
             let message = message.message().expect("raft runs indefinitely");
             tracing::trace!(message = ?message);
             
+            if update_term(common_state, &message){
+                election_won = false;
+                break 'candidate;
+            }
+
             if let Some(election_result) = handle_message_as_candidate(common_state,peers, &mut votes_from_others, message){
                 election_won = election_result;
                 break 'candidate;
@@ -76,6 +82,11 @@ where
                 break 'current_election;
             }
         }
+
+        // if no winner is decleared by the end of the election, wait a random time to prevent split votes
+        // from repeating forever
+        let time_to_wait_before_new_election = thread_rng().gen_range(election_timeout.clone());
+        sleep(time_to_wait_before_new_election).await;
     }
 
     election_won
@@ -93,6 +104,11 @@ fn handle_message_as_candidate<SM, SMin, SMout>(
 {
     match message {
         RaftMessage::RequestVoteReply(reply) => {
+            // formal specifications:310, don't count votes with terms different than the current
+            if reply.term != common_state.current_term {
+                return None;
+            }
+
             votes_from_others.insert(reply.from, reply.vote_granted);
             let n_granted_votes_including_self =
                 votes_from_others.values().filter(|granted| **granted).count() + 1;

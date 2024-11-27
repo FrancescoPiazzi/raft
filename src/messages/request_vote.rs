@@ -11,5 +11,6 @@ pub struct RequestVoteRequest {
 #[derive(Debug)]
 pub struct RequestVoteReply {
     pub from: u32,
+    pub term: u64,
     pub vote_granted: bool,
 }

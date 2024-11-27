@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use std::ops::Range;
 use std::time::Duration;
 
+use crate::common::*;
 use crate::common_state::CommonState;
 use crate::messages::append_entries::{AppendEntriesReply, AppendEntriesRequest};
 use crate::messages::append_entries_client::AppendEntriesClientRequest;
@@ -42,6 +43,8 @@ pub async fn follower_behavior<AB, SM, SMin, SMout>(
 
         let message = message.message().expect("raft runs indefinitely");
         tracing::trace!(message = ?message);
+
+        update_term(common_state, &message);
 
         match message {
             RaftMessage::AppendEntriesRequest(request) => {
@@ -175,7 +178,7 @@ fn handle_vote_request<SM, SMin, SMout>(
         if vote_granted {
             common_state.voted_for = Some(request.candidate_id);
         }
-        let reply = RequestVoteReply { from: me, vote_granted };
+        let reply = RequestVoteReply{from: me, term: common_state.current_term, vote_granted};
         let _ = candidate_ref.try_send(reply.into());
     }
 }
