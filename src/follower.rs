@@ -76,7 +76,7 @@ fn handle_append_entries_request<SM, SMin, SMout>(
     SMout: Send + 'static,
 {
     if request.term < common_state.current_term {
-        tracing::trace!("request term = {} < current term = {}", request.term, common_state.current_term);
+        tracing::trace!("request term = {} < current term = {}: ignoring", request.term, common_state.current_term);
 
         if let Some(sender_ref) = peers.get_mut(&request.leader_id) {
             let reply = AppendEntriesReply {
@@ -100,7 +100,7 @@ fn handle_append_entries_request<SM, SMin, SMout>(
     }
 
     if request.prev_log_index > common_state.log.len() as u64 {
-        tracing::trace!("previous log index = {}, log length: {}: ignoring",
+        tracing::trace!("missing entries: previous log index = {}, log length: {}: ignoring",
                         request.prev_log_index, common_state.log.len());
 
         if let Some(sender_ref) = peers.get_mut(&request.leader_id) {
@@ -114,11 +114,7 @@ fn handle_append_entries_request<SM, SMin, SMout>(
         return;
     }
 
-    if !request.is_heartbeat() {
-        common_state
-            .log
-            .insert(request.entries, request.prev_log_index, request.term);
-    }
+    common_state.log.insert(request.entries, request.prev_log_index, request.term);
 
     let leader_commit: usize = request.leader_commit.try_into().unwrap();
 
@@ -185,13 +181,13 @@ fn handle_append_entries_client_request<SMin, SMout>(
         if let Some(leader_ref) = peers.get_mut(&leader_id) {
             tracing::debug!("redirecting the client to leader {}", leader_id);
             let reply = Err(Some(leader_ref.clone()));
-            let _ = request.reply_to.send(AppendEntriesClientResponse(reply));
+            let _ = request.reply_to.try_send(AppendEntriesClientResponse(reply));
         } else {
             tracing::debug!("no leader to redirect the client to");
-            let _ = request.reply_to.send(AppendEntriesClientResponse(Err(None)));
+            let _ = request.reply_to.try_send(AppendEntriesClientResponse(Err(None)));
         }
     } else {
         tracing::debug!("no leader to redirect the client to");
-        let _ = request.reply_to.send(AppendEntriesClientResponse(Err(None)));
+        let _ = request.reply_to.try_send(AppendEntriesClientResponse(Err(None)));
     }
 }
