@@ -127,7 +127,7 @@ fn send_append_entries_request<SM, SMin, SMout>(
     let _ = follower_ref.try_send(request.into());
 }
 
-/// Returns true if we should step down, false otherwise. TOASK: maybe a function is not needed anymore since we moved all behaviours into other functions?
+/// Returns true if we should step down, false otherwise.
 fn handle_message_as_leader<SM, SMin, SMout>(
     me: u32,
     common_state: &mut CommonState<SM, SMin, SMout>,

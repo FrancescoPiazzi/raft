@@ -182,8 +182,6 @@ mod tests {
 
         let _ = actor1.m_ref.try_send(request.into());
 
-        // actor 1 should have stashed the message here TOASK: how do I check? Can I from here?
-
         let _ = actor1.m_ref.try_send(
             AddPeer {
                 peer_id: 1,
