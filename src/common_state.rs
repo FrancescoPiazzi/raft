@@ -63,6 +63,28 @@ impl<SM, SMin, SMout> CommonState<SM, SMin, SMout> {
         self.current_term = term;
         self.voted_for = None;
     }
+
+    pub fn check_validity(&self) {
+        if self.commit_index > self.log.len(){
+            panic!("commit index is greater than log length");
+        }
+        if self.last_applied > self.commit_index{
+            panic!("last applied is greater than commit index");
+        }
+
+        for i in 1..=self.log.len()-1 {
+            if self.log.get_term(i) > self.log.get_term(i + 1) {
+                panic!("log term [{}] = {} is greater than term at [{}] = {}, \
+                    log terms should increase monotonically", 
+                    i, self.log.get_term(i), i + 1, self.log.get_term(i + 1));
+            }
+        }
+
+        if self.current_term < self.log.get_term(self.commit_index) {
+            panic!("current term ({}) is less than term at commit index ({})", 
+                self.current_term, self.log.get_term(self.commit_index));
+        }
+    }
 }
 
 impl<SM, SMin, SMout> Debug for CommonState<SM, SMin, SMout> {
@@ -81,5 +103,120 @@ impl<SM, SMin, SMout> Debug for CommonState<SM, SMin, SMout> {
                 },
             )
             .finish()
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state_machine::StateMachine;
+
+    #[derive(Debug, Clone)]
+    struct TestStateMachine;
+
+    impl StateMachine<u32, u32> for TestStateMachine {
+        fn apply(&mut self, input: &u32) -> u32 {
+            *input
+        }
+    }
+
+    #[test]
+    fn test_commit_log_entries_up_to_commit_index() {
+        let mut common_state = CommonState::new(TestStateMachine);
+        common_state.log.append(vec![1], 1);
+        common_state.log.append(vec![2], 2);
+        common_state.log.append(vec![3], 3);
+        common_state.commit_index = 2;
+
+        let mut newly_committed_entries_buf = Vec::new();
+        common_state.commit_log_entries_up_to_commit_index(
+            Some(&mut newly_committed_entries_buf)
+        );
+
+        assert_eq!(common_state.last_applied, 2);
+        assert_eq!(newly_committed_entries_buf, vec![1, 2]);
+    }
+
+    #[test]
+    fn test_valid_new_term() {
+        let mut common_state = CommonState::<_, u32, u32>::new(TestStateMachine);
+        common_state.current_term = 1;
+        common_state.voted_for = Some(1);
+
+        common_state.new_term(2);
+
+        assert_eq!(common_state.current_term, 2);
+        assert_eq!(common_state.voted_for, None);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_invalid_new_term() {
+        let mut common_state = CommonState::<_, u32, u32>::new(TestStateMachine);
+
+        common_state.current_term = 1;
+        common_state.voted_for = Some(1);
+
+        common_state.new_term(0);
+    }
+
+    #[test]
+    fn test_check_validity() {
+        let mut common_state = CommonState::<_, u32, u32>::new(TestStateMachine);
+
+        common_state.log.append(vec![1], 1);
+        common_state.log.append(vec![2], 2);
+        common_state.log.append(vec![3], 3);
+        common_state.current_term = 3;
+        common_state.commit_index = 2;
+        common_state.last_applied = 2;
+
+        common_state.check_validity();
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_check_validity_invalid_commit_index() {
+        let mut common_state = CommonState::<_, u32, u32>::new(TestStateMachine);
+
+        common_state.log.append(vec![1], 1);
+        common_state.log.append(vec![2], 2);
+        common_state.log.append(vec![3], 3);
+        common_state.current_term = 3;
+        common_state.commit_index = 4;
+        common_state.last_applied = 2;
+
+        common_state.check_validity();
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_check_validity_invalid_last_applied() {
+        let mut common_state = CommonState::<_, u32, u32>::new(TestStateMachine);
+
+        common_state.log.append(vec![1], 1);
+        common_state.log.append(vec![2], 2);
+        common_state.log.append(vec![3], 3);
+        common_state.current_term = 3;
+        common_state.commit_index = 2;
+        common_state.last_applied = 3;
+
+        common_state.check_validity();
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_check_validity_invalid_log_terms() {
+        let mut common_state = CommonState::<_, u32, u32>::new(TestStateMachine);
+
+        common_state.log.append(vec![1], 1);
+        common_state.log.append(vec![3], 2);
+        common_state.log.append(vec![2], 1);
+        common_state.current_term = 3;
+        common_state.commit_index = 2;
+        common_state.last_applied = 2;
+
+        common_state.check_validity();
     }
 }
