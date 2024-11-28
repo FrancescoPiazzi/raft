@@ -6,7 +6,7 @@ use actum::actor_bounds::ActorBounds;
 use actum::actor_ref::ActorRef;
 use peer_state::PeerState;
 use request_vote::RequestVoteReply;
-use tokio::sync::oneshot;
+use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 
 use crate::common::update_term;
@@ -53,8 +53,8 @@ pub async fn leader_behavior<AB, SM, SMin, SMout>(
     // optimization: used as buffer where to append the output of the state machine given the newly commited entries.
     let mut committed_entries_smout_buf = Vec::<SMout>::new();
 
-    // Tracks the oneshot that we have to answer on per entry group
-    let mut client_per_entry_group = BTreeMap::<usize, oneshot::Sender<AppendEntriesClientResponse<SMin, SMout>>>::new();
+    // Tracks the mpsc that we have to answer on per entry
+    let mut client_channel_per_input = VecDeque::<mpsc::Sender<AppendEntriesClientResponse<SMin, SMout>>>::new();
 
     loop {
         tokio::select! {
@@ -69,7 +69,7 @@ pub async fn leader_behavior<AB, SM, SMin, SMout>(
                     common_state,
                     peers,
                     &mut peers_state,
-                    &mut client_per_entry_group,
+                    &mut client_channel_per_input,
                     &mut committed_entries_smout_buf,
                     message
                 );
@@ -133,7 +133,7 @@ fn handle_message_as_leader<SM, SMin, SMout>(
     common_state: &mut CommonState<SM, SMin, SMout>,
     peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin, SMout>>>,
     peers_state: &mut BTreeMap<u32, PeerState>,
-    client_per_entry_group: &mut BTreeMap<usize, oneshot::Sender<AppendEntriesClientResponse<SMin, SMout>>>,
+    client_channel_per_input: &mut VecDeque::<mpsc::Sender<AppendEntriesClientResponse<SMin, SMout>>>,
     committed_entries_smout_buf: &mut Vec<SMout>,
     message: RaftMessage<SMin, SMout>,
 )
@@ -146,7 +146,7 @@ where
 
     match message {
         RaftMessage::AppendEntriesClientRequest(append_entries_client) => {
-            handle_append_entries_client_request(common_state, client_per_entry_group, append_entries_client);
+            handle_append_entries_client_request(common_state, client_channel_per_input, append_entries_client);
         }
         // the term is surely too low so I ignore it, had it been too high I would have caught it in the update_term check before
         RaftMessage::AppendEntriesRequest(_) => { }
@@ -154,7 +154,7 @@ where
             handle_request_vote_request(me, common_state, peers, request_vote_rpc)
         }
         RaftMessage::AppendEntriesReply(reply) => {
-            handle_append_entries_reply(common_state, peers_state, client_per_entry_group, committed_entries_smout_buf, reply);
+            handle_append_entries_reply(common_state, peers_state, client_channel_per_input, committed_entries_smout_buf, reply);
         }
         RaftMessage::RequestVoteReply(_) => {} // ignore extra votes if we were already elected
         _ => {
@@ -166,22 +166,18 @@ where
 #[tracing::instrument(level = "trace", skip_all)]
 fn handle_append_entries_client_request<SM, SMin, SMout>(
     common_state: &mut CommonState<SM, SMin, SMout>,
-    client_per_entry_group: &mut BTreeMap<usize, oneshot::Sender<AppendEntriesClientResponse<SMin, SMout>>>,
+    client_channel_per_input: &mut VecDeque::<mpsc::Sender<AppendEntriesClientResponse<SMin, SMout>>>,
     request: AppendEntriesClientRequest<SMin, SMout>,
 ) where
     SM: StateMachine<SMin, SMout> + Send,
     SMin: Send + Clone + 'static,
 {
     tracing::trace!("Received a client message, replicating it");
-    // empty requests can cause problems when keeping track of the sender per request
-    if request.entries_to_replicate.is_empty() {
-        return;
-    }
 
-    common_state
-        .log
-        .append(request.entries_to_replicate, common_state.current_term);
-    client_per_entry_group.insert(common_state.log.len(), request.reply_to);
+    for _ in 0..request.entries_to_replicate.len() {
+        client_channel_per_input.push_back(request.reply_to.clone());
+    }
+    common_state.log.append(request.entries_to_replicate, common_state.current_term);
 }
 
 /// request vote requests are always refused as leaders, because if the term of the request
@@ -211,7 +207,7 @@ where
 fn handle_append_entries_reply<SM, SMin, SMout>(
     common_state: &mut CommonState<SM, SMin, SMout>,
     peers_state: &mut BTreeMap<u32, PeerState>,
-    client_per_entry_group: &mut BTreeMap<usize, oneshot::Sender<AppendEntriesClientResponse<SMin, SMout>>>,
+    client_channel_per_input: &mut VecDeque<mpsc::Sender<AppendEntriesClientResponse<SMin, SMout>>>,
     committed_entries_smout_buf: &mut Vec<SMout>,
     reply: AppendEntriesReply,
 ) where
@@ -231,12 +227,12 @@ fn handle_append_entries_reply<SM, SMin, SMout>(
         *peer_match_idx = request_len as u64 + *peer_next_idx - 1;
         *peer_next_idx = *peer_match_idx + 1;
 
-        tracing::trace!("----> match idx: {}, next idx: {}", peer_match_idx, peer_next_idx);
+        tracing::trace!("follower {}: match idx: {}, next idx: {}", reply.from, peer_match_idx, peer_next_idx);
 
         commit_log_entries_replicated_on_majority(
             common_state,
             peers_state,
-            client_per_entry_group,
+            client_channel_per_input,
             committed_entries_smout_buf,
         );
     } else {
@@ -248,7 +244,7 @@ fn handle_append_entries_reply<SM, SMin, SMout>(
 fn commit_log_entries_replicated_on_majority<SM, SMin, SMout>(
     common_state: &mut CommonState<SM, SMin, SMout>,
     peers_state: &BTreeMap<u32, PeerState>,
-    client_per_entry_group: &mut BTreeMap<usize, oneshot::Sender<AppendEntriesClientResponse<SMin, SMout>>>,
+    client_channel_per_input: &mut VecDeque<mpsc::Sender<AppendEntriesClientResponse<SMin, SMout>>>,
     committed_entries_smout_buf: &mut Vec<SMout>,
 ) where
     SM: StateMachine<SMin, SMout> + Send,
@@ -267,11 +263,18 @@ fn commit_log_entries_replicated_on_majority<SM, SMin, SMout>(
 
     common_state.commit_log_entries_up_to_commit_index(Some(committed_entries_smout_buf));
 
-    for i in (old_last_applied + 1)..=common_state.commit_index{
-        if let Some(sender) = client_per_entry_group.remove(&i) {
-            let _ = sender.send(AppendEntriesClientResponse(Ok(committed_entries_smout_buf.pop().unwrap())));
-        }
+    tracing::trace!("committed entries: [{}, {}]", old_last_applied + 1, common_state.commit_index);
+    tracing::trace!("clients size: {}", client_channel_per_input.len());
+
+    for _ in (old_last_applied + 1)..=common_state.commit_index{
+        if let Some(sender) = client_channel_per_input.pop_front(){
+            let _ = sender.try_send(AppendEntriesClientResponse(Ok(committed_entries_smout_buf.pop().unwrap())));
+            tracing::trace!("Sent response to client");
+        } else {
+            tracing::error!("No client channel to send the response to");
+        }        
     }
+    assert!(committed_entries_smout_buf.is_empty());
 }
 
 /// Returns whether the majority of servers, including self, have the log entry at the given index.

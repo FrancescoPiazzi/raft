@@ -7,7 +7,7 @@ use raft::state_machine::StateMachine;
 use raft::types::AppendEntriesClientResponse;
 use raft::util::{send_peer_refs, spawn_raft_servers, Server};
 use rand::seq::IteratorRandom;
-use tokio::sync::oneshot;
+use tokio::sync::mpsc;
 use tokio::time::sleep;
 use tracing::instrument;
 
@@ -54,7 +54,7 @@ async fn send_entries_to_duplicate<SMin, SMout>(
     loop {
         tracing::debug!("Sending entries to replicate");
 
-        let (tx, rx) = oneshot::channel::<AppendEntriesClientResponse<SMin, SMout>>();
+        let (tx, mut rx) = mpsc::channel::<AppendEntriesClientResponse<SMin, SMout>>(10);
 
         let request = AppendEntriesClientRequest {
             entries_to_replicate: entries.iter().choose(&mut rng).unwrap().clone(),
@@ -63,28 +63,26 @@ async fn send_entries_to_duplicate<SMin, SMout>(
 
         let _ = leader.try_send(request.into());
 
-        // these are too many nested Results but I don't know how to reduce them without losing expressiveness
-        match tokio::time::timeout(timeout, rx).await {
-            Ok(Ok(AppendEntriesClientResponse(Ok(result)))) => {
-                tracing::debug!("✅ Recieved confirmation of successful entry replication, result is: {:?}", result);
+        match tokio::time::timeout(timeout, rx.recv()).await {
+            Ok(Some(AppendEntriesClientResponse(Ok(result)))) => {
+                tracing::debug!("✅ Received confirmation of successful entry replication, result is: {:?}", result);
                 interval.tick().await;
             }
-            Ok(Ok(AppendEntriesClientResponse(Err(Some(new_leader_ref))))) => {
+            Ok(Some(AppendEntriesClientResponse(Err(Some(new_leader_ref))))) => {
                 tracing::debug!("Interrogated server is not the leader, switching to the indicated one");
                 leader = new_leader_ref;
             }
-            Ok(Ok(AppendEntriesClientResponse(Err(None)))) | Err(_) => {
+            Ok(Some(AppendEntriesClientResponse(Err(None)))) | Err(_) => {
                 tracing::debug!(
                     "Interrogated server does not know who the leader is or it did not answer, \
                     switching to another random node"
                 );
                 leader = servers.iter().choose(&mut rng).unwrap().server_ref.clone();
                 sleep(Duration::from_millis(1000)).await;
-                continue;
             }
-            Ok(Err(_)) => {
-                tracing::error!("Channel closed, exiting");
-                break;
+            Ok(None) => {
+                tracing::error!("channel closed, exiting");
+                // break;
             }
         }
     }
@@ -109,7 +107,7 @@ async fn main() {
 
     send_entries_to_duplicate(
         &servers,
-        Set::from([vec![1], vec![4, 5, 6], vec![2, 2]]),
+        Set::from([vec![1], vec![4], vec![2]]),
         Duration::from_millis(1000),
         Duration::from_millis(2000),
     )

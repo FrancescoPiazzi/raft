@@ -1,11 +1,11 @@
 use std::fmt::{Debug, Formatter};
 
-use tokio::sync::oneshot;
+use tokio::sync::mpsc;
 
 use crate::types::AppendEntriesClientResponse;
 
 pub struct AppendEntriesClientRequest<SMin, SMout> {
-    pub reply_to: oneshot::Sender<AppendEntriesClientResponse<SMin, SMout>>,
+    pub reply_to: mpsc::Sender<AppendEntriesClientResponse<SMin, SMout>>,
     pub entries_to_replicate: Vec<SMin>,
 }
 
