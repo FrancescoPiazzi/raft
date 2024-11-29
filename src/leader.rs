@@ -9,7 +9,6 @@ use request_vote::RequestVoteReply;
 use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 
-use crate::common::update_term;
 use crate::common_state::CommonState;
 use crate::messages::append_entries::{AppendEntriesReply, AppendEntriesRequest};
 use crate::messages::append_entries_client::AppendEntriesClientRequest;
@@ -60,7 +59,7 @@ pub async fn leader_behavior<AB, SM, SMin, SMout>(
         tokio::select! {
             message = cell.recv() => {
                 let message = message.message().expect("raft runs indefinitely");                    
-                if  update_term(common_state, &message) {
+                if  common_state.update_term(&message) {
                     tracing::trace!("step down");
                     break;
                 }

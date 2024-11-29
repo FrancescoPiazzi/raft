@@ -1,5 +1,4 @@
 mod log;
-mod common;
 
 pub mod config;
 pub mod messages;

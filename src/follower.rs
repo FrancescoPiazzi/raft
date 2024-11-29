@@ -3,7 +3,6 @@ use std::collections::BTreeMap;
 use std::ops::Range;
 use std::time::Duration;
 
-use crate::common::*;
 use crate::common_state::CommonState;
 use crate::messages::append_entries::{AppendEntriesReply, AppendEntriesRequest};
 use crate::messages::append_entries_client::AppendEntriesClientRequest;
@@ -44,7 +43,7 @@ pub async fn follower_behavior<AB, SM, SMin, SMout>(
         let message = message.message().expect("raft runs indefinitely");
         tracing::trace!(message = ?message);
 
-        update_term(common_state, &message);
+        common_state.update_term(&message);
 
         match message {
             RaftMessage::AppendEntriesRequest(request) => {

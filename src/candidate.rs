@@ -7,7 +7,6 @@ use actum::prelude::ActorBounds;
 use rand::{thread_rng, Rng};
 use tokio::time::{timeout, sleep};
 
-use crate::common::*;
 use crate::common_state::CommonState;
 use crate::messages::request_vote::RequestVoteRequest;
 use crate::messages::*;
@@ -29,7 +28,7 @@ where
     SMin: Clone + Send + 'static,
     SMout: Send + 'static,
 {
-    let mut election_won = false;
+    let election_won;
 
     common_state.voted_for = Some(me);
 
@@ -65,7 +64,7 @@ where
             let message = message.message().expect("raft runs indefinitely");
             tracing::trace!(message = ?message);
             
-            if update_term(common_state, &message){
+            if common_state.update_term(&message){
                 election_won = false;
                 break 'candidate;
             }
@@ -119,9 +118,6 @@ fn handle_message_as_candidate<SM, SMin, SMout>(
             let n_votes_against =
                 votes_from_others.values().filter(|granted| !**granted).count();
             
-            // tracing::trace!("votes needed to win:  {}/{}", n_granted_votes_including_self, peers.len() / 2 + 1);
-            // tracing::trace!("votes needed to lose: {}/{}", n_votes_against, peers.len() / 2 + 1);
-
             if n_granted_votes_including_self >= peers.len() / 2 + 1 {
                 Some(true)
             } else if n_votes_against >= peers.len() / 2 + 1 {
@@ -142,6 +138,7 @@ fn handle_message_as_candidate<SM, SMin, SMout>(
             // reminder: candidates never vote for others, as they have already voted for themselves
             // TOTHINK: do they? one would argue that they will vote for somone on a different term, so it doesn't count
             // but the formal specifications seem to imply they don't (it also seems to imply noone ever votes tough)
+            // TODO: also this check is already done in update_term, so whatever the logic is, it should be moved there
             if request.term > common_state.current_term {
                 common_state.current_term = request.term;
                 Some(false)

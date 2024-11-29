@@ -3,7 +3,7 @@ use std::{
     marker::PhantomData,
 };
 
-use crate::log::Log;
+use crate::{log::Log, messages::RaftMessage};
 use crate::state_machine::StateMachine;
 
 pub struct CommonState<SM, SMin, SMout> {
@@ -52,6 +52,23 @@ impl<SM, SMin, SMout> CommonState<SM, SMin, SMout> {
         }
 
         self.last_applied = self.commit_index;
+    }
+
+    /// Updates current term if necessary, returns true if we have to become a follower, false otherwise
+    pub fn update_term(
+        &mut self, 
+        msg: &RaftMessage<SMin, SMout>
+    ) -> bool 
+    {
+        if let Some(inner) = msg.get_term(){
+            if inner > self.current_term {
+                self.new_term(inner);
+                return true;
+            } else {
+                return false;
+            }
+        }
+        false
     }
 
     /// Method to call every time a new term is detected
