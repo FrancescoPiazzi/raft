@@ -155,9 +155,9 @@ fn handle_vote_request<SM, SMin, SMout>(
     SMin: Clone + Send + 'static,
     SMout: Send + 'static,
 {
-    // TODO: this should implement "and candidate’s log is at least as up-to-date as receiver's log", the term being >= is not enough
-    let vote_granted = request.term >= common_state.current_term
-        && (common_state.voted_for.is_none() || *common_state.voted_for.as_ref().unwrap() == request.candidate_id);
+    let log_is_ok = common_state.log.is_log_ok(&request);
+    let vote_granted = log_is_ok && common_state.voted_for.is_none();
+
     tracing::trace!("vote granted: {} for id: {}", vote_granted, request.candidate_id);
 
     if let Some(candidate_ref) = peers.get_mut(&request.candidate_id) {
@@ -166,6 +166,8 @@ fn handle_vote_request<SM, SMin, SMout>(
         }
         let reply = RequestVoteReply{from: me, term: common_state.current_term, vote_granted};
         let _ = candidate_ref.try_send(reply.into());
+    } else {
+        tracing::error!("peer {} not found", request.candidate_id);
     }
 }
 

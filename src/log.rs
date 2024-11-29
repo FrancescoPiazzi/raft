@@ -2,6 +2,8 @@ use std::fmt::{Debug, Formatter};
 use std::iter::repeat;
 use std::ops::{Index, IndexMut, RangeFrom};
 
+use crate::messages::request_vote::RequestVoteRequest;
+
 fn check_log_index(index: usize) {
     if index == 0 {
         panic!("attempted to access the log at index 0");
@@ -79,9 +81,20 @@ impl<SMin> Log<SMin> {
         self.terms[index - 1]
     }
 
+    pub fn get_last_log_term(&self) -> u64 {
+        self.terms.last().copied().unwrap_or(0)
+    }
+
     pub fn append(&mut self, entries: Vec<SMin>, term: u64) {
         self.insert(entries, self.len() as u64, term);
     }
+
+    // https://github.com/logcabin/logcabin/blob/ee6c55ae9744b82b451becd9707d26c7c1b6bbfb/Server/RaftConsensus.cc#L1536
+    pub fn is_log_ok(&self, request: &RequestVoteRequest) -> bool{
+        request.last_log_term > self.get_last_log_term() ||
+        request.last_log_term == self.get_last_log_term() &&
+        request.last_log_index >= self.len() as u64
+    } 
 
     #[tracing::instrument(level = "trace", skip(entries))]
     pub fn insert(&mut self, mut entries: Vec<SMin>, prev_log_index: u64, term: u64) {
