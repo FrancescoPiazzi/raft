@@ -92,9 +92,9 @@ impl<SMin> Log<SMin> {
     // https://github.com/logcabin/logcabin/blob/ee6c55ae9744b82b451becd9707d26c7c1b6bbfb/Server/RaftConsensus.cc#L1536
     pub fn is_log_ok(&self, request: &RequestVoteRequest) -> bool{
         request.last_log_term > self.get_last_log_term() ||
-        request.last_log_term == self.get_last_log_term() &&
-        request.last_log_index >= self.len() as u64
-    } 
+        (request.last_log_term == self.get_last_log_term() &&
+        request.last_log_index >= self.len() as u64)
+    }
 
     #[tracing::instrument(level = "trace", skip(entries))]
     pub fn insert(&mut self, mut entries: Vec<SMin>, prev_log_index: u64, term: u64) {
@@ -181,6 +181,39 @@ mod tests {
     fn test_log_indexing_mut_0() {
         let mut log = Log::<u32>::new();
         log[0] = 1;
+    }
+
+    #[test]
+    fn test_is_log_ok(){
+        let mut log = Log::<u32>::new();
+        log.append(vec![1, 2, 3], 1);
+
+        let request = RequestVoteRequest {
+            term: 1,
+            candidate_id: 1,
+            last_log_index: 3,
+            last_log_term: 1,
+        };
+        assert!(log.is_log_ok(&request));
+
+        // log of requester is shorter than ours
+        let request = RequestVoteRequest {
+            term: 1,
+            candidate_id: 1,
+            last_log_index: 2,  
+            last_log_term: 1,
+        };
+        assert!(!log.is_log_ok(&request));
+
+        // log of requester is shorter than ours, but out term is higher
+        let request = RequestVoteRequest {
+            term: 1,
+            candidate_id: 1,
+            last_log_index: 1,
+            last_log_term: 2,   
+        };
+
+        assert!(log.is_log_ok(&request));
     }
 
     #[test]
