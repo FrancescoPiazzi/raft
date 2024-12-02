@@ -9,7 +9,10 @@ use raft::util::{send_peer_refs, spawn_raft_servers, Server};
 use rand::seq::IteratorRandom;
 use tokio::sync::mpsc;
 use tokio::time::sleep;
-use tracing::instrument;
+use tracing::{instrument, subscriber, Subscriber};
+use tracing_subscriber::{fmt, layer::SubscriberExt, EnvFilter, Registry};
+use tracing_appender::rolling::{RollingFileAppender, Rotation};
+use tracing_subscriber::{layer, Layer};
 
 
 #[derive(Clone)]
@@ -88,76 +91,82 @@ async fn send_entries_to_duplicate<SMin, SMout>(
     }
 }
 
-// #[tokio::main]
-// async fn main() {
-//     tracing_subscriber::fmt()
-//         .with_span_events(
-//             tracing_subscriber::fmt::format::FmtSpan::NONE
-//             // tracing_subscriber::fmt::format::FmtSpan::NEW | tracing_subscriber::fmt::format::FmtSpan::CLOSE,
-//         )
-//         .with_target(false)
-//         .with_line_number(false)
-//         .with_max_level(tracing::Level::TRACE)
-//         .init();
-
-//     let servers = spawn_raft_servers(5, ExampleStateMachine::new());
-//     send_peer_refs(&servers);
-
-//     tokio::time::sleep(Duration::from_millis(2000)).await; // give the servers a moment to elect a leader
-
-//     send_entries_to_duplicate(
-//         &servers,
-//         Set::from([vec![1], vec![4], vec![2]]),
-//         Duration::from_millis(1000),
-//         Duration::from_millis(2000),
-//     )
-//     .await;
-
-//     for server in servers {
-//         server.handle.await.unwrap();
-//     }
-// }
-
-use tracing::{info, span, Level};
-use tracing_subscriber::{fmt, layer::SubscriberExt, EnvFilter, Registry};
-use tracing_appender::rolling::{RollingFileAppender, Rotation};
-use tracing_subscriber::Layer;
-
 #[tokio::main]
 async fn main() {
-    // Create file appender for span1
-    let file_appender1 = RollingFileAppender::new(Rotation::NEVER, "log", "span1.log");
-    let (non_blocking1, _guard1) = tracing_appender::non_blocking(file_appender1);
+    // tracing_subscriber::fmt()
+    //     .with_span_events(
+    //         tracing_subscriber::fmt::format::FmtSpan::NONE
+    //         // tracing_subscriber::fmt::format::FmtSpan::NEW | tracing_subscriber::fmt::format::FmtSpan::CLOSE,
+    //     )
+    //     .with_target(false)
+    //     .with_line_number(false)
+    //     .with_max_level(tracing::Level::TRACE)
+    //     .init();
+    
+    fluff(5).await;
 
-    // Create file appender for span2
-    let file_appender2 = RollingFileAppender::new(Rotation::NEVER, "log", "span2.log");
-    let (non_blocking2, _guard2) = tracing_appender::non_blocking(file_appender2);
-
-    // Create a layer for span1
-    let span1_layer = fmt::Layer::new()
-        .with_writer(non_blocking1)
-        .with_filter(EnvFilter::new("[span1]"));
-
-    // Create a layer for span2
-    let span2_layer = fmt::Layer::new()
-        .with_writer(non_blocking2)
-        .with_filter(EnvFilter::new("[span2]"));
-
-    // Combine the layers
-    let subscriber = Registry::default()
-        .with(span1_layer)
-        .with(span2_layer);
-
-    tracing::subscriber::set_global_default(subscriber).expect("Unable to set global subscriber");
-
-    // Create and enter span1
-    let span1 = span!(Level::INFO, "span1");
+    let span1 = tracing::span!(tracing::Level::INFO, "span3");
     let _enter1 = span1.enter();
-    info!("This will be logged to span1.log");
+    tracing::info!("This will be logged to span3.log");
     drop(_enter1);
 
     // Create and enter span2
-    let span2 = span!(Level::INFO, "span2");
+    let span2 = tracing::span!(tracing::Level::INFO, "span4");
     let _enter2 = span2.enter();
-    info!("This will be logged to span2.log");
+    tracing::info!("This will be logged to span4.log");
+    drop(_enter2);
+
+    let servers = spawn_raft_servers(5, ExampleStateMachine::new());
+    send_peer_refs(&servers);
+
+    tokio::time::sleep(Duration::from_millis(2000)).await; // give the servers a moment to elect a leader
+
+    send_entries_to_duplicate(
+        &servers,
+        Set::from([vec![1], vec![4], vec![2]]),
+        Duration::from_millis(1000),
+        Duration::from_millis(2000),
+    )
+    .await;
+
+    for server in servers {
+        server.handle.await.unwrap();
+    }
+}
+
+
+async fn fluff(n_servers: usize) {
+    if n_servers == 0 {
+        return;
+    }
+
+    let mut guards = Vec::new();
+
+    let composite_layer = {
+        let mut layers: Option<Box<dyn Layer<Registry> + Send + Sync + 'static>> = None;
+
+        for i in 0..n_servers {
+            let file_appender = RollingFileAppender::new(Rotation::NEVER, "log", format!("span{}.log", i));
+            let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+            guards.push(guard);
+
+            let filter = EnvFilter::new(format!("[span{}]", i));
+            let fmt_layer = fmt::Layer::new()
+                .with_writer(non_blocking)
+                .with_filter(filter)
+                .boxed();
+
+            layers = match layers {
+                Some(layer) => Some(layer.and_then(fmt_layer).boxed()),
+                None => Some(fmt_layer),
+            };
+        }
+
+        layers
+    };
+
+    if let Some(inner) = composite_layer {
+        let subscriber = Registry::default().with(inner);
+        subscriber::set_global_default(subscriber).expect("Unable to set global subscriber");
+    }
 }
