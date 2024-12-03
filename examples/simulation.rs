@@ -9,10 +9,10 @@ use raft::util::{send_peer_refs, spawn_raft_servers, Server};
 use rand::seq::IteratorRandom;
 use tokio::sync::mpsc;
 use tokio::time::sleep;
-use tracing::{instrument, subscriber, Subscriber};
+use tracing::{instrument, subscriber};
 use tracing_subscriber::{fmt, layer::SubscriberExt, EnvFilter, Registry};
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
-use tracing_subscriber::{layer, Layer};
+use tracing_subscriber::Layer;
 
 
 #[derive(Clone)]
@@ -102,19 +102,8 @@ async fn main() {
     //     .with_line_number(false)
     //     .with_max_level(tracing::Level::TRACE)
     //     .init();
-    
-    fluff(5).await;
-
-    let span1 = tracing::span!(tracing::Level::INFO, "span3");
-    let _enter1 = span1.enter();
-    tracing::info!("This will be logged to span3.log");
-    drop(_enter1);
-
-    // Create and enter span2
-    let span2 = tracing::span!(tracing::Level::INFO, "span4");
-    let _enter2 = span2.enter();
-    tracing::info!("This will be logged to span4.log");
-    drop(_enter2);
+    let mut _guards = Vec::new();   // guards must remain in scope for the file appenders to work
+    set_global_subscriber(5, &mut _guards).await;
 
     let servers = spawn_raft_servers(5, ExampleStateMachine::new());
     send_peer_refs(&servers);
@@ -135,22 +124,21 @@ async fn main() {
 }
 
 
-async fn fluff(n_servers: usize) {
+async fn set_global_subscriber(n_servers: usize, guards: &mut Vec<tracing_appender::non_blocking::WorkerGuard>) {
     if n_servers == 0 {
         return;
     }
-
-    let mut guards = Vec::new();
 
     let composite_layer = {
         let mut layers: Option<Box<dyn Layer<Registry> + Send + Sync + 'static>> = None;
 
         for i in 0..n_servers {
-            let file_appender = RollingFileAppender::new(Rotation::NEVER, "log", format!("span{}.log", i));
+            let file_appender = RollingFileAppender::new(Rotation::NEVER, "log", format!("server{}.log", i));
             let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
             guards.push(guard);
 
-            let filter = EnvFilter::new(format!("[span{}]", i));
+            let filter = EnvFilter::new(format!("[server{{id={}}}]", i));
+
             let fmt_layer = fmt::Layer::new()
                 .with_writer(non_blocking)
                 .with_filter(filter)
