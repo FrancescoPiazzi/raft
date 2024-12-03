@@ -66,12 +66,6 @@ where
             };
 
             let message = message.message().expect("raft runs indefinitely");
-            tracing::trace!(message = ?message);
-
-            if common_state.update_term(&message) {
-                election_won = false;
-                break 'candidate;
-            }
 
             if let Some(election_result) =
                 handle_message_as_candidate(common_state, peers, &mut votes_from_others, message)
@@ -106,6 +100,12 @@ fn handle_message_as_candidate<SM, SMin, SMout>(
     votes_from_others: &mut BTreeMap<u32, bool>,
     message: RaftMessage<SMin, SMout>,
 ) -> Option<bool> {
+    tracing::trace!(message = ?message);
+
+    if common_state.update_term(&message) {
+        return Some(false);
+    }
+
     match message {
         RaftMessage::RequestVoteReply(reply) => {
             // formal specifications:310, don't count votes with terms different than the current

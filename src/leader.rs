@@ -58,11 +58,8 @@ pub async fn leader_behavior<AB, SM, SMin, SMout>(
         tokio::select! {
             message = cell.recv() => {
                 let message = message.message().expect("raft runs indefinitely");
-                if  common_state.update_term(&message) {
-                    tracing::trace!("step down");
-                    break;
-                }
-                handle_message_as_leader(
+                
+                if handle_message_as_leader(
                     me,
                     common_state,
                     peers,
@@ -70,7 +67,9 @@ pub async fn leader_behavior<AB, SM, SMin, SMout>(
                     &mut client_channel_per_input,
                     &mut committed_entries_smout_buf,
                     message
-                );
+                ) {
+                    return;
+                }
             },
             timed_out_follower_id = follower_timeouts.join_next() => {
                 let Some(timed_out_follower_id) = timed_out_follower_id else {
@@ -134,12 +133,18 @@ fn handle_message_as_leader<SM, SMin, SMout>(
     client_channel_per_input: &mut VecDeque<mpsc::Sender<AppendEntriesClientResponse<SMin, SMout>>>,
     committed_entries_smout_buf: &mut Vec<SMout>,
     message: RaftMessage<SMin, SMout>,
-) where
+) -> bool 
+where
     SM: StateMachine<SMin, SMout> + Send,
     SMin: Send + Clone + 'static,
     SMout: Send + 'static,
 {
     tracing::trace!(message = ?message);
+
+    if common_state.update_term(&message) {
+        tracing::trace!("step down");
+        return true;
+    }
 
     match message {
         RaftMessage::AppendEntriesClientRequest(append_entries_client) => {
@@ -164,6 +169,8 @@ fn handle_message_as_leader<SM, SMin, SMout>(
             tracing::trace!(unhandled = ?message);
         }
     }
+
+    false
 }
 
 #[tracing::instrument(level = "trace", skip_all)]

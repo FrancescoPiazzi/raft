@@ -39,25 +39,40 @@ pub async fn follower_behavior<AB, SM, SMin, SMout>(
             tracing::debug!("election timeout");
             return;
         };
-
         let message = message.message().expect("raft runs indefinitely");
-        tracing::trace!(message = ?message);
+        
+        handle_message_as_follower::<AB, SM, SMin, SMout>(me, peers, common_state, &mut leader_id, message);
+    }
+}
 
-        common_state.update_term(&message);
+fn handle_message_as_follower<AB, SM, SMin, SMout>(
+    me: u32,
+    peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin, SMout>>>,
+    common_state: &mut CommonState<SM, SMin, SMout>,
+    leader_id: &mut Option<u32>,
+    message: RaftMessage<SMin, SMout>,
+) where
+    AB: ActorBounds<RaftMessage<SMin, SMout>>,
+    SM: StateMachine<SMin, SMout> + Send,
+    SMin: Clone + Send + 'static,
+    SMout: Send + 'static,
+{
+    tracing::trace!(message = ?message);
 
-        match message {
-            RaftMessage::AppendEntriesRequest(request) => {
-                handle_append_entries_request(me, common_state, peers, &mut leader_id, request);
-            }
-            RaftMessage::RequestVoteRequest(request) => {
-                handle_vote_request(me, common_state, peers, request);
-            }
-            RaftMessage::AppendEntriesClientRequest(request) => {
-                handle_append_entries_client_request(peers, leader_id.as_mut(), request);
-            }
-            other => {
-                tracing::trace!(unhandled = ?other);
-            }
+    common_state.update_term(&message);
+
+    match message {
+        RaftMessage::AppendEntriesRequest(request) => {
+            handle_append_entries_request(me, common_state, peers, leader_id, request);
+        }
+        RaftMessage::RequestVoteRequest(request) => {
+            handle_vote_request(me, common_state, peers, request);
+        }
+        RaftMessage::AppendEntriesClientRequest(request) => {
+            handle_append_entries_client_request(peers, leader_id.as_mut(), request);
+        }
+        other => {
+            tracing::trace!(unhandled = ?other);
         }
     }
 }
