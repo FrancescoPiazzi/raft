@@ -75,7 +75,11 @@ fn handle_append_entries_request<SM, SMin, SMout>(
     SMout: Send + 'static,
 {
     if request.term < common_state.current_term {
-        tracing::trace!("request term = {} < current term = {}: ignoring", request.term, common_state.current_term);
+        tracing::trace!(
+            "request term = {} < current term = {}: ignoring",
+            request.term,
+            common_state.current_term
+        );
 
         if let Some(sender_ref) = peers.get_mut(&request.leader_id) {
             let reply = AppendEntriesReply {
@@ -93,14 +97,20 @@ fn handle_append_entries_request<SM, SMin, SMout>(
 
     if request.term == common_state.current_term {
         if let Some(leader_id) = leader_id.as_ref() {
-            assert_eq!(request.leader_id, *leader_id, 
-                "two leaders with the same term detected: {} and {}", request.leader_id, *leader_id);
+            assert_eq!(
+                request.leader_id, *leader_id,
+                "two leaders with the same term detected: {} and {}",
+                request.leader_id, *leader_id
+            );
         }
     }
 
     if request.prev_log_index > common_state.log.len() as u64 {
-        tracing::trace!("missing entries: previous log index = {}, log length: {}: ignoring",
-                        request.prev_log_index, common_state.log.len());
+        tracing::trace!(
+            "missing entries: previous log index = {}, log length: {}: ignoring",
+            request.prev_log_index,
+            common_state.log.len()
+        );
 
         if let Some(sender_ref) = peers.get_mut(&request.leader_id) {
             let reply = AppendEntriesReply {
@@ -113,22 +123,27 @@ fn handle_append_entries_request<SM, SMin, SMout>(
         return;
     }
 
-    common_state.log.insert(request.entries, request.prev_log_index, request.term);
+    common_state
+        .log
+        .insert(request.entries, request.prev_log_index, request.term);
 
     let leader_commit: usize = request.leader_commit.try_into().unwrap();
 
     if leader_commit > common_state.commit_index {
         tracing::trace!("leader commit is greater than follower commit, updating commit index");
         let new_commit_index = min(leader_commit, common_state.log.len());
-        tracing::trace!("previous log index = {}, log length: {}: ignoring",
-                        request.prev_log_index, common_state.log.len());    // TOASK: what is that ignoring? Did I put it there?
+        tracing::trace!(
+            "previous log index = {}, log length: {}: ignoring",
+            request.prev_log_index,
+            common_state.log.len()
+        ); // TOASK: what is that ignoring? Did I put it there?
 
         common_state.commit_index = new_commit_index;
         common_state.commit_log_entries_up_to_commit_index(None);
     }
 
     if let Some(leader_id) = leader_id.as_mut() {
-        // TOASK: this can happen? If the leader changes and we get a new term, we update it earlier, 
+        // TOASK: this can happen? If the leader changes and we get a new term, we update it earlier,
         // how can the leader change without the term progressing?
         if request.leader_id != *leader_id { /* leader changed */ }
     }
@@ -163,7 +178,11 @@ fn handle_vote_request<SM, SMin, SMout>(
         if vote_granted {
             common_state.voted_for = Some(request.candidate_id);
         }
-        let reply = RequestVoteReply{from: me, term: common_state.current_term, vote_granted};
+        let reply = RequestVoteReply {
+            from: me,
+            term: common_state.current_term,
+            vote_granted,
+        };
         let _ = candidate_ref.try_send(reply.into());
     } else {
         tracing::error!("peer {} not found", request.candidate_id);
@@ -179,7 +198,7 @@ fn handle_append_entries_client_request<SMin, SMout>(
     SMin: Clone + Send + 'static,
 {
     if let Some(leader_id) = leader_id {
-        if let Some(leader_ref) = peers.get_mut(&leader_id) {
+        if let Some(leader_ref) = peers.get_mut(leader_id) {
             tracing::debug!("redirecting the client to leader {}", leader_id);
             let reply = Err(Some(leader_ref.clone()));
             let _ = request.reply_to.try_send(AppendEntriesClientResponse(reply));

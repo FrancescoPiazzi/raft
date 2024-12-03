@@ -90,10 +90,9 @@ impl<SMin> Log<SMin> {
     }
 
     // https://github.com/logcabin/logcabin/blob/ee6c55ae9744b82b451becd9707d26c7c1b6bbfb/Server/RaftConsensus.cc#L1536
-    pub fn is_log_ok(&self, request: &RequestVoteRequest) -> bool{
-        request.last_log_term > self.get_last_log_term() ||
-        (request.last_log_term == self.get_last_log_term() &&
-        request.last_log_index >= self.len() as u64)
+    pub fn is_log_ok(&self, request: &RequestVoteRequest) -> bool {
+        request.last_log_term > self.get_last_log_term()
+            || (request.last_log_term == self.get_last_log_term() && request.last_log_index >= self.len() as u64)
     }
 
     #[tracing::instrument(level = "trace", skip(entries))]
@@ -184,7 +183,7 @@ mod tests {
     }
 
     #[test]
-    fn test_is_log_ok(){
+    fn test_is_log_ok() {
         let mut log = Log::<u32>::new();
         log.append(vec![1, 2, 3], 1);
 
@@ -200,7 +199,7 @@ mod tests {
         let request = RequestVoteRequest {
             term: 1,
             candidate_id: 1,
-            last_log_index: 2,  
+            last_log_index: 2,
             last_log_term: 1,
         };
         assert!(!log.is_log_ok(&request));
@@ -210,7 +209,7 @@ mod tests {
             term: 1,
             candidate_id: 1,
             last_log_index: 1,
-            last_log_term: 2,   
+            last_log_term: 2,
         };
 
         assert!(log.is_log_ok(&request));

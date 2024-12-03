@@ -54,7 +54,7 @@ where
 pub fn send_peer_refs<SMin, SMout>(servers: &[Server<SMin, SMout>])
 where
     SMin: Send + 'static,
-    SMout: Send + 'static
+    SMout: Send + 'static,
 {
     for i in 0..servers.len() {
         let (server_id, mut server_ref) = {

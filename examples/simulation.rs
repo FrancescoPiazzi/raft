@@ -11,7 +11,6 @@ use tokio::sync::mpsc;
 use tokio::time::sleep;
 use tracing::instrument;
 
-
 #[derive(Clone)]
 struct ExampleStateMachine {
     set: Set<u64>,
@@ -19,9 +18,7 @@ struct ExampleStateMachine {
 
 impl ExampleStateMachine {
     fn new() -> Self {
-        ExampleStateMachine {
-            set: Set::new(),
-        }
+        ExampleStateMachine { set: Set::new() }
     }
 }
 
@@ -43,7 +40,7 @@ async fn send_entries_to_duplicate<SMin, SMout>(
     timeout: Duration,
 ) where
     SMin: Clone + Send + 'static,
-    SMout: Send + Debug + 'static
+    SMout: Send + Debug + 'static,
 {
     let mut interval = tokio::time::interval(period);
     interval.tick().await; // first tick is immediate, skip it
@@ -65,7 +62,10 @@ async fn send_entries_to_duplicate<SMin, SMout>(
 
         match tokio::time::timeout(timeout, rx.recv()).await {
             Ok(Some(AppendEntriesClientResponse(Ok(result)))) => {
-                tracing::debug!("✅ Received confirmation of successful entry replication, result is: {:?}", result);
+                tracing::debug!(
+                    "✅ Received confirmation of successful entry replication, result is: {:?}",
+                    result
+                );
                 interval.tick().await;
             }
             Ok(Some(AppendEntriesClientResponse(Err(Some(new_leader_ref))))) => {
@@ -92,8 +92,7 @@ async fn send_entries_to_duplicate<SMin, SMout>(
 async fn main() {
     tracing_subscriber::fmt()
         .with_span_events(
-            tracing_subscriber::fmt::format::FmtSpan::NONE
-            // tracing_subscriber::fmt::format::FmtSpan::NEW | tracing_subscriber::fmt::format::FmtSpan::CLOSE,
+            tracing_subscriber::fmt::format::FmtSpan::NONE, // tracing_subscriber::fmt::format::FmtSpan::NEW | tracing_subscriber::fmt::format::FmtSpan::CLOSE,
         )
         .with_target(false)
         .with_line_number(false)

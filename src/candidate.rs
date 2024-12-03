@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use actum::actor_ref::ActorRef;
 use actum::prelude::ActorBounds;
 use rand::{thread_rng, Rng};
-use tokio::time::{timeout, sleep};
+use tokio::time::{sleep, timeout};
 
 use crate::common_state::CommonState;
 use crate::messages::request_vote::RequestVoteRequest;
@@ -48,7 +48,11 @@ where
             term: common_state.current_term,
             candidate_id: me,
             last_log_index: last_applied as u64,
-            last_log_term: if last_applied == 0 { 0 } else { common_state.log.get_term(last_applied) },
+            last_log_term: if last_applied == 0 {
+                0
+            } else {
+                common_state.log.get_term(last_applied)
+            },
         };
 
         for peer in peers.values_mut() {
@@ -63,13 +67,15 @@ where
 
             let message = message.message().expect("raft runs indefinitely");
             tracing::trace!(message = ?message);
-            
-            if common_state.update_term(&message){
+
+            if common_state.update_term(&message) {
                 election_won = false;
                 break 'candidate;
             }
 
-            if let Some(election_result) = handle_message_as_candidate(common_state,peers, &mut votes_from_others, message){
+            if let Some(election_result) =
+                handle_message_as_candidate(common_state, peers, &mut votes_from_others, message)
+            {
                 election_won = election_result;
                 break 'candidate;
             }
@@ -92,32 +98,30 @@ where
 }
 
 /// Process a single message as the candidate
-/// 
+///
 /// Returns Some(true) if election is won, Some(false) if it is lost, and None if it's still ongoing
 fn handle_message_as_candidate<SM, SMin, SMout>(
     common_state: &mut CommonState<SM, SMin, SMout>,
     peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin, SMout>>>,
     votes_from_others: &mut BTreeMap<u32, bool>,
-    message: RaftMessage<SMin, SMout>
-) -> Option<bool> 
-{
+    message: RaftMessage<SMin, SMout>,
+) -> Option<bool> {
     match message {
         RaftMessage::RequestVoteReply(reply) => {
             // formal specifications:310, don't count votes with terms different than the current
             if reply.term != common_state.current_term {
                 return None;
             }
-            if votes_from_others.contains_key(&reply.from){
+            if votes_from_others.contains_key(&reply.from) {
                 tracing::error!("Candidate {} voted for me twice", reply.from);
                 return None;
             }
 
             votes_from_others.insert(reply.from, reply.vote_granted);
-            let n_granted_votes_including_self =
-                votes_from_others.values().filter(|granted| **granted).count() + 1;
-            let n_votes_against =
-                votes_from_others.values().filter(|granted| !**granted).count();
-            
+            let n_granted_votes_including_self = votes_from_others.values().filter(|granted| **granted).count() + 1;
+            let n_votes_against = votes_from_others.values().filter(|granted| !**granted).count();
+
+            #[allow(clippy::int_plus_one)] // imo it's more clear with the +1
             if n_granted_votes_including_self >= peers.len() / 2 + 1 {
                 Some(true)
             } else if n_votes_against >= peers.len() / 2 + 1 {
@@ -147,7 +151,7 @@ fn handle_message_as_candidate<SM, SMin, SMout>(
             }
         }
         RaftMessage::AppendEntriesClientRequest(request) => {
-            let _ = request.reply_to.send(AppendEntriesClientResponse(Err(None)));
+            let _ = request.reply_to.try_send(AppendEntriesClientResponse(Err(None)));
             None
         }
         _ => {

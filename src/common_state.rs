@@ -3,8 +3,8 @@ use std::{
     marker::PhantomData,
 };
 
-use crate::{log::Log, messages::RaftMessage};
 use crate::state_machine::StateMachine;
+use crate::{log::Log, messages::RaftMessage};
 
 pub struct CommonState<SM, SMin, SMout> {
     pub current_term: u64,
@@ -55,12 +55,8 @@ impl<SM, SMin, SMout> CommonState<SM, SMin, SMout> {
     }
 
     /// Updates current term if necessary, returns true if we have to become a follower, false otherwise
-    pub fn update_term(
-        &mut self, 
-        msg: &RaftMessage<SMin, SMout>
-    ) -> bool 
-    {
-        if let Some(inner) = msg.get_term(){
+    pub fn update_term(&mut self, msg: &RaftMessage<SMin, SMout>) -> bool {
+        if let Some(inner) = msg.get_term() {
             if inner > self.current_term {
                 self.new_term(inner);
                 return true;
@@ -72,34 +68,44 @@ impl<SM, SMin, SMout> CommonState<SM, SMin, SMout> {
     }
 
     /// Method to call every time a new term is detected
-    pub fn new_term(&mut self, term: u64){
-        assert!(self.current_term < term, 
-            "new term called with something that is not a new term: current: {}, new: {}", 
-            self.current_term, term
+    pub fn new_term(&mut self, term: u64) {
+        assert!(
+            self.current_term < term,
+            "new term called with something that is not a new term: current: {}, new: {}",
+            self.current_term,
+            term
         );
         self.current_term = term;
         self.voted_for = None;
     }
 
     pub fn check_validity(&self) {
-        if self.commit_index > self.log.len(){
+        if self.commit_index > self.log.len() {
             panic!("commit index is greater than log length");
         }
-        if self.last_applied > self.commit_index{
+        if self.last_applied > self.commit_index {
             panic!("last applied is greater than commit index");
         }
 
-        for i in 1..=self.log.len()-1 {
+        for i in 1..=self.log.len() - 1 {
             if self.log.get_term(i) > self.log.get_term(i + 1) {
-                panic!("log term [{}] = {} is greater than term at [{}] = {}, \
-                    log terms should increase monotonically", 
-                    i, self.log.get_term(i), i + 1, self.log.get_term(i + 1));
+                panic!(
+                    "log term [{}] = {} is greater than term at [{}] = {}, \
+                    log terms should increase monotonically",
+                    i,
+                    self.log.get_term(i),
+                    i + 1,
+                    self.log.get_term(i + 1)
+                );
             }
         }
 
         if self.current_term < self.log.get_term(self.commit_index) {
-            panic!("current term ({}) is less than term at commit index ({})", 
-                self.current_term, self.log.get_term(self.commit_index));
+            panic!(
+                "current term ({}) is less than term at commit index ({})",
+                self.current_term,
+                self.log.get_term(self.commit_index)
+            );
         }
     }
 }
@@ -122,7 +128,6 @@ impl<SM, SMin, SMout> Debug for CommonState<SM, SMin, SMout> {
             .finish()
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -147,9 +152,7 @@ mod tests {
         common_state.commit_index = 2;
 
         let mut newly_committed_entries_buf = Vec::new();
-        common_state.commit_log_entries_up_to_commit_index(
-            Some(&mut newly_committed_entries_buf)
-        );
+        common_state.commit_log_entries_up_to_commit_index(Some(&mut newly_committed_entries_buf));
 
         assert_eq!(common_state.last_applied, 2);
         assert_eq!(newly_committed_entries_buf, vec![1, 2]);
