@@ -82,7 +82,7 @@ async fn send_entries_to_duplicate<SMin, SMout>(
             }
             Ok(None) => {
                 tracing::error!("channel closed, exiting");
-                // break;
+                break;
             }
         }
     }

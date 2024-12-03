@@ -48,11 +48,7 @@ where
             term: common_state.current_term,
             candidate_id: me,
             last_log_index: last_applied as u64,
-            last_log_term: if last_applied == 0 {
-                0
-            } else {
-                common_state.log.get_term(last_applied)
-            },
+            last_log_term: common_state.log.get_last_log_term(),
         };
 
         for peer in peers.values_mut() {
