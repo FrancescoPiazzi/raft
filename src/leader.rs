@@ -21,14 +21,14 @@ mod peer_state;
 
 /// Behavior of the Raft server in leader state.
 ///
-/// Returns when a message with a higher term is received.
+/// Returns when a message with a higher term is received, returning the message.
 pub async fn leader_behavior<AB, SM, SMin, SMout>(
     cell: &mut AB,
     me: u32,
     common_state: &mut CommonState<SM, SMin, SMout>,
     peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin, SMout>>>,
     heartbeat_period: Duration,
-) where
+) -> RaftMessage<SMin, SMout> where
     SM: StateMachine<SMin, SMout> + Send,
     AB: ActorBounds<RaftMessage<SMin, SMout>>,
     SMin: Clone + Send + 'static,
@@ -66,9 +66,9 @@ pub async fn leader_behavior<AB, SM, SMin, SMout>(
                     &mut peers_state,
                     &mut client_channel_per_input,
                     &mut committed_entries_smout_buf,
-                    message
+                    &message
                 ) {
-                    return;
+                    return message;
                 }
             },
             timed_out_follower_id = follower_timeouts.join_next() => {
@@ -132,7 +132,7 @@ fn handle_message_as_leader<SM, SMin, SMout>(
     peers_state: &mut BTreeMap<u32, PeerState>,
     client_channel_per_input: &mut VecDeque<mpsc::Sender<AppendEntriesClientResponse<SMin, SMout>>>,
     committed_entries_smout_buf: &mut Vec<SMout>,
-    message: RaftMessage<SMin, SMout>,
+    message: &RaftMessage<SMin, SMout>,
 ) -> bool 
 where
     SM: StateMachine<SMin, SMout> + Send,
@@ -177,7 +177,7 @@ where
 fn handle_append_entries_client_request<SM, SMin, SMout>(
     common_state: &mut CommonState<SM, SMin, SMout>,
     client_channel_per_input: &mut VecDeque<mpsc::Sender<AppendEntriesClientResponse<SMin, SMout>>>,
-    request: AppendEntriesClientRequest<SMin, SMout>,
+    request: &AppendEntriesClientRequest<SMin, SMout>,
 ) where
     SM: StateMachine<SMin, SMout> + Send,
     SMin: Send + Clone + 'static,
@@ -189,7 +189,7 @@ fn handle_append_entries_client_request<SM, SMin, SMout>(
     }
     common_state
         .log
-        .append(request.entries_to_replicate, common_state.current_term);
+        .append(request.entries_to_replicate.clone(), common_state.current_term);
 }
 
 /// request vote requests are always refused as leaders, because if the term of the request
@@ -199,7 +199,7 @@ fn handle_request_vote_request<SM, SMin, SMout>(
     me: u32,
     common_state: &mut CommonState<SM, SMin, SMout>,
     peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin, SMout>>>,
-    request: RequestVoteRequest,
+    request: &RequestVoteRequest,
 ) where
     SM: StateMachine<SMin, SMout> + Send,
     SMin: Clone + Send + 'static,
@@ -223,7 +223,7 @@ fn handle_append_entries_reply<SM, SMin, SMout>(
     peers_state: &mut BTreeMap<u32, PeerState>,
     client_channel_per_input: &mut VecDeque<mpsc::Sender<AppendEntriesClientResponse<SMin, SMout>>>,
     committed_entries_smout_buf: &mut Vec<SMout>,
-    reply: AppendEntriesReply,
+    reply: &AppendEntriesReply,
 ) where
     SM: StateMachine<SMin, SMout> + Send,
     SMin: Clone,

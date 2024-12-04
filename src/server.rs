@@ -12,6 +12,7 @@ use crate::follower::follower_behavior;
 use crate::leader::leader_behavior;
 use crate::messages::*;
 use crate::state_machine::StateMachine;
+use crate::candidate::ElectionResult;
 
 pub async fn raft_server<AB, SM, SMin, SMout>(
     mut cell: AB,
@@ -65,17 +66,24 @@ where
             .await;
 
         tracing::debug!("transition: follower → candidate");
-        let election_won = candidate_behavior(&mut cell, me.0, &mut common_state, &mut peers, election_timeout.clone())
+        let election_result = candidate_behavior(&mut cell, me.0, &mut common_state, &mut peers, election_timeout.clone())
             .instrument(info_span!("candidate"))
             .await;
 
-        if election_won {
-            tracing::debug!("transition: candidate → leader");
-            leader_behavior(&mut cell, me.0, &mut common_state, &mut peers, heartbeat_period)
-                .instrument(info_span!("leader👑"))
-                .await;
-        } else {
-            tracing::debug!("transition: candidate → follower");
+        match election_result {
+            ElectionResult::WON => {
+                tracing::debug!("transition: candidate → leader");
+                let message = leader_behavior(&mut cell, me.0, &mut common_state, &mut peers, heartbeat_period)
+                    .instrument(info_span!("leader👑"))
+                    .await;
+                let _ = me.1.try_send(message);
+            }
+            ElectionResult::LOST(message) => {
+                tracing::debug!("transition: candidate → follower");
+                if let Some(message) = message {
+                    let _ = me.1.try_send(message);
+                }
+            }
         }
     }
 }

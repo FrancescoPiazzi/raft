@@ -12,23 +12,27 @@ use crate::messages::request_vote::RequestVoteRequest;
 use crate::messages::*;
 use crate::types::AppendEntriesClientResponse;
 
+
+pub enum ElectionResult<SMin, SMout>{
+    WON,
+    LOST(Option<RaftMessage<SMin, SMout>>)
+}
+
 /// Behavior of the Raft server in candidate state.
-///
-/// Returns true if the candidate has won the election, false otherwise.
 pub async fn candidate_behavior<AB, SM, SMin, SMout>(
     cell: &mut AB,
     me: u32,
     common_state: &mut CommonState<SM, SMin, SMout>,
     peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin, SMout>>>,
     election_timeout: Range<Duration>,
-) -> bool
+) -> ElectionResult<SMin, SMout>
 where
     AB: ActorBounds<RaftMessage<SMin, SMout>>,
     SM: Send,
     SMin: Clone + Send + 'static,
     SMout: Send + 'static,
 {
-    let election_won;
+    let election_result;
 
     common_state.voted_for = Some(me);
 
@@ -63,10 +67,10 @@ where
 
             let message = message.message().expect("raft runs indefinitely");
 
-            if let Some(election_result) =
+            if let Some(result) =
                 handle_message_as_candidate(common_state, peers, &mut votes_from_others, message)
             {
-                election_won = election_result;
+                election_result = result;
                 break 'candidate;
             }
 
@@ -84,25 +88,25 @@ where
         sleep(time_to_wait_before_new_election).await;
     }
 
-    election_won
+    election_result
 }
 
 /// Process a single message as the candidate
 ///
-/// Returns Some(true) if election is won, Some(false) if it is lost, and None if it's still ongoing
+/// Returns Some(ElectionResult) if the election is over, None otherwise
 fn handle_message_as_candidate<SM, SMin, SMout>(
     common_state: &mut CommonState<SM, SMin, SMout>,
     peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin, SMout>>>,
     votes_from_others: &mut BTreeMap<u32, bool>,
     message: RaftMessage<SMin, SMout>,
-) -> Option<bool> {
+) -> Option<ElectionResult<SMin, SMout>> {
     tracing::trace!(message = ?message);
 
     if common_state.update_term(&message) {
-        return Some(false);
+        return Some(ElectionResult::LOST(Some(message)));
     }
 
-    match message {
+    match &message {
         RaftMessage::RequestVoteReply(reply) => {
             // formal specifications:310, don't count votes with terms different than the current
             if reply.term != common_state.current_term {
@@ -119,32 +123,28 @@ fn handle_message_as_candidate<SM, SMin, SMout>(
 
             #[allow(clippy::int_plus_one)] // imo it's more clear with the +1
             if n_granted_votes_including_self >= peers.len() / 2 + 1 {
-                Some(true)
+                Some(ElectionResult::WON)
             } else if n_votes_against >= peers.len() / 2 + 1 {
-                Some(false)
+                // no need to process this message further since it was a RequestVoteReply, so I don't return it
+                tracing::trace!("too many votes against, election lost");
+                Some(ElectionResult::LOST(None))
             } else {
                 None
             }
         }
         RaftMessage::AppendEntriesRequest(request) => {
+            // request.term will never be > current_term, as we already checked that in update_term
             if request.term >= common_state.current_term {
                 common_state.current_term = request.term;
-                Some(false)
+                Some(ElectionResult::LOST(Some(message)))
             } else {
                 None
             }
         }
-        RaftMessage::RequestVoteRequest(request) => {
-            // reminder: candidates never vote for others, as they have already voted for themselves
-            // TOTHINK: do they? one would argue that they will vote for somone on a different term, so it doesn't count
-            // but the formal specifications seem to imply they don't (it also seems to imply noone ever votes tough)
-            // TODO: also this check is already done in update_term, so whatever the logic is, it should be moved there
-            if request.term > common_state.current_term {
-                common_state.current_term = request.term;
-                Some(false)
-            } else {
-                None
-            }
+        RaftMessage::RequestVoteRequest(_) => {
+            // if the request had an higher term, we would have converted to follower already
+            // so we can safely ignore it
+            None
         }
         RaftMessage::AppendEntriesClientRequest(request) => {
             let _ = request.reply_to.try_send(AppendEntriesClientResponse(Err(None)));
