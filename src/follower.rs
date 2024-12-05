@@ -35,6 +35,7 @@ pub async fn follower_behavior<AB, SM, SMin, SMout>(
     let mut leader_id: Option<u32> = None;
 
     loop {
+        // TODO: do not reset the election timeout on every message, i.e. Client requests don't count
         let Ok(message) = timeout(election_timeout, cell.recv()).await else {
             tracing::debug!("election timeout");
             return;
