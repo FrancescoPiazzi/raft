@@ -59,6 +59,7 @@ impl<SM, SMin, SMout> CommonState<SM, SMin, SMout> {
     ///
     /// Returns true if a new term is entered, as an indication to a candidate or leader to revert to follower,
     /// false otherwise.
+    #[must_use]
     pub fn update_term_stedile(&mut self, new_term: u64) -> bool {
         if new_term > self.current_term {
             self.current_term = new_term;

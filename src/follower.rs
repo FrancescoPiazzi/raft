@@ -73,7 +73,7 @@ fn handle_append_entries_request<SM, SMin, SMout>(
     SMin: Clone + Send + 'static,
     SMout: Send + 'static,
 {
-    common_state.update_term_stedile(request.term);
+    let _ = common_state.update_term_stedile(request.term);
 
     if request.term < common_state.current_term {
         tracing::trace!(
@@ -170,7 +170,7 @@ fn handle_vote_request<SM, SMin, SMout>(
     SMin: Clone + Send + 'static,
     SMout: Send + 'static,
 {
-    common_state.update_term_stedile(request.term);
+    let _ = common_state.update_term_stedile(request.term);
 
     let log_is_ok = common_state.log.is_log_ok(&request);
     let vote_granted = log_is_ok && common_state.voted_for.is_none();
