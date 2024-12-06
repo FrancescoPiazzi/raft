@@ -42,38 +42,21 @@ pub async fn follower_behavior<AB, SM, SMin, SMout>(
         };
         let message = message.message().expect("raft runs indefinitely");
 
-        handle_message_as_follower::<AB, SM, SMin, SMout>(me, peers, common_state, &mut leader_id, message);
-    }
-}
+        tracing::trace!(message = ?message);
 
-fn handle_message_as_follower<AB, SM, SMin, SMout>(
-    me: u32,
-    peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin, SMout>>>,
-    common_state: &mut CommonState<SM, SMin, SMout>,
-    leader_id: &mut Option<u32>,
-    message: RaftMessage<SMin, SMout>,
-) where
-    AB: ActorBounds<RaftMessage<SMin, SMout>>,
-    SM: StateMachine<SMin, SMout> + Send,
-    SMin: Clone + Send + 'static,
-    SMout: Send + 'static,
-{
-    tracing::trace!(message = ?message);
-
-    common_state.update_term(&message);
-
-    match message {
-        RaftMessage::AppendEntriesRequest(request) => {
-            handle_append_entries_request(me, common_state, peers, leader_id, request);
-        }
-        RaftMessage::RequestVoteRequest(request) => {
-            handle_vote_request(me, common_state, peers, request);
-        }
-        RaftMessage::AppendEntriesClientRequest(request) => {
-            handle_append_entries_client_request(peers, leader_id.as_mut(), request);
-        }
-        other => {
-            tracing::trace!(unhandled = ?other);
+        match message {
+            RaftMessage::AppendEntriesRequest(request) => {
+                handle_append_entries_request(me, common_state, peers, &mut leader_id, request);
+            }
+            RaftMessage::RequestVoteRequest(request) => {
+                handle_vote_request(me, common_state, peers, request);
+            }
+            RaftMessage::AppendEntriesClientRequest(request) => {
+                handle_append_entries_client_request(peers, leader_id.as_mut(), request);
+            }
+            other => {
+                tracing::trace!(unhandled = ?other);
+            }
         }
     }
 }
@@ -90,6 +73,8 @@ fn handle_append_entries_request<SM, SMin, SMout>(
     SMin: Clone + Send + 'static,
     SMout: Send + 'static,
 {
+    common_state.update_term_stedile(request.term);
+
     if request.term < common_state.current_term {
         tracing::trace!(
             "request term = {} < current term = {}: ignoring",
@@ -185,6 +170,8 @@ fn handle_vote_request<SM, SMin, SMout>(
     SMin: Clone + Send + 'static,
     SMout: Send + 'static,
 {
+    common_state.update_term_stedile(request.term);
+
     let log_is_ok = common_state.log.is_log_ok(&request);
     let vote_granted = log_is_ok && common_state.voted_for.is_none();
 
