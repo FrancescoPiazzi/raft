@@ -99,10 +99,6 @@ fn handle_message_as_candidate<SM, SMin, SMout>(
 ) -> Option<ElectionResult<SMin, SMout>> {
     tracing::trace!(message = ?message);
 
-    if common_state.update_term(&message) {
-        return Some(ElectionResult::Lost(Some(message)));
-    }
-
     match &message {
         RaftMessage::RequestVoteReply(reply) => {
             // formal specifications:310, don't count votes with terms different than the current
@@ -130,6 +126,10 @@ fn handle_message_as_candidate<SM, SMin, SMout>(
             }
         }
         RaftMessage::AppendEntriesRequest(request) => {
+            if common_state.update_term_stedile(request.term) {
+                return Some(ElectionResult::Lost(Some(message)));
+            }
+
             // request.term will never be > current_term, as we already checked that in update_term
             if request.term >= common_state.current_term {
                 common_state.current_term = request.term;
@@ -138,7 +138,11 @@ fn handle_message_as_candidate<SM, SMin, SMout>(
                 None
             }
         }
-        RaftMessage::RequestVoteRequest(_) => {
+        RaftMessage::RequestVoteRequest(request) => {
+            if common_state.update_term_stedile(request.term) {
+                return Some(ElectionResult::Lost(Some(message)));
+            }
+            
             // if the request had an higher term, we would have converted to follower already
             // so we can safely ignore it
             None
