@@ -41,7 +41,7 @@ pub async fn follower_behavior<AB, SM, SMin, SMout>(
             return;
         };
         let message = message.message().expect("raft runs indefinitely");
-        
+
         handle_message_as_follower::<AB, SM, SMin, SMout>(me, peers, common_state, &mut leader_id, message);
     }
 }

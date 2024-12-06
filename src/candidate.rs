@@ -12,10 +12,9 @@ use crate::messages::request_vote::RequestVoteRequest;
 use crate::messages::*;
 use crate::types::AppendEntriesClientResponse;
 
-
-pub enum ElectionResult<SMin, SMout>{
+pub enum ElectionResult<SMin, SMout> {
     WON,
-    LOST(Option<RaftMessage<SMin, SMout>>)
+    LOST(Option<RaftMessage<SMin, SMout>>),
 }
 
 /// Behavior of the Raft server in candidate state.
@@ -67,9 +66,7 @@ where
 
             let message = message.message().expect("raft runs indefinitely");
 
-            if let Some(result) =
-                handle_message_as_candidate(common_state, peers, &mut votes_from_others, message)
-            {
+            if let Some(result) = handle_message_as_candidate(common_state, peers, &mut votes_from_others, message) {
                 election_result = result;
                 break 'candidate;
             }

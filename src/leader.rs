@@ -28,7 +28,8 @@ pub async fn leader_behavior<AB, SM, SMin, SMout>(
     common_state: &mut CommonState<SM, SMin, SMout>,
     peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin, SMout>>>,
     heartbeat_period: Duration,
-) -> RaftMessage<SMin, SMout> where
+) -> RaftMessage<SMin, SMout>
+where
     SM: StateMachine<SMin, SMout> + Send,
     AB: ActorBounds<RaftMessage<SMin, SMout>>,
     SMin: Clone + Send + 'static,
@@ -58,7 +59,7 @@ pub async fn leader_behavior<AB, SM, SMin, SMout>(
         tokio::select! {
             message = cell.recv() => {
                 let message = message.message().expect("raft runs indefinitely");
-                
+
                 if handle_message_as_leader(
                     me,
                     common_state,
@@ -133,7 +134,7 @@ fn handle_message_as_leader<SM, SMin, SMout>(
     client_channel_per_input: &mut VecDeque<mpsc::Sender<AppendEntriesClientResponse<SMin, SMout>>>,
     committed_entries_smout_buf: &mut Vec<SMout>,
     message: &RaftMessage<SMin, SMout>,
-) -> bool 
+) -> bool
 where
     SM: StateMachine<SMin, SMout> + Send,
     SMin: Send + Clone + 'static,

@@ -7,12 +7,12 @@ use actum::actor_ref::ActorRef;
 use tracing::{info_span, Instrument};
 
 use crate::candidate::candidate_behavior;
+use crate::candidate::ElectionResult;
 use crate::common_state::CommonState;
 use crate::follower::follower_behavior;
 use crate::leader::leader_behavior;
 use crate::messages::*;
 use crate::state_machine::StateMachine;
-use crate::candidate::ElectionResult;
 
 pub async fn raft_server<AB, SM, SMin, SMout>(
     mut cell: AB,
@@ -66,9 +66,10 @@ where
             .await;
 
         tracing::debug!("transition: follower → candidate");
-        let election_result = candidate_behavior(&mut cell, me.0, &mut common_state, &mut peers, election_timeout.clone())
-            .instrument(info_span!("candidate"))
-            .await;
+        let election_result =
+            candidate_behavior(&mut cell, me.0, &mut common_state, &mut peers, election_timeout.clone())
+                .instrument(info_span!("candidate"))
+                .await;
 
         match election_result {
             ElectionResult::WON => {
