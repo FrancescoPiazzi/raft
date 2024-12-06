@@ -72,14 +72,14 @@ where
                 .await;
 
         match election_result {
-            ElectionResult::WON => {
+            ElectionResult::Won => {
                 tracing::debug!("transition: candidate → leader");
                 let message = leader_behavior(&mut cell, me.0, &mut common_state, &mut peers, heartbeat_period)
                     .instrument(info_span!("leader👑"))
                     .await;
                 let _ = me.1.try_send(message);
             }
-            ElectionResult::LOST(message) => {
+            ElectionResult::Lost(message) => {
                 tracing::debug!("transition: candidate → follower");
                 if let Some(message) = message {
                     let _ = me.1.try_send(message);

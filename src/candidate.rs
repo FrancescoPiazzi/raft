@@ -13,8 +13,8 @@ use crate::messages::*;
 use crate::types::AppendEntriesClientResponse;
 
 pub enum ElectionResult<SMin, SMout> {
-    WON,
-    LOST(Option<RaftMessage<SMin, SMout>>),
+    Won,
+    Lost(Option<RaftMessage<SMin, SMout>>),
 }
 
 /// Behavior of the Raft server in candidate state.
@@ -100,7 +100,7 @@ fn handle_message_as_candidate<SM, SMin, SMout>(
     tracing::trace!(message = ?message);
 
     if common_state.update_term(&message) {
-        return Some(ElectionResult::LOST(Some(message)));
+        return Some(ElectionResult::Lost(Some(message)));
     }
 
     match &message {
@@ -120,11 +120,11 @@ fn handle_message_as_candidate<SM, SMin, SMout>(
 
             #[allow(clippy::int_plus_one)] // imo it's more clear with the +1
             if n_granted_votes_including_self >= peers.len() / 2 + 1 {
-                Some(ElectionResult::WON)
+                Some(ElectionResult::Won)
             } else if n_votes_against >= peers.len() / 2 + 1 {
                 // no need to process this message further since it was a RequestVoteReply, so I don't return it
                 tracing::trace!("too many votes against, election lost");
-                Some(ElectionResult::LOST(None))
+                Some(ElectionResult::Lost(None))
             } else {
                 None
             }
@@ -133,7 +133,7 @@ fn handle_message_as_candidate<SM, SMin, SMout>(
             // request.term will never be > current_term, as we already checked that in update_term
             if request.term >= common_state.current_term {
                 common_state.current_term = request.term;
-                Some(ElectionResult::LOST(Some(message)))
+                Some(ElectionResult::Lost(Some(message)))
             } else {
                 None
             }
