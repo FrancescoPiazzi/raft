@@ -25,6 +25,7 @@ pub async fn follower_behavior<AB, SM, SMin, SMout>(
     peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin, SMout>>>,
     common_state: &mut CommonState<SM, SMin, SMout>,
     election_timeout: Range<Duration>,
+    message_stash: &mut Vec<RaftMessage<SMin, SMout>>,
 ) where
     AB: ActorBounds<RaftMessage<SMin, SMout>>,
     SM: StateMachine<SMin, SMout> + Send,
@@ -33,6 +34,23 @@ pub async fn follower_behavior<AB, SM, SMin, SMout>(
 {
     let election_timeout = thread_rng().gen_range(election_timeout);
     let mut leader_id: Option<u32> = None;
+
+    for message in message_stash.drain(..) {
+        match message {
+            RaftMessage::AppendEntriesRequest(request) => {
+                handle_append_entries_request(me, common_state, peers, &mut leader_id, request);
+            }
+            RaftMessage::RequestVoteRequest(request) => {
+                handle_vote_request(me, common_state, peers, request);
+            }
+            RaftMessage::AppendEntriesClientRequest(request) => {
+                handle_append_entries_client_request(peers, leader_id.as_mut(), request);
+            }
+            other => {
+                tracing::trace!(unhandled = ?other);
+            }
+        }
+    }
 
     loop {
         // TODO: do not reset the election timeout on every message, i.e. Client requests don't count

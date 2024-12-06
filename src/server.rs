@@ -4,10 +4,10 @@ use std::time::Duration;
 
 use actum::actor_bounds::ActorBounds;
 use actum::actor_ref::ActorRef;
+use either::Either;
 use tracing::{info_span, Instrument};
 
-use crate::candidate::candidate_behavior;
-use crate::candidate::ElectionResult;
+use crate::candidate::{candidate_behavior, ElectionResult};
 use crate::common_state::CommonState;
 use crate::follower::follower_behavior;
 use crate::leader::leader_behavior;
@@ -51,26 +51,23 @@ where
 
     let mut common_state = CommonState::new(state_machine);
 
-    for message in message_stash {
-        match message {
-            RaftMessage::AddPeer(_) => unreachable!(),
-            _ => {
-                let _ = me.1.try_send(message);
-            }
-        }
-    }
-
     loop {
-        follower_behavior(&mut cell, me.0, &mut peers, &mut common_state, election_timeout.clone())
-            .instrument(info_span!("follower"))
-            .await;
+        follower_behavior(
+            &mut cell,
+            me.0,
+            &mut peers,
+            &mut common_state,
+            election_timeout.clone(),
+            &mut message_stash,
+        )
+        .instrument(info_span!("follower"))
+        .await;
 
         tracing::debug!("transition: follower → candidate");
         let election_result =
             candidate_behavior(&mut cell, me.0, &mut common_state, &mut peers, election_timeout.clone())
                 .instrument(info_span!("candidate"))
                 .await;
-
         match election_result {
             ElectionResult::Won => {
                 tracing::debug!("transition: candidate → leader");
@@ -79,12 +76,13 @@ where
                     .await;
                 let _ = me.1.try_send(message);
             }
-            ElectionResult::Lost(message) => {
-                tracing::debug!("transition: candidate → follower");
-                if let Some(message) = message {
-                    let _ = me.1.try_send(message);
-                }
+            ElectionResult::LostDueToHigherTerm(Either::Left(request)) => {
+                message_stash.push(request.into());
             }
+            ElectionResult::LostDueToHigherTerm(Either::Right(request)) => {
+                message_stash.push(request.into());
+            }
+            ElectionResult::LostDueTooManyNegativeVotes => {}
         }
     }
 }
