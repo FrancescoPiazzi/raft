@@ -54,6 +54,21 @@ impl<SM, SMin, SMout> CommonState<SM, SMin, SMout> {
         self.last_applied = self.commit_index;
     }
 
+    /// If the new term is greater than the current term, enters a new term by updating the current term
+    /// to the new term and resetting the id of the candidate for which the vote is granted in the new term.
+    ///
+    /// Returns true if a new term is entered, as an indication to a candidate or leader to revert to follower,
+    /// false otherwise.
+    pub fn update_term_stedile(&mut self, new_term: u64) -> bool {
+        if new_term > self.current_term {
+            self.current_term = new_term;
+            self.voted_for = None;
+            true
+        } else {
+            false
+        }
+    }
+
     /// Updates current term if necessary, returns true if we have to become a follower, false otherwise
     pub fn update_term(&mut self, msg: &RaftMessage<SMin, SMout>) -> bool {
         if let Some(inner) = msg.get_term() {
