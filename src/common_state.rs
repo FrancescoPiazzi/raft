@@ -70,6 +70,12 @@ impl<SM, SMin, SMout> CommonState<SM, SMin, SMout> {
         }
     }
 
+    /// Returns true if the server can vote for the candidate with the given id.
+    /// (still not sure about the scenario where we vote for the same candidate twice in the same term)
+    pub fn voted_for_allows_vote(&self, candidate_id: u32) -> bool {
+        self.voted_for.is_none() || self.voted_for.is_some_and(|id| id == candidate_id)
+    }
+
     pub fn check_validity(&self) {
         if self.commit_index > self.log.len() {
             panic!("commit index is greater than log length");
