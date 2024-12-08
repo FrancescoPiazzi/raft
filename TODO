@@ -45,6 +45,7 @@ completed when:
 - [x] use a more generic type for log entries
 - [x] the maximum number of nodes is written in three different places but it must be the same in all of them, put them in a single place
 - [x] struct to store follower state: match and next indexes, and message len queue
+- [ ] put leader_id in common state, so candidates and leaders that are about to step down can set the variable correctly as soon as they get a message that makes them step down
 
 # THINGS LOGCABIN DOES THAT I DON'T
 - [ ] this is probably a problem in my code as well: 
