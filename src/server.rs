@@ -16,7 +16,7 @@ use crate::state_machine::StateMachine;
 
 pub async fn raft_server<AB, SM, SMin, SMout>(
     mut cell: AB,
-    mut me: (u32, ActorRef<RaftMessage<SMin, SMout>>),
+    me: (u32, ActorRef<RaftMessage<SMin, SMout>>),
     n_peers: usize,
     state_machine: SM,
     election_timeout: Range<Duration>,
@@ -74,7 +74,7 @@ where
                 let message = leader_behavior(&mut cell, me.0, &mut common_state, &mut peers, heartbeat_period)
                     .instrument(info_span!("leader👑"))
                     .await;
-                let _ = me.1.try_send(message);
+                message_stash.push(message.into());
             }
             ElectionResult::LostDueToHigherTerm(Either::Left(request)) => {
                 message_stash.push(request.into());

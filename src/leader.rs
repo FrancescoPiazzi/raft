@@ -113,11 +113,7 @@ fn send_append_entries_request<SM, SMin, SMout>(
         term: common_state.current_term,
         leader_id: me,
         prev_log_index: next_index - 1,
-        prev_log_term: if common_state.log.is_empty() {
-            0
-        } else {
-            common_state.log.get_term(max(next_index as i64 - 1, 1) as usize)
-        },
+        prev_log_term: common_state.log.get_last_log_term(),
         entries: entries_to_send,
         leader_commit: common_state.commit_index as u64,
     };
@@ -142,19 +138,20 @@ where
 {
     tracing::trace!(message = ?message);
 
-    if common_state.update_term(&message) {
-        tracing::trace!("step down");
-        return true;
-    }
-
     match message {
         RaftMessage::AppendEntriesClientRequest(append_entries_client) => {
             handle_append_entries_client_request(common_state, client_channel_per_input, append_entries_client);
         }
-        // the term is surely too low so I ignore it, had it been too high I would have caught it in the update_term check before
-        RaftMessage::AppendEntriesRequest(_) => {}
+        RaftMessage::AppendEntriesRequest(_) => {
+            // This is probably the same as what a candidate should do
+            if handle_append_entries_request(){
+                return true;
+            }
+        }
         RaftMessage::RequestVoteRequest(request_vote_rpc) => {
-            handle_request_vote_request(me, common_state, peers, request_vote_rpc)
+            if handle_request_vote_request(me, common_state, peers, request_vote_rpc){
+                return true;
+            }
         }
         RaftMessage::AppendEntriesReply(reply) => {
             handle_append_entries_reply(
@@ -193,29 +190,33 @@ fn handle_append_entries_client_request<SM, SMin, SMout>(
         .append(request.entries_to_replicate.clone(), common_state.current_term);
 }
 
-/// request vote requests are always refused as leaders, because if the term of the request
-/// had been higher, we would have already turned back into a follower at the update_term check
 #[tracing::instrument(level = "trace", skip_all)]
 fn handle_request_vote_request<SM, SMin, SMout>(
     me: u32,
     common_state: &mut CommonState<SM, SMin, SMout>,
     peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin, SMout>>>,
     request: &RequestVoteRequest,
-) where
+) -> bool where
     SM: StateMachine<SMin, SMout> + Send,
     SMin: Clone + Send + 'static,
     SMout: Send + 'static,
 {
+    let step_down = common_state.update_term_stedile(request.term);
+    let vote_granted = step_down && common_state.log.is_log_ok(&request) && (
+        common_state.voted_for.is_none() || common_state.voted_for == Some(request.candidate_id));
+
     if let Some(candidate_ref) = peers.get_mut(&request.candidate_id) {
         let _ = candidate_ref.try_send(
             RequestVoteReply {
                 from: me,
                 term: common_state.current_term,
-                vote_granted: false,
+                vote_granted: vote_granted,
             }
             .into(),
         );
     }
+
+    step_down
 }
 
 #[tracing::instrument(level = "trace", skip_all)]
@@ -258,6 +259,14 @@ fn handle_append_entries_reply<SM, SMin, SMout>(
     } else {
         *peer_next_idx -= 1;
     }
+}
+
+// TODO
+fn handle_append_entries_request() -> bool {
+    // This is probably the same as what a candidate should do
+    // if we receive a message with a higher term, we should step down
+    // and return the message
+    false
 }
 
 /// Commits the log entries that have been replicated on the majority of the servers.

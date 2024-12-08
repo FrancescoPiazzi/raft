@@ -143,10 +143,10 @@ where
 
     if request.term < common_state.current_term {
         tracing::trace!(
-                    "request term = {} < current term = {}: ignoring",
-                    request.term,
-                    common_state.current_term
-                );
+            "request term = {} < current term = {}: ignoring",
+            request.term,
+            common_state.current_term
+        );
 
         if let Some(sender_ref) = peers.get_mut(&request.leader_id) {
             let reply = AppendEntriesReply {
