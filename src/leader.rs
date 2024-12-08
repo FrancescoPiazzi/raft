@@ -8,8 +8,8 @@ use peer_state::PeerState;
 use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 
-use crate::common_state::CommonState;
 use crate::common_message_handling::handle_vote_request;
+use crate::common_state::CommonState;
 use crate::messages::append_entries::{AppendEntriesReply, AppendEntriesRequest};
 use crate::messages::append_entries_client::AppendEntriesClientRequest;
 use crate::messages::*;
@@ -143,12 +143,12 @@ where
         }
         RaftMessage::AppendEntriesRequest(_) => {
             // This is probably the same as what a candidate should do
-            if handle_append_entries_request(){
+            if handle_append_entries_request() {
                 return true;
             }
         }
         RaftMessage::RequestVoteRequest(request_vote_rpc) => {
-            if handle_vote_request(me, common_state, peers, request_vote_rpc){
+            if handle_vote_request(me, common_state, peers, request_vote_rpc) {
                 return true;
             }
         }
@@ -188,7 +188,6 @@ fn handle_append_entries_client_request<SM, SMin, SMout>(
         .log
         .append(request.entries_to_replicate.clone(), common_state.current_term);
 }
-
 
 #[tracing::instrument(level = "trace", skip_all)]
 fn handle_append_entries_reply<SM, SMin, SMout>(

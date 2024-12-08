@@ -74,7 +74,7 @@ where
                 let message = leader_behavior(&mut cell, me.0, &mut common_state, &mut peers, heartbeat_period)
                     .instrument(info_span!("leader👑"))
                     .await;
-                message_stash.push(message.into());
+                message_stash.push(message);
             }
             ElectionResult::LostDueToHigherTerm(Either::Left(request)) => {
                 message_stash.push(request.into());

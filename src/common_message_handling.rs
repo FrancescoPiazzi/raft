@@ -8,7 +8,7 @@ use crate::state_machine::StateMachine;
 use actum::actor_ref::ActorRef;
 
 /// Handles a vote request message, answering it with a positive or negative vote.
-/// 
+///
 /// Returns `true` if the server should become a follower
 #[tracing::instrument(level = "trace", skip_all)]
 pub fn handle_vote_request<SM, SMin, SMout>(
@@ -16,15 +16,16 @@ pub fn handle_vote_request<SM, SMin, SMout>(
     common_state: &mut CommonState<SM, SMin, SMout>,
     peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin, SMout>>>,
     request: &RequestVoteRequest,
-) -> bool where
+) -> bool
+where
     SM: StateMachine<SMin, SMout> + Send,
     SMin: Clone + Send + 'static,
     SMout: Send + 'static,
 {
     let step_down = common_state.update_term(request.term);
 
-    let log_is_ok = common_state.log.is_log_ok(&request);
-    // use step_down as a proxy to know whether the message term is > than the current term, 
+    let log_is_ok = common_state.log.is_log_ok(request);
+    // use step_down as a proxy to know whether the message term is > than the current term,
     // since in any other case we don't vote for the candidate requesting the vote, no matter the state
     let vote_granted = step_down && log_is_ok && common_state.voted_for_allows_vote(request.candidate_id);
 

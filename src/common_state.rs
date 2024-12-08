@@ -3,8 +3,8 @@ use std::{
     marker::PhantomData,
 };
 
-use crate::state_machine::StateMachine;
 use crate::log::Log;
+use crate::state_machine::StateMachine;
 
 pub struct CommonState<SM, SMin, SMout> {
     pub current_term: u64,

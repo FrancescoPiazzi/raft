@@ -3,12 +3,12 @@ use std::collections::BTreeMap;
 use std::ops::Range;
 use std::time::Duration;
 
+use crate::common_message_handling::handle_vote_request;
 use crate::common_state::CommonState;
 use crate::messages::append_entries::{AppendEntriesReply, AppendEntriesRequest};
 use crate::messages::append_entries_client::AppendEntriesClientRequest;
 use crate::messages::*;
 use crate::state_machine::StateMachine;
-use crate::common_message_handling::handle_vote_request;
 use crate::types::AppendEntriesClientResponse;
 
 use actum::actor_bounds::ActorBounds;

@@ -1,5 +1,5 @@
-mod log;
 mod common_message_handling;
+mod log;
 
 pub mod config;
 pub mod messages;

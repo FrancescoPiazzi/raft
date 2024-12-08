@@ -92,7 +92,7 @@ where
                 RaftMessage::RequestVoteRequest(request) => {
                     let result = handle_vote_request(me, common_state, peers, &request);
                     if result {
-                        return ElectionResult::LostDueToHigherTerm(Either::Right(request))
+                        return ElectionResult::LostDueToHigherTerm(Either::Right(request));
                     }
                 }
                 RaftMessage::AppendEntriesClientRequest(request) => {
