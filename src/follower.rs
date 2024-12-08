@@ -91,7 +91,7 @@ fn handle_append_entries_request<SM, SMin, SMout>(
     SMin: Clone + Send + 'static,
     SMout: Send + 'static,
 {
-    let _ = common_state.update_term_stedile(request.term);
+    let _ = common_state.update_term(request.term);
 
     if request.term < common_state.current_term {
         tracing::trace!(

@@ -21,7 +21,7 @@ pub fn handle_vote_request<SM, SMin, SMout>(
     SMin: Clone + Send + 'static,
     SMout: Send + 'static,
 {
-    let step_down = common_state.update_term_stedile(request.term);
+    let step_down = common_state.update_term(request.term);
 
     let log_is_ok = common_state.log.is_log_ok(&request);
     // use step_down as a proxy to know whether the message term is > than the current term, 

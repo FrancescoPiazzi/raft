@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::state_machine::StateMachine;
-use crate::{log::Log, messages::RaftMessage};
+use crate::log::Log;
 
 pub struct CommonState<SM, SMin, SMout> {
     pub current_term: u64,
@@ -60,7 +60,7 @@ impl<SM, SMin, SMout> CommonState<SM, SMin, SMout> {
     /// Returns true if a new term is entered, as an indication to a candidate or leader to revert to follower,
     /// false otherwise.
     #[must_use]
-    pub fn update_term_stedile(&mut self, new_term: u64) -> bool {
+    pub fn update_term(&mut self, new_term: u64) -> bool {
         if new_term > self.current_term {
             self.current_term = new_term;
             self.voted_for = None;
@@ -68,31 +68,6 @@ impl<SM, SMin, SMout> CommonState<SM, SMin, SMout> {
         } else {
             false
         }
-    }
-
-    /// Updates current term if necessary, returns true if we have to become a follower, false otherwise
-    pub fn update_term(&mut self, msg: &RaftMessage<SMin, SMout>) -> bool {
-        if let Some(inner) = msg.get_term() {
-            if inner > self.current_term {
-                self.new_term(inner);
-                return true;
-            } else {
-                return false;
-            }
-        }
-        false
-    }
-
-    /// Method to call every time a new term is detected
-    pub fn new_term(&mut self, term: u64) {
-        assert!(
-            self.current_term < term,
-            "new term called with something that is not a new term: current: {}, new: {}",
-            self.current_term,
-            term
-        );
-        self.current_term = term;
-        self.voted_for = None;
     }
 
     pub fn check_validity(&self) {
@@ -172,29 +147,6 @@ mod tests {
 
         assert_eq!(common_state.last_applied, 2);
         assert_eq!(newly_committed_entries_buf, vec![1, 2]);
-    }
-
-    #[test]
-    fn test_valid_new_term() {
-        let mut common_state = CommonState::<_, u32, u32>::new(TestStateMachine);
-        common_state.current_term = 1;
-        common_state.voted_for = Some(1);
-
-        common_state.new_term(2);
-
-        assert_eq!(common_state.current_term, 2);
-        assert_eq!(common_state.voted_for, None);
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_invalid_new_term() {
-        let mut common_state = CommonState::<_, u32, u32>::new(TestStateMachine);
-
-        common_state.current_term = 1;
-        common_state.voted_for = Some(1);
-
-        common_state.new_term(0);
     }
 
     #[test]

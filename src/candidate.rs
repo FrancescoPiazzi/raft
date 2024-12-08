@@ -135,7 +135,7 @@ where
     SMin: Clone + Send + 'static,
     SMout: Send + 'static,
 {
-    if common_state.update_term_stedile(request.term) {
+    if common_state.update_term(request.term) {
         return HandleAppendEntriesRequest::Lost;
     }
 
