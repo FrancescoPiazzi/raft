@@ -19,19 +19,6 @@ pub enum RaftMessage<SMin, SMout> {
     AppendEntriesClientRequest(AppendEntriesClientRequest<SMin, SMout>),
 }
 
-impl<SMin, SMout> RaftMessage<SMin, SMout> {
-    pub fn get_term(&self) -> Option<u64> {
-        match self {
-            Self::AddPeer(_) => None,
-            Self::AppendEntriesClientRequest(_) => None,
-            Self::AppendEntriesRequest(inner) => Some(inner.term),
-            Self::AppendEntriesReply(inner) => Some(inner.term),
-            Self::RequestVoteRequest(inner) => Some(inner.term),
-            Self::RequestVoteReply(inner) => Some(inner.term),
-        }
-    }
-}
-
 impl<SMin, SMout> Debug for RaftMessage<SMin, SMout> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
