@@ -1,4 +1,5 @@
 mod log;
+mod common_message_handling;
 
 pub mod config;
 pub mod messages;

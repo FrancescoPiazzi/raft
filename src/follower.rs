@@ -6,9 +6,9 @@ use std::time::Duration;
 use crate::common_state::CommonState;
 use crate::messages::append_entries::{AppendEntriesReply, AppendEntriesRequest};
 use crate::messages::append_entries_client::AppendEntriesClientRequest;
-use crate::messages::request_vote::{RequestVoteReply, RequestVoteRequest};
 use crate::messages::*;
 use crate::state_machine::StateMachine;
+use crate::common_message_handling::handle_vote_request;
 use crate::types::AppendEntriesClientResponse;
 
 use actum::actor_bounds::ActorBounds;
@@ -41,7 +41,7 @@ pub async fn follower_behavior<AB, SM, SMin, SMout>(
                 handle_append_entries_request(me, common_state, peers, &mut leader_id, request);
             }
             RaftMessage::RequestVoteRequest(request) => {
-                handle_vote_request(me, common_state, peers, request);
+                handle_vote_request(me, common_state, peers, &request);
             }
             RaftMessage::AppendEntriesClientRequest(request) => {
                 handle_append_entries_client_request(peers, leader_id.as_mut(), request);
@@ -67,7 +67,7 @@ pub async fn follower_behavior<AB, SM, SMin, SMout>(
                 handle_append_entries_request(me, common_state, peers, &mut leader_id, request);
             }
             RaftMessage::RequestVoteRequest(request) => {
-                handle_vote_request(me, common_state, peers, request);
+                handle_vote_request(me, common_state, peers, &request);
             }
             RaftMessage::AppendEntriesClientRequest(request) => {
                 handle_append_entries_client_request(peers, leader_id.as_mut(), request);
@@ -174,39 +174,6 @@ fn handle_append_entries_request<SM, SMin, SMout>(
             success: true,
         };
         let _ = leader_ref.try_send(reply.into());
-    }
-}
-
-#[tracing::instrument(level = "trace", skip_all)]
-fn handle_vote_request<SM, SMin, SMout>(
-    me: u32,
-    common_state: &mut CommonState<SM, SMin, SMout>,
-    peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin, SMout>>>,
-    request: RequestVoteRequest,
-) where
-    SM: StateMachine<SMin, SMout> + Send,
-    SMin: Clone + Send + 'static,
-    SMout: Send + 'static,
-{
-    let _ = common_state.update_term_stedile(request.term);
-
-    let log_is_ok = common_state.log.is_log_ok(&request);
-    let vote_granted = log_is_ok && common_state.voted_for.is_none();
-
-    tracing::trace!("vote granted: {} for id: {}", vote_granted, request.candidate_id);
-
-    if let Some(candidate_ref) = peers.get_mut(&request.candidate_id) {
-        if vote_granted {
-            common_state.voted_for = Some(request.candidate_id);
-        }
-        let reply = RequestVoteReply {
-            from: me,
-            term: common_state.current_term,
-            vote_granted,
-        };
-        let _ = candidate_ref.try_send(reply.into());
-    } else {
-        tracing::error!("peer {} not found", request.candidate_id);
     }
 }
 

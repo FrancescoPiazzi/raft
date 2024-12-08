@@ -5,14 +5,13 @@ use std::time::Duration;
 use actum::actor_bounds::ActorBounds;
 use actum::actor_ref::ActorRef;
 use peer_state::PeerState;
-use request_vote::RequestVoteReply;
 use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 
 use crate::common_state::CommonState;
+use crate::common_message_handling::handle_vote_request;
 use crate::messages::append_entries::{AppendEntriesReply, AppendEntriesRequest};
 use crate::messages::append_entries_client::AppendEntriesClientRequest;
-use crate::messages::request_vote::RequestVoteRequest;
 use crate::messages::*;
 use crate::state_machine::StateMachine;
 use crate::types::AppendEntriesClientResponse;
@@ -149,7 +148,7 @@ where
             }
         }
         RaftMessage::RequestVoteRequest(request_vote_rpc) => {
-            if handle_request_vote_request(me, common_state, peers, request_vote_rpc){
+            if handle_vote_request(me, common_state, peers, request_vote_rpc){
                 return true;
             }
         }
@@ -190,34 +189,6 @@ fn handle_append_entries_client_request<SM, SMin, SMout>(
         .append(request.entries_to_replicate.clone(), common_state.current_term);
 }
 
-#[tracing::instrument(level = "trace", skip_all)]
-fn handle_request_vote_request<SM, SMin, SMout>(
-    me: u32,
-    common_state: &mut CommonState<SM, SMin, SMout>,
-    peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin, SMout>>>,
-    request: &RequestVoteRequest,
-) -> bool where
-    SM: StateMachine<SMin, SMout> + Send,
-    SMin: Clone + Send + 'static,
-    SMout: Send + 'static,
-{
-    let step_down = common_state.update_term_stedile(request.term);
-    let vote_granted = step_down && common_state.log.is_log_ok(&request) && (
-        common_state.voted_for.is_none() || common_state.voted_for == Some(request.candidate_id));
-
-    if let Some(candidate_ref) = peers.get_mut(&request.candidate_id) {
-        let _ = candidate_ref.try_send(
-            RequestVoteReply {
-                from: me,
-                term: common_state.current_term,
-                vote_granted: vote_granted,
-            }
-            .into(),
-        );
-    }
-
-    step_down
-}
 
 #[tracing::instrument(level = "trace", skip_all)]
 fn handle_append_entries_reply<SM, SMin, SMout>(

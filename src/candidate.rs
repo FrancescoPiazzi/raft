@@ -8,6 +8,7 @@ use either::Either;
 use rand::{thread_rng, Rng};
 use tokio::time::{sleep, timeout};
 
+use crate::common_message_handling::handle_vote_request;
 use crate::common_state::CommonState;
 use crate::messages::append_entries::{AppendEntriesReply, AppendEntriesRequest};
 use crate::messages::request_vote::{RequestVoteReply, RequestVoteRequest};
@@ -89,12 +90,9 @@ where
                     }
                 }
                 RaftMessage::RequestVoteRequest(request) => {
-                    let result = handle_request_vote_request(me, common_state, peers, &request);
-                    match result {
-                        HandleReuqestVoteRequest::Ongoing => {}
-                        HandleReuqestVoteRequest::Lost => {
-                            return ElectionResult::LostDueToHigherTerm(Either::Right(request))
-                        }
+                    let result = handle_vote_request(me, common_state, peers, &request);
+                    if result {
+                        return ElectionResult::LostDueToHigherTerm(Either::Right(request))
                     }
                 }
                 RaftMessage::AppendEntriesClientRequest(request) => {
@@ -164,55 +162,6 @@ where
     assert_eq!(common_state.current_term, request.term);
 
     HandleAppendEntriesRequest::Lost
-}
-
-enum HandleReuqestVoteRequest {
-    Ongoing,
-    Lost,
-}
-
-/// Returns true if we should step down, false otherwise.
-#[tracing::instrument(level = "trace", skip_all)]
-fn handle_request_vote_request<SM, SMin, SMout>(
-    me: u32,
-    common_state: &mut CommonState<SM, SMin, SMout>,
-    peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin, SMout>>>,
-    request: &RequestVoteRequest,
-) -> HandleReuqestVoteRequest
-where
-    SM: StateMachine<SMin, SMout> + Send,
-    SMin: Clone + Send + 'static,
-    SMout: Send + 'static,
-{
-    if common_state.update_term_stedile(request.term) {
-        tracing::trace!("step down");
-        return HandleReuqestVoteRequest::Lost;
-    }
-
-    let log_is_ok = common_state.log.is_log_ok(&request);
-    let vote_granted = log_is_ok
-        && (common_state.voted_for.is_none()
-            || common_state
-                .voted_for
-                .is_some_and(|candidate_id| request.candidate_id == candidate_id));
-
-    tracing::trace!("vote granted: {} for id: {}", vote_granted, request.candidate_id);
-
-    if let Some(candidate_ref) = peers.get_mut(&request.candidate_id) {
-        if vote_granted {
-            common_state.voted_for = Some(request.candidate_id);
-        }
-        let reply = RequestVoteReply {
-            from: me,
-            term: common_state.current_term,
-            vote_granted,
-        };
-        let _ = candidate_ref.try_send(reply.into());
-    } else {
-        tracing::error!("peer {} not found", request.candidate_id);
-    }
-
-    HandleReuqestVoteRequest::Ongoing
 }
 
 enum HandleRequestVoteReplyResult {
