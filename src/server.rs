@@ -4,10 +4,9 @@ use std::time::Duration;
 
 use actum::actor_bounds::ActorBounds;
 use actum::actor_ref::ActorRef;
-use either::Either;
 use tracing::{info_span, Instrument};
 
-use crate::candidate::{candidate_behavior, ElectionResult};
+use crate::candidate::candidate_behavior;
 use crate::common_state::CommonState;
 use crate::follower::follower_behavior;
 use crate::leader::leader_behavior;
@@ -64,25 +63,15 @@ where
         .await;
 
         tracing::debug!("transition: follower → candidate");
-        let election_result =
+        let election_won =
             candidate_behavior(&mut cell, me.0, &mut common_state, &mut peers, election_timeout.clone())
                 .instrument(info_span!("candidate"))
                 .await;
-        match election_result {
-            ElectionResult::Won => {
-                tracing::debug!("transition: candidate → leader");
-                let message = leader_behavior(&mut cell, me.0, &mut common_state, &mut peers, heartbeat_period)
-                    .instrument(info_span!("leader👑"))
-                    .await;
-                message_stash.push(message);
-            }
-            ElectionResult::LostDueToHigherTerm(Either::Left(request)) => {
-                message_stash.push(request.into());
-            }
-            ElectionResult::LostDueToHigherTerm(Either::Right(request)) => {
-                message_stash.push(request.into());
-            }
-            ElectionResult::LostDueTooManyNegativeVotes => {}
+        if election_won {
+            tracing::debug!("transition: candidate → leader");
+            leader_behavior(&mut cell, me.0, &mut common_state, &mut peers, heartbeat_period)
+                .instrument(info_span!("leader👑"))
+                .await;
         }
     }
 }

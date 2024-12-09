@@ -8,9 +8,9 @@ use either::Either;
 use rand::{thread_rng, Rng};
 use tokio::time::{sleep, timeout};
 
-use crate::common_message_handling::handle_vote_request;
+use crate::common_message_handling::{handle_append_entries_request, handle_vote_request, RaftState};
 use crate::common_state::CommonState;
-use crate::messages::append_entries::{AppendEntriesReply, AppendEntriesRequest};
+use crate::messages::append_entries::AppendEntriesRequest;
 use crate::messages::request_vote::{RequestVoteReply, RequestVoteRequest};
 use crate::messages::*;
 use crate::state_machine::StateMachine;
@@ -23,13 +23,15 @@ pub enum ElectionResult<SMin> {
 }
 
 /// Behavior of the Raft server in candidate state.
+/// 
+/// Returns `true` if the candidate won the election, `false` otherwise.
 pub async fn candidate_behavior<AB, SM, SMin, SMout>(
     cell: &mut AB,
     me: u32,
     common_state: &mut CommonState<SM, SMin, SMout>,
     peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin, SMout>>>,
     election_timeout: Range<Duration>,
-) -> ElectionResult<SMin>
+) -> bool
 where
     AB: ActorBounds<RaftMessage<SMin, SMout>>,
     SM: StateMachine<SMin, SMout> + Send,
@@ -76,25 +78,20 @@ where
                     let result = handle_request_vote_reply(common_state, peers, &mut votes_from_others, reply);
                     match result {
                         HandleRequestVoteReplyResult::Ongoing => {}
-                        HandleRequestVoteReplyResult::Won => return ElectionResult::Won,
-                        HandleRequestVoteReplyResult::LostDueTooManyNegativeVotes => {
-                            return ElectionResult::LostDueTooManyNegativeVotes
-                        }
+                        HandleRequestVoteReplyResult::Won => return true,
+                        HandleRequestVoteReplyResult::Lost => return false
                     }
                 }
                 RaftMessage::AppendEntriesRequest(request) => {
-                    let result = handle_append_entries_request(me, common_state, peers, &request);
-                    match result {
-                        HandleAppendEntriesRequestResult::Ongoing => {}
-                        HandleAppendEntriesRequestResult::LostDueToHigherTerm => {
-                            return ElectionResult::LostDueToHigherTerm(Either::Left(request))
-                        }
+                    let step_down = handle_append_entries_request(me, common_state, peers, RaftState::Candidate, request);
+                    if step_down {
+                        return false;
                     }
                 }
                 RaftMessage::RequestVoteRequest(request) => {
-                    let result = handle_vote_request(me, common_state, peers, &request);
-                    if result {
-                        return ElectionResult::LostDueToHigherTerm(Either::Right(request));
+                    let step_down = handle_vote_request(me, common_state, peers, request);
+                    if step_down {
+                        return false;
                     }
                 }
                 RaftMessage::AppendEntriesClientRequest(request) => {
@@ -121,57 +118,10 @@ where
     }
 }
 
-enum HandleAppendEntriesRequestResult {
-    Ongoing,
-    LostDueToHigherTerm,
-}
-
-#[tracing::instrument(level = "trace", skip_all)]
-fn handle_append_entries_request<SM, SMin, SMout>(
-    me: u32,
-    common_state: &mut CommonState<SM, SMin, SMout>,
-    peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin, SMout>>>,
-    request: &AppendEntriesRequest<SMin>,
-) -> HandleAppendEntriesRequestResult
-where
-    SM: StateMachine<SMin, SMout> + Send,
-    SMin: Clone + Send + 'static,
-    SMout: Send + 'static,
-{
-    if common_state.update_term(request.term) {
-        return HandleAppendEntriesRequestResult::LostDueToHigherTerm;
-    }
-
-    if request.term < common_state.current_term {
-        tracing::trace!(
-            "request term = {} < current term = {}: ignoring",
-            request.term,
-            common_state.current_term
-        );
-
-        if let Some(sender_ref) = peers.get_mut(&request.leader_id) {
-            let reply = AppendEntriesReply {
-                from: me,
-                term: common_state.current_term,
-                success: false,
-                last_log_index: common_state.log.len() as u64,
-            };
-            let _ = sender_ref.try_send(reply.into());
-        }
-
-        return HandleAppendEntriesRequestResult::Ongoing;
-    }
-
-    // TLA, L346
-    assert_eq!(common_state.current_term, request.term);
-
-    HandleAppendEntriesRequestResult::LostDueToHigherTerm
-}
-
 enum HandleRequestVoteReplyResult {
     Ongoing,
     Won,
-    LostDueTooManyNegativeVotes,
+    Lost,
 }
 
 #[tracing::instrument(level = "trace", skip_all)]
@@ -206,7 +156,7 @@ where
     } else if n_votes_against >= peers.len() / 2 + 1 {
         // no need to process this message further since it was a RequestVoteReply, so I don't return it
         tracing::trace!("too many votes against, election lost");
-        HandleRequestVoteReplyResult::LostDueTooManyNegativeVotes
+        HandleRequestVoteReplyResult::Lost
     } else {
         HandleRequestVoteReplyResult::Ongoing
     }

@@ -7,7 +7,7 @@ use peer_state::PeerState;
 use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 
-use crate::common_message_handling::handle_vote_request;
+use crate::common_message_handling::{handle_append_entries_request, handle_vote_request, RaftState};
 use crate::common_state::CommonState;
 use crate::messages::append_entries::{AppendEntriesReply, AppendEntriesRequest};
 use crate::messages::append_entries_client::AppendEntriesClientRequest;
@@ -26,8 +26,7 @@ pub async fn leader_behavior<AB, SM, SMin, SMout>(
     common_state: &mut CommonState<SM, SMin, SMout>,
     peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin, SMout>>>,
     heartbeat_period: Duration,
-) -> RaftMessage<SMin, SMout>
-where
+) where
     SM: StateMachine<SMin, SMout> + Send,
     AB: ActorBounds<RaftMessage<SMin, SMout>>,
     SMin: Clone + Send + 'static,
@@ -65,9 +64,9 @@ where
                     &mut peers_state,
                     &mut client_channel_per_input,
                     &mut committed_entries_smout_buf,
-                    &message
+                    message
                 ) {
-                    return message;
+                    return;
                 }
             },
             timed_out_follower_id = follower_timeouts.join_next() => {
@@ -129,7 +128,7 @@ fn handle_message_as_leader<SM, SMin, SMout>(
     peers_state: &mut BTreeMap<u32, PeerState>,
     client_channel_per_input: &mut VecDeque<mpsc::Sender<AppendEntriesClientResponse<SMin, SMout>>>,
     committed_entries_smout_buf: &mut Vec<SMout>,
-    message: &RaftMessage<SMin, SMout>,
+    message: RaftMessage<SMin, SMout>,
 ) -> bool
 where
     SM: StateMachine<SMin, SMout> + Send,
@@ -142,9 +141,9 @@ where
         RaftMessage::AppendEntriesClientRequest(append_entries_client) => {
             handle_append_entries_client_request(common_state, client_channel_per_input, append_entries_client);
         }
-        RaftMessage::AppendEntriesRequest(_) => {
+        RaftMessage::AppendEntriesRequest(append_entries_request) => {
             // This is probably the same as what a candidate should do
-            if handle_append_entries_request() {
+            if handle_append_entries_request(me, common_state, peers, RaftState::Leader, append_entries_request) {
                 return true;
             }
         }
@@ -175,7 +174,7 @@ where
 fn handle_append_entries_client_request<SM, SMin, SMout>(
     common_state: &mut CommonState<SM, SMin, SMout>,
     client_channel_per_input: &mut VecDeque<mpsc::Sender<AppendEntriesClientResponse<SMin, SMout>>>,
-    request: &AppendEntriesClientRequest<SMin, SMout>,
+    request: AppendEntriesClientRequest<SMin, SMout>,
 ) where
     SM: StateMachine<SMin, SMout> + Send,
     SMin: Send + Clone + 'static,
@@ -196,7 +195,7 @@ fn handle_append_entries_reply<SM, SMin, SMout>(
     peers_state: &mut BTreeMap<u32, PeerState>,
     client_channel_per_input: &mut VecDeque<mpsc::Sender<AppendEntriesClientResponse<SMin, SMout>>>,
     committed_entries_smout_buf: &mut Vec<SMout>,
-    reply: &AppendEntriesReply,
+    reply: AppendEntriesReply,
 ) where
     SM: StateMachine<SMin, SMout> + Send,
     SMin: Clone,
@@ -230,13 +229,6 @@ fn handle_append_entries_reply<SM, SMin, SMout>(
     }
 }
 
-// TODO
-fn handle_append_entries_request() -> bool {
-    // This is probably the same as what a candidate should do
-    // if we receive a message with a higher term, we should step down
-    // and return the message
-    false
-}
 
 /// Commits the log entries that have been replicated on the majority of the servers.
 fn commit_log_entries_replicated_on_majority<SM, SMin, SMout>(

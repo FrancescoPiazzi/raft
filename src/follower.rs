@@ -1,11 +1,9 @@
-use std::cmp::min;
 use std::collections::BTreeMap;
 use std::ops::Range;
 use std::time::Duration;
 
-use crate::common_message_handling::handle_vote_request;
+use crate::common_message_handling::{handle_append_entries_request, handle_vote_request, RaftState};
 use crate::common_state::CommonState;
-use crate::messages::append_entries::{AppendEntriesReply, AppendEntriesRequest};
 use crate::messages::append_entries_client::AppendEntriesClientRequest;
 use crate::messages::*;
 use crate::state_machine::StateMachine;
@@ -37,10 +35,10 @@ pub async fn follower_behavior<AB, SM, SMin, SMout>(
     for message in message_stash.drain(..) {
         match message {
             RaftMessage::AppendEntriesRequest(request) => {
-                handle_append_entries_request(me, common_state, peers, request);
+                handle_append_entries_request(me, common_state, peers, RaftState::Follower, request);
             }
             RaftMessage::RequestVoteRequest(request) => {
-                handle_vote_request(me, common_state, peers, &request);
+                handle_vote_request(me, common_state, peers, request);
             }
             RaftMessage::AppendEntriesClientRequest(request) => {
                 handle_append_entries_client_request(peers, common_state.leader_id.as_ref(), request);
@@ -63,10 +61,10 @@ pub async fn follower_behavior<AB, SM, SMin, SMout>(
 
         match message {
             RaftMessage::AppendEntriesRequest(request) => {
-                handle_append_entries_request(me, common_state, peers, request);
+                handle_append_entries_request(me, common_state, peers, RaftState::Follower, request);
             }
             RaftMessage::RequestVoteRequest(request) => {
-                handle_vote_request(me, common_state, peers, &request);
+                handle_vote_request(me, common_state, peers, request);
             }
             RaftMessage::AppendEntriesClientRequest(request) => {
                 handle_append_entries_client_request(peers, common_state.leader_id.as_ref(), request);
@@ -75,96 +73,6 @@ pub async fn follower_behavior<AB, SM, SMin, SMout>(
                 tracing::trace!(unhandled = ?other);
             }
         }
-    }
-}
-
-#[tracing::instrument(level = "trace", skip_all)]
-fn handle_append_entries_request<SM, SMin, SMout>(
-    me: u32,
-    common_state: &mut CommonState<SM, SMin, SMout>,
-    peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin, SMout>>>,
-    request: AppendEntriesRequest<SMin>,
-) where
-    SM: StateMachine<SMin, SMout> + Send,
-    SMin: Clone + Send + 'static,
-    SMout: Send + 'static,
-{
-    if common_state.update_term(request.term) {
-        tracing::trace!("new term: {}, new leader: {}", request.term, request.leader_id);
-        common_state.leader_id = Some(request.leader_id);
-    }
-
-    if request.term < common_state.current_term {
-        tracing::trace!(
-            "request term = {} < current term = {}: ignoring",
-            request.term,
-            common_state.current_term
-        );
-
-        if let Some(sender_ref) = peers.get_mut(&request.leader_id) {
-            let reply = AppendEntriesReply {
-                from: me,
-                term: common_state.current_term,
-                success: false,
-                last_log_index: common_state.log.len() as u64,
-            };
-            let _ = sender_ref.try_send(reply.into());
-        }
-
-        return;
-    }
-
-    if request.term == common_state.current_term {
-        if let Some(leader_id) = common_state.leader_id.as_ref() {
-            assert_eq!(
-                request.leader_id, *leader_id,
-                "two leaders with the same term detected: {} and {}",
-                request.leader_id, *leader_id
-            );
-        }
-    }
-
-    if request.prev_log_index > common_state.log.len() as u64 {
-        tracing::trace!(
-            "missing entries: previous log index = {}, log length: {}: ignoring",
-            request.prev_log_index,
-            common_state.log.len()
-        );
-
-        if let Some(sender_ref) = peers.get_mut(&request.leader_id) {
-            let reply = AppendEntriesReply {
-                from: me,
-                term: common_state.current_term,
-                success: false,
-                last_log_index: common_state.log.len() as u64,
-            };
-            let _ = sender_ref.try_send(reply.into());
-        }
-        return;
-    }
-
-    common_state
-        .log
-        .insert(request.entries, request.prev_log_index, request.term);
-
-    let leader_commit: usize = request.leader_commit.try_into().unwrap();
-
-    if leader_commit > common_state.commit_index {
-        tracing::trace!("leader commit is greater than follower commit, updating commit index");
-        let new_commit_index = min(leader_commit, common_state.log.len());
-
-        common_state.commit_index = new_commit_index;
-        common_state.commit_log_entries_up_to_commit_index();
-    }
-
-    if let Some(leader_ref) = peers.get_mut(&request.leader_id) {
-        let reply = AppendEntriesReply {
-            from: me,
-            term: common_state.current_term,
-            success: true,
-            last_log_index: common_state.log.len() as u64,
-        };
-        let _ = leader_ref.try_send(reply.into());
     }
 }
 
