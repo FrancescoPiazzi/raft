@@ -105,14 +105,21 @@ fn send_append_entries_request<SM, SMin, SMout>(
 {
     let entries_to_send = common_state.log[next_index as usize..].to_vec();
 
+    let prev_log_index = next_index - 1;
+    let prev_log_term = if prev_log_index == 0 {
+        0
+    } else {
+        common_state.log.get_term(prev_log_index as usize)
+    };
+
     messages_len.push_back(entries_to_send.len());
     tracing::trace!("Sending {} entries to follower", entries_to_send.len());
 
     let request = AppendEntriesRequest::<SMin> {
         term: common_state.current_term,
         leader_id: me,
-        prev_log_index: next_index - 1,
-        prev_log_term: common_state.log.get_last_log_term(),
+        prev_log_index,
+        prev_log_term,
         entries: entries_to_send,
         leader_commit: common_state.commit_index as u64,
     };
