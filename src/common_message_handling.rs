@@ -88,7 +88,6 @@ pub fn handle_append_entries_request<SM, SMin, SMout>(
 
     if common_state.update_term(request.term) {
         tracing::trace!("new term: {}, new leader: {}", request.term, request.leader_id);
-        common_state.leader_id = Some(request.leader_id);
         step_down = true;
     }
 
@@ -117,6 +116,12 @@ pub fn handle_append_entries_request<SM, SMin, SMout>(
             );
         }
     }
+
+    // update this here and not in update_term, as the update_term in handle_vote_request 
+    // might have already updated the term, causing the update_term here to never return true
+    // leaving us with the correct term, but no leader_id, we also can't set the leader_id in update_term
+    // as we can't know whether the candidate will win the election
+    common_state.leader_id = Some(request.leader_id);
 
     if request.prev_log_index > common_state.log.len() as u64 {
         tracing::trace!(

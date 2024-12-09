@@ -50,7 +50,7 @@ pub async fn leader_behavior<AB, SM, SMin, SMout>(
     let mut committed_entries_smout_buf = Vec::<SMout>::new();
 
     // Tracks the mpsc that we have to answer on per entry
-    let mut client_channel_per_input = VecDeque::<mpsc::Sender<AppendEntriesClientResponse<SMin, SMout>>>::new();
+    let mut client_channel_per_input = VecDeque::<(mpsc::Sender<AppendEntriesClientResponse<SMin, SMout>>, usize)>::new();
 
     loop {
         tokio::select! {
@@ -126,7 +126,7 @@ fn handle_message_as_leader<SM, SMin, SMout>(
     common_state: &mut CommonState<SM, SMin, SMout>,
     peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin, SMout>>>,
     peers_state: &mut BTreeMap<u32, PeerState>,
-    client_channel_per_input: &mut VecDeque<mpsc::Sender<AppendEntriesClientResponse<SMin, SMout>>>,
+    client_channel_per_input: &mut VecDeque<(mpsc::Sender<AppendEntriesClientResponse<SMin, SMout>>, usize)>,
     committed_entries_smout_buf: &mut Vec<SMout>,
     message: RaftMessage<SMin, SMout>,
 ) -> bool
@@ -142,7 +142,6 @@ where
             handle_append_entries_client_request(common_state, client_channel_per_input, append_entries_client);
         }
         RaftMessage::AppendEntriesRequest(append_entries_request) => {
-            // This is probably the same as what a candidate should do
             if handle_append_entries_request(me, common_state, peers, RaftState::Leader, append_entries_request) {
                 return true;
             }
@@ -173,7 +172,7 @@ where
 #[tracing::instrument(level = "trace", skip_all)]
 fn handle_append_entries_client_request<SM, SMin, SMout>(
     common_state: &mut CommonState<SM, SMin, SMout>,
-    client_channel_per_input: &mut VecDeque<mpsc::Sender<AppendEntriesClientResponse<SMin, SMout>>>,
+    client_channel_per_input: &mut VecDeque<(mpsc::Sender<AppendEntriesClientResponse<SMin, SMout>>, usize)>,
     request: AppendEntriesClientRequest<SMin, SMout>,
 ) where
     SM: StateMachine<SMin, SMout> + Send,
@@ -181,9 +180,8 @@ fn handle_append_entries_client_request<SM, SMin, SMout>(
 {
     tracing::trace!("Received a client message, replicating it");
 
-    for _ in 0..request.entries_to_replicate.len() {
-        client_channel_per_input.push_back(request.reply_to.clone());
-    }
+    client_channel_per_input.push_back((request.reply_to, request.entries_to_replicate.len()));
+
     common_state
         .log
         .append(request.entries_to_replicate.clone(), common_state.current_term);
@@ -193,7 +191,7 @@ fn handle_append_entries_client_request<SM, SMin, SMout>(
 fn handle_append_entries_reply<SM, SMin, SMout>(
     common_state: &mut CommonState<SM, SMin, SMout>,
     peers_state: &mut BTreeMap<u32, PeerState>,
-    client_channel_per_input: &mut VecDeque<mpsc::Sender<AppendEntriesClientResponse<SMin, SMout>>>,
+    client_channel_per_input: &mut VecDeque<(mpsc::Sender<AppendEntriesClientResponse<SMin, SMout>>, usize)>,
     committed_entries_smout_buf: &mut Vec<SMout>,
     reply: AppendEntriesReply,
 ) where
@@ -234,7 +232,7 @@ fn handle_append_entries_reply<SM, SMin, SMout>(
 fn commit_log_entries_replicated_on_majority<SM, SMin, SMout>(
     common_state: &mut CommonState<SM, SMin, SMout>,
     peers_state: &BTreeMap<u32, PeerState>,
-    client_channel_per_input: &mut VecDeque<mpsc::Sender<AppendEntriesClientResponse<SMin, SMout>>>,
+    client_channel_per_input: &mut VecDeque<(mpsc::Sender<AppendEntriesClientResponse<SMin, SMout>>, usize)>,
     committed_entries_smout_buf: &mut Vec<SMout>,
 ) where
     SM: StateMachine<SMin, SMout> + Send,
@@ -254,9 +252,13 @@ fn commit_log_entries_replicated_on_majority<SM, SMin, SMout>(
     common_state.commit_log_entries_up_to_commit_index_buf(committed_entries_smout_buf);
 
     for _ in (old_last_applied + 1)..=common_state.commit_index {
-        if let Some(sender) = client_channel_per_input.pop_front() {
+        if let Some((sender, uses_left)) = client_channel_per_input.front_mut() {
             let response = AppendEntriesClientResponse(Ok(committed_entries_smout_buf.pop().unwrap()));
             let _ = sender.try_send(response);
+            *uses_left -= 1;
+            if *uses_left == 0 {
+                client_channel_per_input.pop_front();
+            }
         } else {
             tracing::error!("No client channel to send the response to");
         }

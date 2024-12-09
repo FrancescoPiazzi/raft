@@ -48,7 +48,7 @@ async fn send_entries_to_duplicate<SMin, SMout>(
     let mut leader = servers[0].server_ref.clone();
     let mut rng = rand::thread_rng();
 
-    loop {
+    'client: loop {
         tracing::debug!("Sending entries to replicate");
 
         let (tx, mut rx) = mpsc::channel::<AppendEntriesClientResponse<SMin, SMout>>(10);
@@ -57,34 +57,40 @@ async fn send_entries_to_duplicate<SMin, SMout>(
             entries_to_replicate: entries.iter().choose(&mut rng).unwrap().clone(),
             reply_to: tx,
         };
+        let mut n_remaining_entries_to_replicate = request.entries_to_replicate.len();
 
         let _ = leader.try_send(request.into());
 
-        match tokio::time::timeout(timeout, rx.recv()).await {
-            Ok(Some(AppendEntriesClientResponse(Ok(result)))) => {
-                tracing::debug!(
-                    "✅ Received confirmation of successful entry replication, result is: {:?}",
-                    result
-                );
-                interval.tick().await;
-            }
-            Ok(Some(AppendEntriesClientResponse(Err(Some(new_leader_ref))))) => {
-                tracing::debug!("Interrogated server is not the leader, switching to the indicated one");
-                leader = new_leader_ref;
-            }
-            Ok(Some(AppendEntriesClientResponse(Err(None)))) | Err(_) => {
-                tracing::debug!(
-                    "Interrogated server does not know who the leader is or it did not answer, \
-                    switching to another random node"
-                );
-                leader = servers.iter().choose(&mut rng).unwrap().server_ref.clone();
-                sleep(Duration::from_millis(1000)).await;
-            }
-            Ok(None) => {
-                tracing::error!("channel closed, exiting");
-                break;
+        while n_remaining_entries_to_replicate > 0 {
+            match tokio::time::timeout(timeout, rx.recv()).await {
+                Ok(Some(AppendEntriesClientResponse(Ok(result)))) => {
+                    tracing::debug!(
+                        "✅ Received confirmation of successful entry replication, result is: {:?}",
+                        result
+                    );
+                    n_remaining_entries_to_replicate -= 1;
+                }
+                Ok(Some(AppendEntriesClientResponse(Err(Some(new_leader_ref))))) => {
+                    tracing::debug!("Interrogated server is not the leader, switching to the indicated one");
+                    leader = new_leader_ref;
+                    break;
+                }
+                Ok(Some(AppendEntriesClientResponse(Err(None)))) | Err(_) => {
+                    tracing::debug!(
+                        "Interrogated server does not know who the leader is or it did not answer, \
+                        switching to another random node"
+                    );
+                    leader = servers.iter().choose(&mut rng).unwrap().server_ref.clone();
+                    sleep(Duration::from_millis(1000)).await;
+                    break;
+                }
+                Ok(None) => {
+                    tracing::error!("channel closed, exiting");
+                    break 'client;
+                }
             }
         }
+        interval.tick().await;
     }
 }
 
@@ -106,7 +112,7 @@ async fn main() {
 
     send_entries_to_duplicate(
         &servers,
-        Set::from([vec![1], vec![4], vec![2]]),
+        Set::from([vec![1, 3, 5, 7, 11], vec![1, 4, 9], vec![2, 4, 6]]),
         Duration::from_millis(1000),
         Duration::from_millis(2000),
     )
