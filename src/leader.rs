@@ -81,8 +81,7 @@ where
                 let timed_out_follower_ref = peers.get_mut(&timed_out_follower_id).expect("all peers are known");
                 let timed_out_follower_state = peers_state.get_mut(&timed_out_follower_id).expect("all peers are known");
                 let next_index_of_follower = timed_out_follower_state.next_index;
-                let messages_len = &mut timed_out_follower_state.messages_len;
-                send_append_entries_request(me, common_state, messages_len, timed_out_follower_ref, next_index_of_follower);
+                send_append_entries_request(me, common_state, timed_out_follower_ref, next_index_of_follower);
 
                 follower_timeouts.spawn(async move {
                     tokio::time::sleep(heartbeat_period).await;
@@ -96,7 +95,6 @@ where
 fn send_append_entries_request<SM, SMin, SMout>(
     me: u32,
     common_state: &CommonState<SM, SMin, SMout>,
-    messages_len: &mut VecDeque<usize>,
     follower_ref: &mut ActorRef<RaftMessage<SMin, SMout>>,
     next_index: u64,
 ) where
@@ -111,9 +109,6 @@ fn send_append_entries_request<SM, SMin, SMout>(
     } else {
         common_state.log.get_term(prev_log_index as usize)
     };
-
-    messages_len.push_back(entries_to_send.len());
-    tracing::trace!("Sending {} entries to follower", entries_to_send.len());
 
     let request = AppendEntriesRequest::<SMin> {
         term: common_state.current_term,
@@ -215,9 +210,7 @@ fn handle_append_entries_reply<SM, SMin, SMout>(
     let peer_match_idx = &mut peer_state.match_index;
 
     if reply.success {
-        // should always be Some, since we always push a value before each append entries request
-        let request_len = peer_state.messages_len.pop_front().unwrap_or(0);
-        *peer_match_idx = request_len as u64 + *peer_next_idx - 1;
+        *peer_match_idx = reply.last_log_index;
         *peer_next_idx = *peer_match_idx + 1;
 
         tracing::trace!(

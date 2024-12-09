@@ -36,4 +36,7 @@ pub struct AppendEntriesReply {
     pub from: u32,
     pub term: u64,
     pub success: bool,
+    /// Used by the leader to determine which indexes have been persisted on the follower.
+    /// https://stackoverflow.com/a/56677747
+    pub last_log_index: u64,
 }

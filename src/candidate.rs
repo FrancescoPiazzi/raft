@@ -151,6 +151,7 @@ where
                 from: me,
                 term: common_state.current_term,
                 success: false,
+                last_log_index: common_state.log.len() as u64,
             };
             let _ = sender_ref.try_send(reply.into());
         }

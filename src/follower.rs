@@ -105,6 +105,7 @@ fn handle_append_entries_request<SM, SMin, SMout>(
                 from: me,
                 term: common_state.current_term,
                 success: false,
+                last_log_index: common_state.log.len() as u64,
             };
             let _ = sender_ref.try_send(reply.into());
         }
@@ -136,6 +137,7 @@ fn handle_append_entries_request<SM, SMin, SMout>(
                 from: me,
                 term: common_state.current_term,
                 success: false,
+                last_log_index: common_state.log.len() as u64,
             };
             let _ = sender_ref.try_send(reply.into());
         }
@@ -172,6 +174,7 @@ fn handle_append_entries_request<SM, SMin, SMout>(
             from: me,
             term: common_state.current_term,
             success: true,
+            last_log_index: common_state.log.len() as u64,
         };
         let _ = leader_ref.try_send(reply.into());
     }
