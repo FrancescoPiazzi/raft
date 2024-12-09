@@ -77,14 +77,16 @@ where
                     match result {
                         HandleRequestVoteReplyResult::Ongoing => {}
                         HandleRequestVoteReplyResult::Won => return ElectionResult::Won,
-                        HandleRequestVoteReplyResult::Lost => todo!(),
+                        HandleRequestVoteReplyResult::LostDueTooManyNegativeVotes => {
+                            return ElectionResult::LostDueTooManyNegativeVotes
+                        }
                     }
                 }
                 RaftMessage::AppendEntriesRequest(request) => {
                     let result = handle_append_entries_request(me, common_state, peers, &request);
                     match result {
-                        HandleAppendEntriesRequest::Ongoing => {}
-                        HandleAppendEntriesRequest::Lost => {
+                        HandleAppendEntriesRequestResult::Ongoing => {}
+                        HandleAppendEntriesRequestResult::LostDueToHigherTerm => {
                             return ElectionResult::LostDueToHigherTerm(Either::Left(request))
                         }
                     }
@@ -118,9 +120,9 @@ where
     }
 }
 
-enum HandleAppendEntriesRequest {
+enum HandleAppendEntriesRequestResult {
     Ongoing,
-    Lost,
+    LostDueToHigherTerm,
 }
 
 #[tracing::instrument(level = "trace", skip_all)]
@@ -129,14 +131,14 @@ fn handle_append_entries_request<SM, SMin, SMout>(
     common_state: &mut CommonState<SM, SMin, SMout>,
     peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin, SMout>>>,
     request: &AppendEntriesRequest<SMin>,
-) -> HandleAppendEntriesRequest
+) -> HandleAppendEntriesRequestResult
 where
     SM: StateMachine<SMin, SMout> + Send,
     SMin: Clone + Send + 'static,
     SMout: Send + 'static,
 {
     if common_state.update_term(request.term) {
-        return HandleAppendEntriesRequest::Lost;
+        return HandleAppendEntriesRequestResult::LostDueToHigherTerm;
     }
 
     if request.term < common_state.current_term {
@@ -156,19 +158,19 @@ where
             let _ = sender_ref.try_send(reply.into());
         }
 
-        return HandleAppendEntriesRequest::Ongoing;
+        return HandleAppendEntriesRequestResult::Ongoing;
     }
 
     // TLA, L346
     assert_eq!(common_state.current_term, request.term);
 
-    HandleAppendEntriesRequest::Lost
+    HandleAppendEntriesRequestResult::LostDueToHigherTerm
 }
 
 enum HandleRequestVoteReplyResult {
     Ongoing,
     Won,
-    Lost,
+    LostDueTooManyNegativeVotes,
 }
 
 #[tracing::instrument(level = "trace", skip_all)]
@@ -203,7 +205,7 @@ where
     } else if n_votes_against >= peers.len() / 2 + 1 {
         // no need to process this message further since it was a RequestVoteReply, so I don't return it
         tracing::trace!("too many votes against, election lost");
-        HandleRequestVoteReplyResult::Lost
+        HandleRequestVoteReplyResult::LostDueTooManyNegativeVotes
     } else {
         HandleRequestVoteReplyResult::Ongoing
     }
