@@ -9,6 +9,7 @@ use crate::state_machine::StateMachine;
 
 pub struct CommonState<SM, SMin, SMout> {
     pub current_term: u64,
+    pub leader_id: Option<u32>,
     pub log: Log<SMin>,
     pub state_machine: SM,
     pub commit_index: usize,
@@ -21,6 +22,7 @@ impl<SM, SMin, SMout> CommonState<SM, SMin, SMout> {
     pub const fn new(state_machine: SM) -> Self {
         Self {
             current_term: 0,
+            leader_id: None,
             log: Log::new(),
             state_machine,
             commit_index: 0,

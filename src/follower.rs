@@ -33,18 +33,17 @@ pub async fn follower_behavior<AB, SM, SMin, SMout>(
     SMout: Send + 'static,
 {
     let election_timeout = thread_rng().gen_range(election_timeout);
-    let mut leader_id: Option<u32> = None;
 
     for message in message_stash.drain(..) {
         match message {
             RaftMessage::AppendEntriesRequest(request) => {
-                handle_append_entries_request(me, common_state, peers, &mut leader_id, request);
+                handle_append_entries_request(me, common_state, peers, request);
             }
             RaftMessage::RequestVoteRequest(request) => {
                 handle_vote_request(me, common_state, peers, &request);
             }
             RaftMessage::AppendEntriesClientRequest(request) => {
-                handle_append_entries_client_request(peers, leader_id.as_mut(), request);
+                handle_append_entries_client_request(peers, common_state.leader_id.as_ref(), request);
             }
             other => {
                 tracing::trace!(unhandled = ?other);
@@ -64,13 +63,13 @@ pub async fn follower_behavior<AB, SM, SMin, SMout>(
 
         match message {
             RaftMessage::AppendEntriesRequest(request) => {
-                handle_append_entries_request(me, common_state, peers, &mut leader_id, request);
+                handle_append_entries_request(me, common_state, peers, request);
             }
             RaftMessage::RequestVoteRequest(request) => {
                 handle_vote_request(me, common_state, peers, &request);
             }
             RaftMessage::AppendEntriesClientRequest(request) => {
-                handle_append_entries_client_request(peers, leader_id.as_mut(), request);
+                handle_append_entries_client_request(peers, common_state.leader_id.as_ref(), request);
             }
             other => {
                 tracing::trace!(unhandled = ?other);
@@ -84,7 +83,6 @@ fn handle_append_entries_request<SM, SMin, SMout>(
     me: u32,
     common_state: &mut CommonState<SM, SMin, SMout>,
     peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin, SMout>>>,
-    leader_id: &mut Option<u32>,
     request: AppendEntriesRequest<SMin>,
 ) where
     SM: StateMachine<SMin, SMout> + Send,
@@ -93,7 +91,7 @@ fn handle_append_entries_request<SM, SMin, SMout>(
 {
     if common_state.update_term(request.term) {
         tracing::trace!("new term: {}, new leader: {}", request.term, request.leader_id);
-        *leader_id = Some(request.leader_id);
+        common_state.leader_id = Some(request.leader_id);
     }
 
     if request.term < common_state.current_term {
@@ -117,7 +115,7 @@ fn handle_append_entries_request<SM, SMin, SMout>(
     }
 
     if request.term == common_state.current_term {
-        if let Some(leader_id) = leader_id.as_ref() {
+        if let Some(leader_id) = common_state.leader_id.as_ref() {
             assert_eq!(
                 request.leader_id, *leader_id,
                 "two leaders with the same term detected: {} and {}",
@@ -173,7 +171,7 @@ fn handle_append_entries_request<SM, SMin, SMout>(
 #[tracing::instrument(level = "trace", skip_all)]
 fn handle_append_entries_client_request<SMin, SMout>(
     peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin, SMout>>>,
-    leader_id: Option<&mut u32>,
+    leader_id: Option<&u32>,
     request: AppendEntriesClientRequest<SMin, SMout>,
 ) where
     SMin: Clone + Send + 'static,
