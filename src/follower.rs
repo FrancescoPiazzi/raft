@@ -91,7 +91,10 @@ fn handle_append_entries_request<SM, SMin, SMout>(
     SMin: Clone + Send + 'static,
     SMout: Send + 'static,
 {
-    let _ = common_state.update_term(request.term);
+    if common_state.update_term(request.term) {
+        tracing::trace!("new term: {}, new leader: {}", request.term, request.leader_id);
+        *leader_id = Some(request.leader_id);
+    }
 
     if request.term < common_state.current_term {
         tracing::trace!(
@@ -112,8 +115,6 @@ fn handle_append_entries_request<SM, SMin, SMout>(
 
         return;
     }
-
-    *leader_id = Some(request.leader_id);
 
     if request.term == common_state.current_term {
         if let Some(leader_id) = leader_id.as_ref() {
@@ -153,20 +154,9 @@ fn handle_append_entries_request<SM, SMin, SMout>(
     if leader_commit > common_state.commit_index {
         tracing::trace!("leader commit is greater than follower commit, updating commit index");
         let new_commit_index = min(leader_commit, common_state.log.len());
-        tracing::trace!(
-            "previous log index = {}, log length: {}: ignoring",
-            request.prev_log_index,
-            common_state.log.len()
-        ); // TOASK: what is that ignoring? Did I put it there?
 
         common_state.commit_index = new_commit_index;
         common_state.commit_log_entries_up_to_commit_index();
-    }
-
-    if let Some(leader_id) = leader_id.as_mut() {
-        // TOASK: this can happen? If the leader changes and we get a new term, we update it earlier,
-        // how can the leader change without the term progressing?
-        if request.leader_id != *leader_id { /* leader changed */ }
     }
 
     if let Some(leader_ref) = peers.get_mut(&request.leader_id) {
