@@ -263,9 +263,8 @@ fn commit_log_entries_replicated_on_majority<SM, SMin, SMout>(
 
     for _ in (old_last_applied + 1)..=common_state.commit_index {
         if let Some(sender) = client_channel_per_input.pop_front() {
-            let _ = sender.try_send(AppendEntriesClientResponse(Ok(committed_entries_smout_buf
-                .pop()
-                .unwrap())));
+            let response = AppendEntriesClientResponse(Ok(committed_entries_smout_buf.pop().unwrap()));
+            let _ = sender.try_send(response);
         } else {
             tracing::error!("No client channel to send the response to");
         }

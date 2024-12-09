@@ -98,7 +98,8 @@ where
                     }
                 }
                 RaftMessage::AppendEntriesClientRequest(request) => {
-                    let _ = request.reply_to.try_send(AppendEntriesClientResponse(Err(None)));
+                    let response = AppendEntriesClientResponse(Err(None));
+                    let _ = request.reply_to.try_send(response);
                 }
                 _ => {
                     tracing::trace!(unhandled = ?message);
