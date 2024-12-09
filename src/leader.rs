@@ -1,4 +1,3 @@
-use std::cmp::max;
 use std::collections::{BTreeMap, VecDeque};
 use std::time::Duration;
 
@@ -249,14 +248,14 @@ fn commit_log_entries_replicated_on_majority<SM, SMin, SMout>(
     SM: StateMachine<SMin, SMout> + Send,
     SMin: Clone,
 {
-    let mut i = common_state.commit_index + 1;
-    while i <= common_state.log.len()
-        && common_state.log.get_term(i) == common_state.current_term
-        && majority_of_servers_have_log_entry(peers_state, i as u64)
+    let mut n = common_state.commit_index;
+    while n + 1 <= common_state.log.len()
+        && common_state.log.get_term(n + 1) == common_state.current_term
+        && majority_of_servers_have_log_entry(peers_state, n as u64 + 1)
     {
-        i += 1;
+        n += 1;
     }
-    common_state.commit_index = max(i - 1, 0);
+    common_state.commit_index = n;
 
     let old_last_applied = common_state.last_applied;
 
