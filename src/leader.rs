@@ -260,7 +260,7 @@ fn commit_log_entries_replicated_on_majority<SM, SMin, SMout>(
 
     let old_last_applied = common_state.last_applied;
 
-    common_state.commit_log_entries_up_to_commit_index(Some(committed_entries_smout_buf));
+    common_state.commit_log_entries_up_to_commit_index_buf(committed_entries_smout_buf);
 
     for _ in (old_last_applied + 1)..=common_state.commit_index {
         if let Some(sender) = client_channel_per_input.pop_front() {

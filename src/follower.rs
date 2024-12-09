@@ -160,7 +160,7 @@ fn handle_append_entries_request<SM, SMin, SMout>(
         ); // TOASK: what is that ignoring? Did I put it there?
 
         common_state.commit_index = new_commit_index;
-        common_state.commit_log_entries_up_to_commit_index(None);
+        common_state.commit_log_entries_up_to_commit_index();
     }
 
     if let Some(leader_id) = leader_id.as_mut() {
