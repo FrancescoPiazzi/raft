@@ -12,7 +12,7 @@ use crate::types::AppendEntriesClientResponse;
 use actum::actor_bounds::ActorBounds;
 use actum::actor_ref::ActorRef;
 use rand::{thread_rng, Rng};
-use tokio::time::timeout;
+use tokio::time::{timeout, Instant};
 
 /// Behavior of the Raft server in follower state.
 ///
@@ -22,7 +22,7 @@ pub async fn follower_behavior<AB, SM, SMin, SMout>(
     me: u32,
     peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin, SMout>>>,
     common_state: &mut CommonState<SM, SMin, SMout>,
-    election_timeout: Range<Duration>,
+    election_timeout_range: Range<Duration>,
     message_stash: &mut Vec<RaftMessage<SMin, SMout>>,
 ) where
     AB: ActorBounds<RaftMessage<SMin, SMout>>,
@@ -30,7 +30,7 @@ pub async fn follower_behavior<AB, SM, SMin, SMout>(
     SMin: Clone + Send + 'static,
     SMout: Send + 'static,
 {
-    let election_timeout = thread_rng().gen_range(election_timeout);
+    let mut election_timeout = thread_rng().gen_range(election_timeout_range.clone());
 
     for message in message_stash.drain(..) {
         match message {
@@ -50,7 +50,9 @@ pub async fn follower_behavior<AB, SM, SMin, SMout>(
     }
 
     loop {
-        // TODO: do not reset the election timeout on every message, i.e. Client requests don't count
+        let start_time = Instant::now();
+        let reset_election_timeout;
+
         let Ok(message) = timeout(election_timeout, cell.recv()).await else {
             tracing::debug!("election timeout");
             return;
@@ -62,15 +64,31 @@ pub async fn follower_behavior<AB, SM, SMin, SMout>(
         match message {
             RaftMessage::AppendEntriesRequest(request) => {
                 handle_append_entries_request(me, common_state, peers, RaftState::Follower, request);
+                reset_election_timeout = true;
             }
             RaftMessage::RequestVoteRequest(request) => {
                 handle_vote_request(me, common_state, peers, request);
+                reset_election_timeout = true;
             }
             RaftMessage::AppendEntriesClientRequest(request) => {
                 handle_append_entries_client_request(peers, common_state.leader_id.as_ref(), request);
+                reset_election_timeout = false;
             }
             other => {
                 tracing::trace!(unhandled = ?other);
+                reset_election_timeout = false;
+            }
+        }
+
+        if reset_election_timeout {
+            // we could also reset it to its original value, I just found it easier to reroll
+            election_timeout = thread_rng().gen_range(election_timeout_range.clone());
+        } else {
+            if let Some(new_remaining_time_to_wait) = election_timeout.checked_sub(start_time.elapsed()) {
+                election_timeout = new_remaining_time_to_wait;
+            } else {
+                tracing::trace!("election timeout");
+                return;
             }
         }
     }

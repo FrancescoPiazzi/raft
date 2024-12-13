@@ -64,6 +64,8 @@ where
         }
 
         'current_election: loop {
+            let start_time = Instant::now();
+
             let Ok(message) = timeout(remaining_time_to_wait, cell.recv()).await else {
                 tracing::trace!("election timeout");
                 break 'current_election;
@@ -103,7 +105,7 @@ where
                 }
             }
 
-            if let Some(new_remaining_time_to_wait) = remaining_time_to_wait.checked_sub(Instant::now().elapsed()) {
+            if let Some(new_remaining_time_to_wait) = remaining_time_to_wait.checked_sub(start_time.elapsed()) {
                 remaining_time_to_wait = new_remaining_time_to_wait;
             } else {
                 tracing::trace!("election timeout");
