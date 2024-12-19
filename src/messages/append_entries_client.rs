@@ -4,6 +4,7 @@ use tokio::sync::mpsc;
 
 use crate::types::AppendEntriesClientResponse;
 
+#[derive(Clone)]
 pub struct AppendEntriesClientRequest<SMin, SMout> {
     pub reply_to: mpsc::Sender<AppendEntriesClientResponse<SMin, SMout>>,
     pub entries_to_replicate: Vec<SMin>,

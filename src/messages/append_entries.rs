@@ -31,7 +31,7 @@ impl<SMin> AppendEntriesRequest<SMin> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct AppendEntriesReply {
     pub from: u32,
     pub term: u64,

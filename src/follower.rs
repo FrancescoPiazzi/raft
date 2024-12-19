@@ -118,3 +118,66 @@ fn handle_append_entries_client_request<SMin, SMout>(
         let _ = request.reply_to.try_send(AppendEntriesClientResponse(Err(None)));
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::messages;
+
+    use futures_channel::mpsc as futures_mpsc;
+    use tokio::sync::mpsc as tokio_mpsc;
+
+
+    #[tokio::test]
+    async fn test_follower_handle_append_entries_client_request_valid_leader_id() {
+        let (leader_tx, mut leader_rx) = futures_mpsc::channel::<messages::RaftMessage<(), ()>>(1);
+        let peers = &mut BTreeMap::from([(1, ActorRef::new(leader_tx))]);
+
+        let (tx, mut rx) = tokio_mpsc::channel(1);
+
+        let leader_id = Some(&1);
+        let request = AppendEntriesClientRequest {
+            reply_to: tokio_mpsc::Sender::clone(&tx),
+            entries_to_replicate: vec![],
+        };
+
+        handle_append_entries_client_request(peers, leader_id, request.clone());
+
+        let response = rx.recv().await.expect("channel closed unexpectedly");
+
+        let Err(Some(mut leader_ref_according_to_follower)) = response.0 else {
+            panic!("unexpected response from follower");
+        };
+
+        let dummy_message = messages::append_entries::AppendEntriesReply{
+            term: 0,
+            success: false,
+            from: 0,
+            last_log_index: 0,
+        };
+        let _ = leader_ref_according_to_follower.try_send(dummy_message.clone().into());
+        let received_message = leader_rx.try_next();
+        assert!(received_message.is_ok() && received_message.unwrap().is_some(), 
+            "follower indicated the wrong leader");
+    }
+
+    #[tokio::test]
+    async fn test_follower_handle_append_entries_client_request_invalid_leader_id() {
+        let (leader_tx, _) = futures_mpsc::channel::<messages::RaftMessage<(), ()>>(1);
+        let peers = &mut BTreeMap::from([(1, ActorRef::new(leader_tx))]);
+
+        let (tx, mut rx) = tokio_mpsc::channel(1);
+
+        let leader_id = Some(&2);
+        let request = AppendEntriesClientRequest {
+            reply_to: tokio_mpsc::Sender::clone(&tx),
+            entries_to_replicate: vec![],
+        };
+
+        handle_append_entries_client_request(peers, leader_id, request.clone());
+
+        let response = rx.recv().await.expect("channel closed unexpectedly");
+
+        assert!(response.is_err() && response.0.unwrap_err().is_none(), "unexpected response from follower");
+    }
+}
