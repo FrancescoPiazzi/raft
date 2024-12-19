@@ -26,7 +26,8 @@ pub async fn leader_behavior<AB, SM, SMin, SMout>(
     common_state: &mut CommonState<SM, SMin, SMout>,
     peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin, SMout>>>,
     heartbeat_period: Duration,
-) -> Result<(), ()> where
+) -> Result<(), ()>
+where
     SM: StateMachine<SMin, SMout> + Send,
     AB: ActorBounds<RaftMessage<SMin, SMout>>,
     SMin: Clone + Send + 'static,
@@ -50,7 +51,8 @@ pub async fn leader_behavior<AB, SM, SMin, SMout>(
     let mut committed_entries_smout_buf = Vec::<SMout>::new();
 
     // Tracks the mpsc that we have to answer on per entry
-    let mut client_channel_per_input = VecDeque::<(mpsc::Sender<AppendEntriesClientResponse<SMin, SMout>>, usize)>::new();
+    let mut client_channel_per_input =
+        VecDeque::<(mpsc::Sender<AppendEntriesClientResponse<SMin, SMout>>, usize)>::new();
 
     loop {
         tokio::select! {
@@ -229,7 +231,6 @@ fn handle_append_entries_reply<SM, SMin, SMout>(
     }
 }
 
-
 /// Commits the log entries that have been replicated on the majority of the servers.
 fn commit_log_entries_replicated_on_majority<SM, SMin, SMout>(
     common_state: &mut CommonState<SM, SMin, SMout>,
@@ -241,7 +242,7 @@ fn commit_log_entries_replicated_on_majority<SM, SMin, SMout>(
     SMin: Clone,
 {
     let mut n = common_state.commit_index;
-    #[allow(clippy::int_plus_one)]  // imo it's more clear this way: the next n (n+1), must be in the log's bounds
+    #[allow(clippy::int_plus_one)] // imo it's more clear this way: the next n (n+1), must be in the log's bounds
     while n + 1 <= common_state.log.len()
         && common_state.log.get_term(n + 1) == common_state.current_term
         && majority_of_servers_have_log_entry(peers_state, n as u64 + 1)

@@ -24,7 +24,8 @@ pub async fn follower_behavior<AB, SM, SMin, SMout>(
     common_state: &mut CommonState<SM, SMin, SMout>,
     election_timeout_range: Range<Duration>,
     message_stash: &mut Vec<RaftMessage<SMin, SMout>>,
-) -> Result<(), ()> where
+) -> Result<(), ()>
+where
     AB: ActorBounds<RaftMessage<SMin, SMout>>,
     SM: StateMachine<SMin, SMout> + Send,
     SMin: Clone + Send + 'static,
@@ -62,7 +63,7 @@ pub async fn follower_behavior<AB, SM, SMin, SMout>(
 
         tracing::trace!(message = ?message);
 
-        #[allow(clippy::needless_late_init)]    // don't want to wrap the whole match
+        #[allow(clippy::needless_late_init)] // don't want to wrap the whole match
         let reset_election_timeout;
         match message {
             RaftMessage::AppendEntriesRequest(request) => {

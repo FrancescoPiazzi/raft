@@ -23,7 +23,7 @@ pub enum ElectionResult<SMin> {
 }
 
 /// Behavior of the Raft server in candidate state.
-/// 
+///
 /// Returns `true` if the candidate won the election, `false` otherwise.
 pub async fn candidate_behavior<AB, SM, SMin, SMout>(
     cell: &mut AB,
@@ -82,11 +82,12 @@ where
                     match result {
                         HandleRequestVoteReplyResult::Ongoing => {}
                         HandleRequestVoteReplyResult::Won => return Ok(true),
-                        HandleRequestVoteReplyResult::Lost => return Ok(false)
+                        HandleRequestVoteReplyResult::Lost => return Ok(false),
                     }
                 }
                 RaftMessage::AppendEntriesRequest(request) => {
-                    let step_down = handle_append_entries_request(me, common_state, peers, RaftState::Candidate, request);
+                    let step_down =
+                        handle_append_entries_request(me, common_state, peers, RaftState::Candidate, request);
                     if step_down {
                         return Ok(false);
                     }

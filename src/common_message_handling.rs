@@ -50,7 +50,6 @@ where
     step_down
 }
 
-
 /// This enum is used ONLY for the functions calling handle_append_entries_request
 /// so it can tell whether to panic or not if we recieve a message from a leader
 /// with the same term as us, which is something that shouldn't happen anyway.
@@ -62,7 +61,7 @@ pub enum RaftState {
 }
 
 /// Handles an append entries request message, updating the log and sending a reply.
-/// 
+///
 /// Returns `true` if the server should become a follower
 #[tracing::instrument(level = "trace", skip_all)]
 pub fn handle_append_entries_request<SM, SMin, SMout>(
@@ -71,7 +70,8 @@ pub fn handle_append_entries_request<SM, SMin, SMout>(
     peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin, SMout>>>,
     state: RaftState,
     request: AppendEntriesRequest<SMin>,
-) -> bool where
+) -> bool
+where
     SM: StateMachine<SMin, SMout> + Send,
     SMin: Clone + Send + 'static,
     SMout: Send + 'static,
@@ -105,9 +105,13 @@ pub fn handle_append_entries_request<SM, SMin, SMout>(
     }
 
     if request.term == common_state.current_term {
-        assert_ne!(state, RaftState::Leader, 
+        assert_ne!(
+            state,
+            RaftState::Leader,
             "two leaders with the same term detected: {} and {} (me)",
-            request.leader_id, me);
+            request.leader_id,
+            me
+        );
         if let Some(leader_id) = common_state.leader_id.as_ref() {
             assert_eq!(
                 request.leader_id, *leader_id,
@@ -117,10 +121,10 @@ pub fn handle_append_entries_request<SM, SMin, SMout>(
         }
     }
 
-    // update this here and not in update_term, as the update_term in handle_vote_request 
+    // update this here and not in update_term, as the update_term in handle_vote_request
     // might have already updated the term, causing the update_term here to never return true
     // leaving us with the correct term, but no leader_id, we also can't set the leader_id in update_term
-    // as we can't know whether the candidate will win the election
+    // as we can't know whether the candidate that sent the request with the higher vote will win the election
     common_state.leader_id = Some(request.leader_id);
 
     if request.prev_log_index > common_state.log.len() as u64 {
