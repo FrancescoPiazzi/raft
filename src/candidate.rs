@@ -31,7 +31,7 @@ pub async fn candidate_behavior<AB, SM, SMin, SMout>(
     common_state: &mut CommonState<SM, SMin, SMout>,
     peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin, SMout>>>,
     election_timeout: Range<Duration>,
-) -> bool
+) -> Result<bool, ()>
 where
     AB: ActorBounds<RaftMessage<SMin, SMout>>,
     SM: StateMachine<SMin, SMout> + Send,
@@ -70,8 +70,9 @@ where
                 tracing::trace!("election timeout");
                 break 'current_election;
             };
-
-            let message = message.message().expect("raft runs indefinitely");
+            let Some(message) = message.message() else {
+                return Err(());
+            };
 
             tracing::trace!(message = ?message);
 
@@ -80,20 +81,20 @@ where
                     let result = handle_request_vote_reply(common_state, peers, &mut votes_from_others, reply);
                     match result {
                         HandleRequestVoteReplyResult::Ongoing => {}
-                        HandleRequestVoteReplyResult::Won => return true,
-                        HandleRequestVoteReplyResult::Lost => return false
+                        HandleRequestVoteReplyResult::Won => return Ok(true),
+                        HandleRequestVoteReplyResult::Lost => return Ok(false)
                     }
                 }
                 RaftMessage::AppendEntriesRequest(request) => {
                     let step_down = handle_append_entries_request(me, common_state, peers, RaftState::Candidate, request);
                     if step_down {
-                        return false;
+                        return Ok(false);
                     }
                 }
                 RaftMessage::RequestVoteRequest(request) => {
                     let step_down = handle_vote_request(me, common_state, peers, request);
                     if step_down {
-                        return false;
+                        return Ok(false);
                     }
                 }
                 RaftMessage::AppendEntriesClientRequest(request) => {

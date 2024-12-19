@@ -1,4 +1,4 @@
-clippy: cargo clippy -- -W clippy::nursery
+cargo clippy -- -W clippy::nursery
 
 # STEP 1: pretend nothing will break
 - [x] Create an Actum style state machine to describe a node

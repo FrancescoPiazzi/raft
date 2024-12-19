@@ -33,8 +33,8 @@ impl StateMachine<u64, usize> for ExampleStateMachine {
 
 /// example of a client that sends groups of random entries to be replicated
 #[instrument(name = "client" skip(servers, entries, period, timeout))]
-async fn send_entries_to_duplicate<SMin, SMout>(
-    servers: &Vec<Server<SMin, SMout>>,
+async fn send_entries_to_duplicate<SM, SMin, SMout>(
+    servers: &Vec<Server<SM, SMin, SMout>>,
     entries: Set<Vec<SMin>>,
     period: Duration,
     timeout: Duration,

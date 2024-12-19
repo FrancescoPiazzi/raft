@@ -9,15 +9,15 @@ use crate::messages::RaftMessage;
 use crate::server::raft_server;
 use crate::state_machine::StateMachine;
 
-pub struct Server<SMin, SMout> {
+pub struct Server<SM, SMin, SMout> {
     pub server_id: u32,
     pub server_ref: ActorRef<RaftMessage<SMin, SMout>>,
     #[allow(dead_code)] // guard is not used but must remain in scope or the actors are dropped as well
     guard: ActorDropGuard,
-    pub handle: JoinHandle<()>,
+    pub handle: JoinHandle<SM>,
 }
 
-pub fn spawn_raft_servers<SM, SMin, SMout>(n_servers: usize, state_machine: SM) -> Vec<Server<SMin, SMout>>
+pub fn spawn_raft_servers<SM, SMin, SMout>(n_servers: usize, state_machine: SM) -> Vec<Server<SM, SMin, SMout>>
 where
     SM: StateMachine<SMin, SMout> + Send + Clone + 'static,
     SMin: Clone + Send + 'static,
@@ -27,7 +27,7 @@ where
 
     for id in 0..n_servers {
         let state_machine = state_machine.clone();
-        let actor = actum::<RaftMessage<SMin, SMout>, _, _>(move |cell, me| async move {
+        let actor = actum::<RaftMessage<SMin, SMout>, _, _, SM>(move |cell, me| async move {
             let me = (id as u32, me);
             raft_server(
                 cell,
@@ -51,7 +51,7 @@ where
     servers
 }
 
-pub fn send_peer_refs<SMin, SMout>(servers: &[Server<SMin, SMout>])
+pub fn send_peer_refs<SM, SMin, SMout>(servers: &[Server<SM, SMin, SMout>])
 where
     SMin: Send + 'static,
     SMout: Send + 'static,

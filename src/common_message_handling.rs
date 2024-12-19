@@ -55,7 +55,7 @@ where
 /// so it can tell whether to panic or not if we recieve a message from a leader
 /// with the same term as us, which is something that shouldn't happen anyway.
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) enum RaftState {
+pub enum RaftState {
     Follower,
     Candidate,
     Leader,

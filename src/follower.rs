@@ -24,7 +24,7 @@ pub async fn follower_behavior<AB, SM, SMin, SMout>(
     common_state: &mut CommonState<SM, SMin, SMout>,
     election_timeout_range: Range<Duration>,
     message_stash: &mut Vec<RaftMessage<SMin, SMout>>,
-) where
+) -> Result<(), ()> where
     AB: ActorBounds<RaftMessage<SMin, SMout>>,
     SM: StateMachine<SMin, SMout> + Send,
     SMin: Clone + Send + 'static,
@@ -51,16 +51,19 @@ pub async fn follower_behavior<AB, SM, SMin, SMout>(
 
     loop {
         let start_time = Instant::now();
-        let reset_election_timeout;
 
         let Ok(message) = timeout(election_timeout, cell.recv()).await else {
             tracing::debug!("election timeout");
-            return;
+            return Ok(());
         };
-        let message = message.message().expect("raft runs indefinitely");
+        let Some(message) = message.message() else {
+            return Err(());
+        };
 
         tracing::trace!(message = ?message);
 
+        #[allow(clippy::needless_late_init)]    // don't want to wrap the whole match
+        let reset_election_timeout;
         match message {
             RaftMessage::AppendEntriesRequest(request) => {
                 handle_append_entries_request(me, common_state, peers, RaftState::Follower, request);
@@ -83,13 +86,11 @@ pub async fn follower_behavior<AB, SM, SMin, SMout>(
         if reset_election_timeout {
             // we could also reset it to its original value, I just found it easier to reroll
             election_timeout = thread_rng().gen_range(election_timeout_range.clone());
+        } else if let Some(new_remaining_time_to_wait) = election_timeout.checked_sub(start_time.elapsed()) {
+            election_timeout = new_remaining_time_to_wait;
         } else {
-            if let Some(new_remaining_time_to_wait) = election_timeout.checked_sub(start_time.elapsed()) {
-                election_timeout = new_remaining_time_to_wait;
-            } else {
-                tracing::trace!("election timeout");
-                return;
-            }
+            tracing::trace!("election timeout");
+            return Ok(());
         }
     }
 }

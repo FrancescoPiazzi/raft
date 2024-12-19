@@ -26,7 +26,7 @@ pub async fn leader_behavior<AB, SM, SMin, SMout>(
     common_state: &mut CommonState<SM, SMin, SMout>,
     peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin, SMout>>>,
     heartbeat_period: Duration,
-) where
+) -> Result<(), ()> where
     SM: StateMachine<SMin, SMout> + Send,
     AB: ActorBounds<RaftMessage<SMin, SMout>>,
     SMin: Clone + Send + 'static,
@@ -55,7 +55,9 @@ pub async fn leader_behavior<AB, SM, SMin, SMout>(
     loop {
         tokio::select! {
             message = cell.recv() => {
-                let message = message.message().expect("raft runs indefinitely");
+                let Some(message) = message.message() else {
+                    return Err(());
+                };
 
                 if handle_message_as_leader(
                     me,
@@ -66,7 +68,7 @@ pub async fn leader_behavior<AB, SM, SMin, SMout>(
                     &mut committed_entries_smout_buf,
                     message
                 ) {
-                    return;
+                    return Ok(());
                 }
             },
             timed_out_follower_id = follower_timeouts.join_next() => {
@@ -184,7 +186,7 @@ fn handle_append_entries_client_request<SM, SMin, SMout>(
 
     common_state
         .log
-        .append(request.entries_to_replicate.clone(), common_state.current_term);
+        .append(request.entries_to_replicate, common_state.current_term);
 }
 
 #[tracing::instrument(level = "trace", skip_all)]
@@ -239,6 +241,7 @@ fn commit_log_entries_replicated_on_majority<SM, SMin, SMout>(
     SMin: Clone,
 {
     let mut n = common_state.commit_index;
+    #[allow(clippy::int_plus_one)]  // imo it's more clear this way: the next n (n+1), must be in the log's bounds
     while n + 1 <= common_state.log.len()
         && common_state.log.get_term(n + 1) == common_state.current_term
         && majority_of_servers_have_log_entry(peers_state, n as u64 + 1)

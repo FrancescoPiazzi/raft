@@ -21,7 +21,7 @@ pub async fn raft_server<AB, SM, SMin, SMout>(
     election_timeout: Range<Duration>,
     heartbeat_period: Duration,
     replication_period: Duration,
-) -> AB
+) -> (AB, SM)
 where
     AB: ActorBounds<RaftMessage<SMin, SMout>>,
     SM: StateMachine<SMin, SMout> + Send,
@@ -30,13 +30,18 @@ where
 {
     check_parameters(&election_timeout, &heartbeat_period, &replication_period);
 
+    let mut common_state = CommonState::new(state_machine);
     let mut peers = BTreeMap::<u32, ActorRef<RaftMessage<SMin, SMout>>>::new();
     let mut message_stash = Vec::<RaftMessage<SMin, SMout>>::new();
 
     tracing::trace!("obtaining peer references");
 
     while peers.len() < n_peers {
-        match cell.recv().await.message().expect("raft runs indefinitely") {
+        let Some(message) = cell.recv().await.message() else {
+            return (cell, common_state.state_machine);
+        };
+
+        match message {
             RaftMessage::AddPeer(peer) => {
                 tracing::trace!(peer = ?peer);
                 peers.insert(peer.peer_id, peer.peer_ref);
@@ -48,10 +53,8 @@ where
         }
     }
 
-    let mut common_state = CommonState::new(state_machine);
-
     loop {
-        follower_behavior(
+        let follower_result = follower_behavior(
             &mut cell,
             me.0,
             &mut peers,
@@ -62,18 +65,40 @@ where
         .instrument(info_span!("follower"))
         .await;
 
+        if follower_result.is_err() {
+            break;
+        }
+
         tracing::debug!("transition: follower → candidate");
-        let election_won =
+        let candidate_result =
             candidate_behavior(&mut cell, me.0, &mut common_state, &mut peers, election_timeout.clone())
                 .instrument(info_span!("candidate"))
                 .await;
+
+        let election_won;
+        if let Ok(inner) = candidate_result {
+            election_won = inner;
+        } else {
+            break;
+        }
+
         if election_won {
             tracing::debug!("transition: candidate → leader");
-            leader_behavior(&mut cell, me.0, &mut common_state, &mut peers, heartbeat_period)
+            let leader_result = leader_behavior(&mut cell, me.0, &mut common_state, &mut peers, heartbeat_period)
                 .instrument(info_span!("leader👑"))
                 .await;
+
+            if leader_result.is_err() {
+                break;
+            }
+            tracing::debug!("transition: leader → follower");
+        } else {
+            tracing::debug!("transition: candidate → follower");
         }
     }
+
+    tracing::trace!("stopping server");
+    (cell, common_state.state_machine)
 }
 
 fn check_parameters(election_timeout: &Range<Duration>, heartbeat_period: &Duration, replication_period: &Duration) {
@@ -136,7 +161,7 @@ mod tests {
     async fn test_stash() {
         let void_state_machine_1 = VoidStateMachine::new();
         let void_state_machine_2 = void_state_machine_1.clone();
-        let mut actor1 = actum::<RaftMessage<_, _>, _, _>(move |cell, me| async move {
+        let mut actor1 = actum::<RaftMessage<_, _>, _, _, _>(move |cell, me| async move {
             let actor = raft_server(
                 cell,
                 (0, me),
@@ -150,7 +175,7 @@ mod tests {
             actor
         });
 
-        let actor2 = actum::<RaftMessage<_, _>, _, _>(move |cell, me| async move {
+        let actor2 = actum::<RaftMessage<_, _>, _, _, _>(move |cell, me| async move {
             let actor = raft_server(
                 cell,
                 (1, me),
