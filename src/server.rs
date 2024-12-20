@@ -6,10 +6,10 @@ use actum::actor_bounds::ActorBounds;
 use actum::actor_ref::ActorRef;
 use tracing::{info_span, Instrument};
 
-use crate::candidate::candidate_behavior;
+use crate::candidate::{candidate_behavior, CandidateResult};
 use crate::common_state::CommonState;
-use crate::follower::follower_behavior;
-use crate::leader::leader_behavior;
+use crate::follower::{follower_behavior, FollowerResult};
+use crate::leader::{leader_behavior, LeaderResult};
 use crate::messages::*;
 use crate::state_machine::StateMachine;
 
@@ -65,8 +65,9 @@ where
         .instrument(info_span!("follower"))
         .await;
 
-        if follower_result.is_err() {
-            break;
+        match follower_result {
+            FollowerResult::ElectionTimeout => {}
+            FollowerResult::Stopped | FollowerResult::NoMoreSenders => break,
         }
 
         tracing::debug!("transition: follower → candidate");
@@ -75,25 +76,22 @@ where
                 .instrument(info_span!("candidate"))
                 .await;
 
-        let election_won;
-        if let Ok(inner) = candidate_result {
-            election_won = inner;
-        } else {
-            break;
-        }
+        match candidate_result {
+            CandidateResult::ElectionWon => {
+                tracing::debug!("transition: candidate → leader");
+                let leader_result = leader_behavior(&mut cell, me.0, &mut common_state, &mut peers, heartbeat_period)
+                    .instrument(info_span!("leader👑"))
+                    .await;
 
-        if election_won {
-            tracing::debug!("transition: candidate → leader");
-            let leader_result = leader_behavior(&mut cell, me.0, &mut common_state, &mut peers, heartbeat_period)
-                .instrument(info_span!("leader👑"))
-                .await;
-
-            if leader_result.is_err() {
-                break;
+                match leader_result {
+                    LeaderResult::Deposed => tracing::debug!("transition: leader → follower"),
+                    LeaderResult::Stopped | LeaderResult::NoMoreSenders => {
+                        break;
+                    }
+                }
             }
-            tracing::debug!("transition: leader → follower");
-        } else {
-            tracing::debug!("transition: candidate → follower");
+            CandidateResult::ElectionLost => tracing::debug!("transition: candidate → follower"),
+            CandidateResult::Stopped | CandidateResult::NoMoreSenders => break,
         }
     }
 

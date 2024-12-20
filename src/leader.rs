@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, VecDeque};
 use std::time::Duration;
 
-use actum::actor_bounds::ActorBounds;
+use actum::actor_bounds::{ActorBounds, Recv};
 use actum::actor_ref::ActorRef;
 use peer_state::PeerState;
 use tokio::sync::mpsc;
@@ -17,16 +17,22 @@ use crate::types::AppendEntriesClientResponse;
 
 mod peer_state;
 
+#[derive(Debug, Eq, PartialEq)]
+pub enum LeaderResult {
+    Deposed,
+    Stopped,
+    NoMoreSenders,
+}
+
 /// Behavior of the Raft server in leader state.
-///
-/// Returns when a message with a higher term is received, returning the message.
 pub async fn leader_behavior<AB, SM, SMin, SMout>(
     cell: &mut AB,
     me: u32,
     common_state: &mut CommonState<SM, SMin, SMout>,
     peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin, SMout>>>,
     heartbeat_period: Duration,
-) -> Result<(), ()> where
+) -> LeaderResult
+where
     SM: StateMachine<SMin, SMout> + Send,
     AB: ActorBounds<RaftMessage<SMin, SMout>>,
     SMin: Clone + Send + 'static,
@@ -50,25 +56,37 @@ pub async fn leader_behavior<AB, SM, SMin, SMout>(
     let mut committed_entries_smout_buf = Vec::<SMout>::new();
 
     // Tracks the mpsc that we have to answer on per entry
-    let mut client_channel_per_input = VecDeque::<(mpsc::Sender<AppendEntriesClientResponse<SMin, SMout>>, usize)>::new();
+    let mut client_channel_per_input =
+        VecDeque::<(mpsc::Sender<AppendEntriesClientResponse<SMin, SMout>>, usize)>::new();
 
     loop {
         tokio::select! {
             message = cell.recv() => {
-                let Some(message) = message.message() else {
-                    return Err(());
-                };
-
-                if handle_message_as_leader(
-                    me,
-                    common_state,
-                    peers,
-                    &mut peers_state,
-                    &mut client_channel_per_input,
-                    &mut committed_entries_smout_buf,
-                    message
-                ) {
-                    return Ok(());
+                match message {
+                    Recv::Message(message) => {
+                        if handle_message_as_leader(
+                            me,
+                            common_state,
+                            peers,
+                            &mut peers_state,
+                            &mut client_channel_per_input,
+                            &mut committed_entries_smout_buf,
+                            message
+                        ) {
+                            return LeaderResult::Deposed;
+                        }
+                    }
+                    Recv::Stopped(Some(message)) => {
+                        tracing::trace!(unhandled = ?message);
+                        while let Recv::Stopped(Some(message)) = cell.recv().await {
+                            tracing::trace!(unhandled = ?message);
+                        }
+                        return LeaderResult::Stopped;
+                    }
+                    Recv::Stopped(None) => {
+                        return LeaderResult::Stopped;
+                    }
+                    Recv::NoMoreSenders => return LeaderResult::NoMoreSenders,
                 }
             },
             timed_out_follower_id = follower_timeouts.join_next() => {
@@ -142,16 +160,13 @@ where
     match message {
         RaftMessage::AppendEntriesClientRequest(append_entries_client) => {
             handle_append_entries_client_request(common_state, client_channel_per_input, append_entries_client);
+            false
         }
         RaftMessage::AppendEntriesRequest(append_entries_request) => {
-            if handle_append_entries_request(me, common_state, peers, RaftState::Leader, append_entries_request) {
-                return true;
-            }
+            handle_append_entries_request(me, common_state, peers, RaftState::Leader, append_entries_request)
         }
         RaftMessage::RequestVoteRequest(request_vote_rpc) => {
-            if handle_vote_request(me, common_state, peers, request_vote_rpc) {
-                return true;
-            }
+            handle_vote_request(me, common_state, peers, request_vote_rpc)
         }
         RaftMessage::AppendEntriesReply(reply) => {
             handle_append_entries_reply(
@@ -161,14 +176,18 @@ where
                 committed_entries_smout_buf,
                 reply,
             );
+            false
         }
-        RaftMessage::RequestVoteReply(_) => {} // ignore extra votes if we were already elected
+        RaftMessage::RequestVoteReply(reply) => {
+            // ignore extra votes if we were already elected
+            tracing::trace!(extra_vote = ?reply);
+            false
+        }
         _ => {
             tracing::trace!(unhandled = ?message);
+            false
         }
     }
-
-    false
 }
 
 #[tracing::instrument(level = "trace", skip_all)]
@@ -229,7 +248,6 @@ fn handle_append_entries_reply<SM, SMin, SMout>(
     }
 }
 
-
 /// Commits the log entries that have been replicated on the majority of the servers.
 fn commit_log_entries_replicated_on_majority<SM, SMin, SMout>(
     common_state: &mut CommonState<SM, SMin, SMout>,
@@ -241,7 +259,7 @@ fn commit_log_entries_replicated_on_majority<SM, SMin, SMout>(
     SMin: Clone,
 {
     let mut n = common_state.commit_index;
-    #[allow(clippy::int_plus_one)]  // imo it's more clear this way: the next n (n+1), must be in the log's bounds
+    #[allow(clippy::int_plus_one)] // imo it's more clear this way: the next n (n+1), must be in the log's bounds
     while n + 1 <= common_state.log.len()
         && common_state.log.get_term(n + 1) == common_state.current_term
         && majority_of_servers_have_log_entry(peers_state, n as u64 + 1)
