@@ -275,5 +275,100 @@ fn majority_of_servers_have_log_entry(peers_state: &BTreeMap<u32, PeerState>, in
     // TOASK: this could be optimized for large groups of entries being sent together
     // by getting the median match_index instead of checking all of them, worth it?
     let count_including_self = 1 + peers_state.values().filter(|state| state.match_index >= index).count();
-    count_including_self > (peers_state.len() + 1) / 2
+    let n_servers = peers_state.len() + 1;
+    count_including_self >= (n_servers + 1) / 2
+}
+
+
+#[cfg(test)]
+mod tests{
+    use crate::state_machine::VoidStateMachine;
+
+    use super::*;
+
+    #[test]
+    fn test_handle_append_entries_reply() {
+        let n_servers = 5;
+
+        let mut common_state = CommonState::new(VoidStateMachine::new());
+        let mut peers_state = BTreeMap::new();
+        let mut client_channel_per_input = VecDeque::new();
+        let mut committed_entries_smout_buf = Vec::new();
+
+        common_state.log.append(vec![()], 0);
+
+        // we are server 0, so we have peers [1,4]
+        for i in 1..n_servers {
+            peers_state.insert(i, PeerState::new(1));
+        }
+
+        let reply = AppendEntriesReply {
+            from: 1,
+            term: 0,
+            success: true,
+            last_log_index: 1,
+        };
+
+        handle_append_entries_reply(
+            &mut common_state, 
+            &mut peers_state, 
+            &mut client_channel_per_input, 
+            &mut committed_entries_smout_buf, 
+            reply
+        );
+
+        assert_eq!(peers_state.get(&1).unwrap().next_index, 2);
+        assert_eq!(peers_state.get(&1).unwrap().match_index, 1);
+        for _ in 2..n_servers {
+            assert_eq!(peers_state.get(&2).unwrap().next_index, 1);
+            assert_eq!(peers_state.get(&2).unwrap().match_index, 0);
+        }
+        assert_eq!(common_state.commit_index, 0);
+    }
+
+    #[test]
+    fn test_handle_append_entries_reply_commit_entry() {
+        let n_servers = 5;
+
+        let mut common_state = CommonState::new(VoidStateMachine::new());
+        let mut peers_state = BTreeMap::new();
+        let mut client_channel_per_input = VecDeque::new();
+        let mut committed_entries_smout_buf = Vec::new();
+
+        common_state.log.append(vec![()], 0);
+
+        for i in 1..=n_servers {
+            peers_state.insert(i, PeerState::new(1));
+        }
+        let (tx, mut rx) = tokio::sync::mpsc::channel(1);
+        client_channel_per_input.push_back((tx, 1));
+
+        let mut reply = AppendEntriesReply {
+            from: 1,
+            term: 0,
+            success: true,
+            last_log_index: 1,
+        };
+
+        handle_append_entries_reply(
+            &mut common_state, 
+            &mut peers_state, 
+            &mut client_channel_per_input, 
+            &mut committed_entries_smout_buf, 
+            reply.clone()
+        );
+        reply.from = 2;
+        handle_append_entries_reply(
+            &mut common_state, 
+            &mut peers_state, 
+            &mut client_channel_per_input, 
+            &mut committed_entries_smout_buf, 
+            reply
+        );
+
+        assert_eq!(common_state.commit_index, 1);
+
+        let response = rx.try_recv().unwrap();
+        assert!(response.0.is_ok_and(|inner| inner == ()));
+    }
 }
