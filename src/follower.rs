@@ -155,7 +155,7 @@ mod tests {
             from: 0,
             last_log_index: 0,
         };
-        let _ = leader_ref_according_to_follower.try_send(dummy_message.clone().into());
+        let _ = leader_ref_according_to_follower.try_send(dummy_message.into());
         let received_message = leader_rx.try_next();
         assert!(received_message.is_ok() && received_message.unwrap().is_some(), 
             "follower indicated the wrong leader");

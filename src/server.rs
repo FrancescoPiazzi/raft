@@ -142,20 +142,8 @@ mod tests {
     use crate::messages::RaftMessage;
     use crate::server::add_peer::AddPeer;
     use crate::server::raft_server;
-    use crate::state_machine::StateMachine;
+    use crate::state_machine::VoidStateMachine;
 
-    #[derive(Clone)]
-    struct VoidStateMachine;
-
-    impl VoidStateMachine {
-        fn new() -> Self {
-            VoidStateMachine
-        }
-    }
-
-    impl StateMachine<(), ()> for VoidStateMachine {
-        fn apply(&mut self, _: &()) -> () {}
-    }
 
     #[tokio::test]
     async fn test_stash() {
