@@ -122,6 +122,7 @@ where
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
 enum HandleRequestVoteReplyResult {
     Ongoing,
     Won,
@@ -158,10 +159,122 @@ where
     if n_granted_votes_including_self >= peers.len() / 2 + 1 {
         HandleRequestVoteReplyResult::Won
     } else if n_votes_against >= peers.len() / 2 + 1 {
-        // no need to process this message further since it was a RequestVoteReply, so I don't return it
         tracing::trace!("too many votes against, election lost");
         HandleRequestVoteReplyResult::Lost
     } else {
         HandleRequestVoteReplyResult::Ongoing
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state_machine::VoidStateMachine;
+    use futures_channel::mpsc as futures_mpsc;
+
+    
+    #[test]
+    fn test_handle_request_vote_reply_result_unkown() {
+        let n_servers = 5;
+
+        let mut common_state: CommonState<VoidStateMachine, (), ()> = CommonState::new(VoidStateMachine::new());
+        // enter new term so it's more "real", since a candidate will never have term 0
+        let _ = common_state.update_term(1);
+        let mut peers: BTreeMap<u32, ActorRef<RaftMessage<(), ()>>> = BTreeMap::new();
+        for i in 0..n_servers {
+            let (tx, _) = futures_mpsc::channel(1);
+            peers.insert(i, ActorRef::new(tx));
+        }
+        let mut votes_from_others = BTreeMap::<u32, bool>::new();
+        votes_from_others.insert(1, false);
+
+        let reply = RequestVoteReply {
+            from: 2,
+            term: 1,
+            vote_granted: true,
+        };
+        let result = handle_request_vote_reply(&mut common_state, &mut peers, &mut votes_from_others, reply);
+        assert_eq!(result, HandleRequestVoteReplyResult::Ongoing);
+    }
+
+    #[test]
+    fn test_handle_request_vote_reply_result_won() {
+        let n_servers = 5;
+
+        let mut common_state: CommonState<VoidStateMachine, (), ()> = CommonState::new(VoidStateMachine::new());
+        let _ = common_state.update_term(1);
+        let mut peers: BTreeMap<u32, ActorRef<RaftMessage<(), ()>>> = BTreeMap::new();
+        for i in 0..n_servers {
+            let (tx, _) = futures_mpsc::channel(1);
+            peers.insert(i, ActorRef::new(tx));
+        }
+        let mut votes_from_others = BTreeMap::<u32, bool>::new();
+        votes_from_others.insert(1, true);
+
+        let reply = RequestVoteReply {
+            from: 2,
+            term: 1,
+            vote_granted: true,
+        };
+        let result = handle_request_vote_reply(&mut common_state, &mut peers, &mut votes_from_others, reply);
+        assert_eq!(result, HandleRequestVoteReplyResult::Won);
+    }
+
+    #[test]
+    fn test_handle_request_vote_reply_result_lost() {
+        let n_servers = 5;
+
+        let mut common_state: CommonState<VoidStateMachine, (), ()> = CommonState::new(VoidStateMachine::new());
+        let _ = common_state.update_term(1);
+        let mut peers: BTreeMap<u32, ActorRef<RaftMessage<(), ()>>> = BTreeMap::new();
+        for i in 0..n_servers {
+            let (tx, _) = futures_mpsc::channel(1);
+            peers.insert(i, ActorRef::new(tx));
+        }
+        let mut votes_from_others = BTreeMap::<u32, bool>::new();
+        votes_from_others.insert(0, false);
+        votes_from_others.insert(1, false);
+
+        let reply = RequestVoteReply {
+            from: 2,
+            term: 1,
+            vote_granted: false,
+        };
+        let result = handle_request_vote_reply(&mut common_state, &mut peers, &mut votes_from_others, reply);
+        assert_eq!(result, HandleRequestVoteReplyResult::Lost);
+    }
+
+    #[test]
+    fn test_handle_request_vote_reply_discard_vote(){
+        let n_servers = 5;
+
+        let mut common_state: CommonState<VoidStateMachine, (), ()> = CommonState::new(VoidStateMachine::new());
+        let _ = common_state.update_term(1);
+        let mut peers: BTreeMap<u32, ActorRef<RaftMessage<(), ()>>> = BTreeMap::new();
+        for i in 0..n_servers {
+            let (tx, _) = futures_mpsc::channel(1);
+            peers.insert(i, ActorRef::new(tx));
+        }
+        let mut votes_from_others = BTreeMap::<u32, bool>::new();
+        votes_from_others.insert(1, true);
+
+        // repeated vote by the same peer
+        let reply = RequestVoteReply {
+            from: 1,
+            term: 1,
+            vote_granted: true,
+        };
+        let result = handle_request_vote_reply(&mut common_state, &mut peers, &mut votes_from_others, reply);
+        assert_eq!(result, HandleRequestVoteReplyResult::Ongoing);
+
+        // wrong term: TLA: 310
+        let reply = RequestVoteReply {
+            from: 2,
+            term: 2,
+            vote_granted: true,
+        };
+        let result = handle_request_vote_reply(&mut common_state, &mut peers, &mut votes_from_others, reply);
+        assert_eq!(result, HandleRequestVoteReplyResult::Ongoing);
     }
 }
