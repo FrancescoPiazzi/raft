@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, VecDeque};
 use std::time::Duration;
 
-use actum::actor_bounds::ActorBounds;
+use actum::actor_bounds::{ActorBounds, Recv};
 use actum::actor_ref::ActorRef;
 use peer_state::PeerState;
 use tokio::sync::mpsc;
@@ -17,16 +17,21 @@ use crate::types::AppendEntriesClientResponse;
 
 mod peer_state;
 
+#[derive(Debug, Eq, PartialEq)]
+pub enum LeaderResult {
+    Deposed,
+    Stopped,
+    NoMoreSenders,
+}
+
 /// Behavior of the Raft server in leader state.
-///
-/// Returns when a message with a higher term is received, returning the message.
 pub async fn leader_behavior<AB, SM, SMin, SMout>(
     cell: &mut AB,
     me: u32,
     common_state: &mut CommonState<SM, SMin, SMout>,
     peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin, SMout>>>,
     heartbeat_period: Duration,
-) -> Result<(), ()>
+) -> LeaderResult
 where
     SM: StateMachine<SMin, SMout> + Send,
     AB: ActorBounds<RaftMessage<SMin, SMout>>,
@@ -57,20 +62,31 @@ where
     loop {
         tokio::select! {
             message = cell.recv() => {
-                let Some(message) = message.message() else {
-                    return Err(());
-                };
-
-                if handle_message_as_leader(
-                    me,
-                    common_state,
-                    peers,
-                    &mut peers_state,
-                    &mut client_channel_per_input,
-                    &mut committed_entries_smout_buf,
-                    message
-                ) {
-                    return Ok(());
+                match message {
+                    Recv::Message(message) => {
+                        if handle_message_as_leader(
+                            me,
+                            common_state,
+                            peers,
+                            &mut peers_state,
+                            &mut client_channel_per_input,
+                            &mut committed_entries_smout_buf,
+                            message
+                        ) {
+                            return LeaderResult::Deposed;
+                        }
+                    }
+                    Recv::Stopped(Some(message)) => {
+                        tracing::trace!(unhandled = ?message);
+                        while let Recv::Stopped(Some(message)) = cell.recv().await {
+                            tracing::trace!(unhandled = ?message);
+                        }
+                        return LeaderResult::Stopped;
+                    }
+                    Recv::Stopped(None) => {
+                        return LeaderResult::Stopped;
+                    }
+                    Recv::NoMoreSenders => return LeaderResult::NoMoreSenders,
                 }
             },
             timed_out_follower_id = follower_timeouts.join_next() => {
@@ -144,16 +160,13 @@ where
     match message {
         RaftMessage::AppendEntriesClientRequest(append_entries_client) => {
             handle_append_entries_client_request(common_state, client_channel_per_input, append_entries_client);
+            false
         }
         RaftMessage::AppendEntriesRequest(append_entries_request) => {
-            if handle_append_entries_request(me, common_state, peers, RaftState::Leader, append_entries_request) {
-                return true;
-            }
+            handle_append_entries_request(me, common_state, peers, RaftState::Leader, append_entries_request)
         }
         RaftMessage::RequestVoteRequest(request_vote_rpc) => {
-            if handle_vote_request(me, common_state, peers, request_vote_rpc) {
-                return true;
-            }
+            handle_vote_request(me, common_state, peers, request_vote_rpc)
         }
         RaftMessage::AppendEntriesReply(reply) => {
             handle_append_entries_reply(
@@ -163,14 +176,18 @@ where
                 committed_entries_smout_buf,
                 reply,
             );
+            false
         }
-        RaftMessage::RequestVoteReply(_) => {} // ignore extra votes if we were already elected
+        RaftMessage::RequestVoteReply(reply) => {
+            // ignore extra votes if we were already elected
+            tracing::trace!(extra_vote = ?reply);
+            false
+        }
         _ => {
             tracing::trace!(unhandled = ?message);
+            false
         }
     }
-
-    false
 }
 
 #[tracing::instrument(level = "trace", skip_all)]
