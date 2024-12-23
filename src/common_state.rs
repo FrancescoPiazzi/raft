@@ -142,39 +142,30 @@ impl<SM, SMin, SMout> Debug for CommonState<SM, SMin, SMout> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state_machine::StateMachine;
-
-    #[derive(Debug, Clone)]
-    struct TestStateMachine;
-
-    impl StateMachine<u32, u32> for TestStateMachine {
-        fn apply(&mut self, input: &u32) -> u32 {
-            *input
-        }
-    }
+    use crate::state_machine::*;
 
     #[test]
     fn test_commit_log_entries_up_to_commit_index() {
-        let mut common_state = CommonState::new(TestStateMachine);
-        common_state.log.append(vec![1], 1);
-        common_state.log.append(vec![2], 2);
-        common_state.log.append(vec![3], 3);
+        let mut common_state = CommonState::new(VoidStateMachine);
+        common_state.log.append(vec![()], 1);
+        common_state.log.append(vec![()], 2);
+        common_state.log.append(vec![()], 3);
         common_state.commit_index = 2;
 
         let mut newly_committed_entries_buf = Vec::new();
         common_state.commit_log_entries_up_to_commit_index_buf(&mut newly_committed_entries_buf);
 
         assert_eq!(common_state.last_applied, 2);
-        assert_eq!(newly_committed_entries_buf, vec![1, 2]);
+        assert_eq!(newly_committed_entries_buf, vec![(), ()]);
     }
 
     #[test]
     fn test_check_validity() {
-        let mut common_state = CommonState::<_, u32, u32>::new(TestStateMachine);
+        let mut common_state = CommonState::<_, (), ()>::new(VoidStateMachine);
 
-        common_state.log.append(vec![1], 1);
-        common_state.log.append(vec![2], 2);
-        common_state.log.append(vec![3], 3);
+        common_state.log.append(vec![()], 1);
+        common_state.log.append(vec![()], 2);
+        common_state.log.append(vec![()], 3);
         common_state.current_term = 3;
         common_state.commit_index = 2;
         common_state.last_applied = 2;
@@ -185,11 +176,11 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_check_validity_invalid_commit_index() {
-        let mut common_state = CommonState::<_, u32, u32>::new(TestStateMachine);
+        let mut common_state = CommonState::<_, (), ()>::new(VoidStateMachine);
 
-        common_state.log.append(vec![1], 1);
-        common_state.log.append(vec![2], 2);
-        common_state.log.append(vec![3], 3);
+        common_state.log.append(vec![()], 1);
+        common_state.log.append(vec![()], 2);
+        common_state.log.append(vec![()], 3);
         common_state.current_term = 3;
         common_state.commit_index = 4;
         common_state.last_applied = 2;
@@ -200,11 +191,11 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_check_validity_invalid_last_applied() {
-        let mut common_state = CommonState::<_, u32, u32>::new(TestStateMachine);
+        let mut common_state = CommonState::<_, (), ()>::new(VoidStateMachine);
 
-        common_state.log.append(vec![1], 1);
-        common_state.log.append(vec![2], 2);
-        common_state.log.append(vec![3], 3);
+        common_state.log.append(vec![()], 1);
+        common_state.log.append(vec![()], 2);
+        common_state.log.append(vec![()], 3);
         common_state.current_term = 3;
         common_state.commit_index = 2;
         common_state.last_applied = 3;
@@ -215,11 +206,11 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_check_validity_invalid_log_terms() {
-        let mut common_state = CommonState::<_, u32, u32>::new(TestStateMachine);
+        let mut common_state = CommonState::<_, (), ()>::new(VoidStateMachine);
 
-        common_state.log.append(vec![1], 1);
-        common_state.log.append(vec![3], 2);
-        common_state.log.append(vec![2], 1);
+        common_state.log.append(vec![()], 1);
+        common_state.log.append(vec![()], 2);
+        common_state.log.append(vec![()], 1);
         common_state.current_term = 3;
         common_state.commit_index = 2;
         common_state.last_applied = 2;
