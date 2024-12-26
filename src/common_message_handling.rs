@@ -26,6 +26,26 @@ where
 {
     let step_down = common_state.update_term(request.term);
 
+    // set a negative reply by default, we will update it if we can grant the vote
+    let mut reply = RequestVoteReply {
+        from: me,
+        term: common_state.current_term,
+        vote_granted: false,
+    };
+
+    if request.term < common_state.current_term {
+        tracing::trace!(
+            "request term = {} < current term = {}: ignoring",
+            request.term,
+            common_state.current_term
+        );
+
+        if let Some(sender_ref) = peers.get_mut(&request.candidate_id) {
+            let _ = sender_ref.try_send(reply.into());
+        }
+        return step_down;
+    }
+
     let vote_granted = common_state.can_grant_vote(&request);
 
     tracing::trace!("vote granted: {} for id: {}", vote_granted, request.candidate_id);
@@ -34,25 +54,18 @@ where
         if vote_granted {
             common_state.voted_for = Some(request.candidate_id);
         }
-        let reply = RequestVoteReply {
-            from: me,
-            term: common_state.current_term,
-            vote_granted,
-        };
+        reply.vote_granted = vote_granted;
         let _ = candidate_ref.try_send(reply.into());
     } else {
         tracing::error!("peer {} not found", request.candidate_id);
     }
 
-    // TLA, L346
-    assert_eq!(common_state.current_term, request.term);
-
     step_down
 }
 
-/// This enum is used ONLY for the functions calling handle_append_entries_request
-/// so it can tell whether to panic or not if we recieve a message from a leader
-/// with the same term as us, which is something that shouldn't happen anyway.
+/// This enum is used ONLY for MINOR differences in the behaviour of the server depending on its state,
+/// such as whether to panic or not when we recieve an append entry with the same term as ours as the leader.
+/// Which is not something that should hapen anyway
 #[derive(Debug, PartialEq, Eq)]
 pub enum RaftState {
     Follower,
@@ -78,6 +91,11 @@ where
 {
     let mut step_down = false;
 
+    if common_state.update_term(request.term) {
+        tracing::trace!("new term: {}, new leader: {}", request.term, request.leader_id);
+        step_down = true;
+    }
+
     // set a negative reply by default, we will update it if we can append the entries
     let mut reply = AppendEntriesReply {
         from: me,
@@ -85,11 +103,6 @@ where
         success: false,
         last_log_index: common_state.log.len() as u64,
     };
-
-    if common_state.update_term(request.term) {
-        tracing::trace!("new term: {}, new leader: {}", request.term, request.leader_id);
-        step_down = true;
-    }
 
     if request.term < common_state.current_term {
         tracing::trace!(
@@ -121,10 +134,10 @@ where
         }
     }
 
-    // update this here and not in update_term, as the update_term in handle_vote_request
+    // update this here and not in update_term, as the update_term in handle_vote_request()
     // might have already updated the term, causing the update_term here to never return true
-    // leaving us with the correct term, but no leader_id, we also can't set the leader_id in update_term
-    // as we can't know whether the candidate that sent the request with the higher vote will win the election
+    // leaving us with the correct term, but no leader_id. We also can't set the leader_id in update_term itself
+    // as we can't know whether the candidate that sent the request will win the election
     common_state.leader_id = Some(request.leader_id);
 
     if request.prev_log_index > common_state.log.len() as u64 {
@@ -163,4 +176,61 @@ where
     assert_eq!(common_state.current_term, request.term);
 
     step_down
+}
+
+
+#[cfg(test)]
+mod tests{
+    use assert_matches::assert_matches;
+
+    use super::*;
+    use crate::state_machine::VoidStateMachine;
+
+    #[test]
+    fn grant_vote_and_step_down(){
+        let mut common_state: CommonState<VoidStateMachine, (), ()> = CommonState::new(VoidStateMachine::new());
+        let mut peers = BTreeMap::new();
+
+        let mut candidate_channel = futures_channel::mpsc::channel(10);
+        peers.insert(2, ActorRef::new(candidate_channel.0.clone()));
+
+        let request = RequestVoteRequest {
+            term: 1,
+            candidate_id: 2,
+            last_log_index: 1,
+            last_log_term: 1,
+        };
+
+        let step_down = handle_vote_request(1, &mut common_state, &mut peers, request.clone());
+        assert_eq!(step_down, true);
+
+        let vote = candidate_channel.1.try_next().unwrap().unwrap();
+        assert_matches!(vote, RaftMessage::RequestVoteReply(inner) if (
+            inner.vote_granted == true && inner.term == 1 && inner.from == 1));
+    }
+
+    #[test]
+    fn reject_vote_term_too_low(){
+        let mut common_state: CommonState<VoidStateMachine, (), ()> = CommonState::new(VoidStateMachine::new());
+        common_state.current_term = 2;
+        let mut peers = BTreeMap::new();
+
+        let mut candidate_channel = futures_channel::mpsc::channel(10);
+        peers.insert(2, ActorRef::new(candidate_channel.0.clone()));
+
+        let request = RequestVoteRequest {
+            term: 1,
+            candidate_id: 2,
+            last_log_index: 1,
+            last_log_term: 1,
+        };
+
+        let step_down = handle_vote_request(1, &mut common_state, &mut peers, request.clone());
+        assert_eq!(step_down, false);
+
+        let vote = candidate_channel.1.try_next().unwrap().unwrap();
+        assert_matches!(vote, RaftMessage::RequestVoteReply(inner) if (
+            inner.vote_granted == false && inner.term == 2 && inner.from == 1));
+    }
+
 }
