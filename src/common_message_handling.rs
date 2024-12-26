@@ -233,4 +233,28 @@ mod tests{
             inner.vote_granted == false && inner.term == 2 && inner.from == 1));
     }
 
+    #[test]
+    fn reject_vote_already_voted(){
+        let mut common_state: CommonState<VoidStateMachine, (), ()> = CommonState::new(VoidStateMachine::new());
+        common_state.current_term = 1; // needed or voted_for will be reset because of the term of the message
+        common_state.voted_for = Some(1);
+        let mut peers = BTreeMap::new();
+
+        let mut candidate_channel = futures_channel::mpsc::channel(10);
+        peers.insert(2, ActorRef::new(candidate_channel.0.clone()));
+
+        let request = RequestVoteRequest {
+            term: 1,
+            candidate_id: 2,
+            last_log_index: 1,
+            last_log_term: 1,
+        };
+
+        let step_down = handle_vote_request(1, &mut common_state, &mut peers, request.clone());
+        assert_eq!(step_down, false);
+
+        let vote = candidate_channel.1.try_next().unwrap().unwrap();
+        assert_matches!(vote, RaftMessage::RequestVoteReply(inner) if (
+            inner.vote_granted == false && inner.term == 1 && inner.from == 1));
+    }
 }
