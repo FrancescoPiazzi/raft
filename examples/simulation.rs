@@ -98,7 +98,7 @@ async fn send_entries_to_duplicate<SM, SMin, SMout>(
 async fn main() {
     tracing_subscriber::fmt()
         .with_span_events(
-            tracing_subscriber::fmt::format::FmtSpan::NONE, // tracing_subscriber::fmt::format::FmtSpan::NEW | tracing_subscriber::fmt::format::FmtSpan::CLOSE,
+            tracing_subscriber::fmt::format::FmtSpan::NONE,
         )
         .with_target(false)
         .with_line_number(false)

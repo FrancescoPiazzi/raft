@@ -183,6 +183,12 @@ where
             tracing::trace!(extra_vote = ?reply);
             false
         }
+        RaftMessage::PollState(request) => {
+            let _ = request.reply_to.try_send(poll_state::PollStateResponse {
+                state: poll_state::ServerStateOnlyForTesting::Leader,
+            });
+            false
+        }
         _ => {
             tracing::trace!(unhandled = ?message);
             false

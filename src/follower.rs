@@ -14,6 +14,7 @@ use actum::actor_ref::ActorRef;
 use rand::{thread_rng, Rng};
 use tokio::time::{timeout, Instant};
 
+
 #[derive(Debug, Eq, PartialEq)]
 pub enum FollowerResult {
     ElectionTimeout,
@@ -49,6 +50,11 @@ where
             RaftMessage::AppendEntriesClientRequest(request) => {
                 handle_append_entries_client_request(peers, common_state.leader_id.as_ref(), request);
             }
+            RaftMessage::PollState(request) => {
+                let _ = request.reply_to.try_send(poll_state::PollStateResponse {
+                    state: poll_state::ServerStateOnlyForTesting::Follower,
+                });
+            }
             other => {
                 tracing::trace!(unhandled = ?other);
             }
@@ -79,6 +85,11 @@ where
                             tracing::trace!("election timeout");
                             return FollowerResult::ElectionTimeout;
                         }
+                    }
+                    RaftMessage::PollState(request) => {
+                        let _ = request.reply_to.try_send(poll_state::PollStateResponse {
+                            state: poll_state::ServerStateOnlyForTesting::Follower,
+                        });
                     }
                     other => {
                         tracing::trace!(unhandled = ?other);

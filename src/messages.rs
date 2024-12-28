@@ -2,6 +2,7 @@ pub mod add_peer;
 pub mod append_entries;
 pub mod append_entries_client;
 pub mod request_vote;
+pub mod poll_state;
 
 use std::fmt::{self, Debug, Formatter};
 
@@ -10,6 +11,8 @@ use crate::messages::append_entries::{AppendEntriesReply, AppendEntriesRequest};
 use crate::messages::append_entries_client::AppendEntriesClientRequest;
 use crate::messages::request_vote::{RequestVoteReply, RequestVoteRequest};
 
+use crate::messages::poll_state::PollStateRequest;
+
 pub enum RaftMessage<SMin, SMout> {
     AddPeer(AddPeer<SMin, SMout>),
     AppendEntriesRequest(AppendEntriesRequest<SMin>),
@@ -17,6 +20,8 @@ pub enum RaftMessage<SMin, SMout> {
     RequestVoteRequest(RequestVoteRequest),
     RequestVoteReply(RequestVoteReply),
     AppendEntriesClientRequest(AppendEntriesClientRequest<SMin, SMout>),
+    
+    PollState(PollStateRequest),
 }
 
 impl<SMin, SMout> Debug for RaftMessage<SMin, SMout> {
@@ -28,6 +33,8 @@ impl<SMin, SMout> Debug for RaftMessage<SMin, SMout> {
             Self::RequestVoteRequest(_) => "Request vote request".fmt(f),
             Self::RequestVoteReply(_) => "Request vote reply".fmt(f),
             Self::AppendEntriesClientRequest(_) => "Append entries client request".fmt(f),
+
+            Self::PollState(_) => "Poll state".fmt(f),
         }
     }
 }
@@ -65,5 +72,12 @@ impl<SMin, SMout> From<RequestVoteReply> for RaftMessage<SMin, SMout> {
 impl<SMin, SMout> From<AppendEntriesClientRequest<SMin, SMout>> for RaftMessage<SMin, SMout> {
     fn from(value: AppendEntriesClientRequest<SMin, SMout>) -> Self {
         Self::AppendEntriesClientRequest(value)
+    }
+}
+
+// TODO: generics here
+impl From<PollStateRequest> for RaftMessage<u64, usize> {
+    fn from(value: PollStateRequest) -> Self {
+        Self::PollState(value)
     }
 }
