@@ -341,6 +341,8 @@ mod tests{
             assert_eq!(peers_state.get(&2).unwrap().match_index, 0);
         }
         assert_eq!(common_state.commit_index, 0);
+
+        common_state.check_validity();
     }
 
     #[test]
@@ -387,5 +389,7 @@ mod tests{
 
         let response = rx.try_recv().unwrap();
         assert!(response.0.is_ok_and(|inner| inner == ()));
+
+        common_state.check_validity();
     }
 }

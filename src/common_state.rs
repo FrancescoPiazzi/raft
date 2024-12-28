@@ -97,20 +97,22 @@ impl<SM, SMin, SMout> CommonState<SM, SMin, SMout> {
             panic!("last applied is greater than commit index");
         }
 
-        for i in 1..=self.log.len() - 1 {
-            if self.log.get_term(i) > self.log.get_term(i + 1) {
-                panic!(
-                    "log term [{}] = {} is greater than term at [{}] = {}, \
-                    log terms should increase monotonically",
-                    i,
-                    self.log.get_term(i),
-                    i + 1,
-                    self.log.get_term(i + 1)
-                );
+        if self.log.len() > 0{
+            for i in 1..=self.log.len() - 1 {
+                if self.log.get_term(i) > self.log.get_term(i + 1) {
+                    panic!(
+                        "log term [{}] = {} is greater than term at [{}] = {}, \
+                        log terms should increase monotonically",
+                        i,
+                        self.log.get_term(i),
+                        i + 1,
+                        self.log.get_term(i + 1)
+                    );
+                }
             }
         }
 
-        if self.current_term < self.log.get_term(self.commit_index) {
+        if self.commit_index > 0 && self.current_term < self.log.get_term(self.commit_index) {
             panic!(
                 "current term ({}) is less than term at commit index ({})",
                 self.current_term,
@@ -150,6 +152,7 @@ mod tests {
         common_state.log.append(vec![()], 1);
         common_state.log.append(vec![()], 2);
         common_state.log.append(vec![()], 3);
+        common_state.current_term = 3;
         common_state.commit_index = 2;
 
         let mut newly_committed_entries_buf = Vec::new();
@@ -157,6 +160,8 @@ mod tests {
 
         assert_eq!(common_state.last_applied, 2);
         assert_eq!(newly_committed_entries_buf, vec![(), ()]);
+
+        common_state.check_validity();
     }
 
     #[test]

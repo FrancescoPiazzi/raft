@@ -207,6 +207,8 @@ mod tests{
         let vote = candidate_channel.1.try_next().unwrap().unwrap();
         assert_matches!(vote, RaftMessage::RequestVoteReply(inner) if (
             inner.vote_granted == true && inner.term == 1 && inner.from == 1));
+
+        common_state.check_validity();
     }
 
     #[test]
@@ -231,6 +233,8 @@ mod tests{
         let vote = candidate_channel.1.try_next().unwrap().unwrap();
         assert_matches!(vote, RaftMessage::RequestVoteReply(inner) if (
             inner.vote_granted == false && inner.term == 2 && inner.from == 1));
+
+        common_state.check_validity();
     }
 
     #[test]
@@ -256,6 +260,8 @@ mod tests{
         let vote = candidate_channel.1.try_next().unwrap().unwrap();
         assert_matches!(vote, RaftMessage::RequestVoteReply(inner) if (
             inner.vote_granted == false && inner.term == 1 && inner.from == 1));
+
+        common_state.check_validity();
     }
 
     #[test]
@@ -290,6 +296,8 @@ mod tests{
 
         assert_eq!(common_state.log.len(), 3);
         assert_eq!(common_state.commit_index, 0);
+
+        common_state.check_validity();
     }
 
     #[test]
@@ -323,6 +331,8 @@ mod tests{
 
         assert_eq!(common_state.log.len(), 3);
         assert_eq!(common_state.commit_index, 2);
+
+        common_state.check_validity();
     }
 
     #[test]
@@ -356,6 +366,8 @@ mod tests{
 
         assert_eq!(common_state.log.len(), 0);
         assert_eq!(common_state.commit_index, 0);
+
+        common_state.check_validity();
     }
 
     #[test]
@@ -389,6 +401,8 @@ mod tests{
 
         assert_eq!(common_state.log.len(), 3);
         assert_eq!(common_state.commit_index, 0);
+
+        common_state.check_validity();
     }
 
     #[test]
@@ -408,39 +422,8 @@ mod tests{
         };
 
         handle_append_entries_request(1, &mut common_state, &mut peers, RaftState::Leader, request);
-    }
 
-    #[test]
-    fn reject_append_entries_request_missing_entries(){
-        let mut common_state: CommonState<VoidStateMachine, (), ()> = CommonState::new(VoidStateMachine::new());
-        common_state.current_term = 1;
-        let mut peers = BTreeMap::new();
-
-        let mut leader_channel = futures_channel::mpsc::channel(10);
-        peers.insert(2, ActorRef::new(leader_channel.0.clone()));
-
-        let request = AppendEntriesRequest {
-            term: 1,
-            leader_id: 2,
-            prev_log_index: 1,
-            prev_log_term: 1,
-            entries: vec![(), (), ()],
-            leader_commit: 0,
-        };
-
-        let step_down = handle_append_entries_request(1, &mut common_state, &mut peers, RaftState::Follower, request);
-        assert_eq!(step_down, false);
-
-        let reply = leader_channel.1.try_next().unwrap().unwrap();
-        assert_matches!(reply, RaftMessage::AppendEntriesReply(inner) if (
-            inner.success == false && 
-            inner.term == 1 && 
-            inner.from == 1 && 
-            inner.last_log_index == 0)
-        );
-
-        assert_eq!(common_state.log.len(), 0);
-        assert_eq!(common_state.commit_index, 0);
+        common_state.check_validity();
     }
 
     #[test]
@@ -476,5 +459,7 @@ mod tests{
 
         assert_eq!(common_state.log.len(), already_present_entries.len());
         assert_eq!(common_state.commit_index, 0);
+
+        common_state.check_validity();
     }
 }

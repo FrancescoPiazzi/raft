@@ -219,6 +219,8 @@ mod tests {
         };
         let result = handle_request_vote_reply(&mut common_state, &mut peers, &mut votes_from_others, reply);
         assert_eq!(result, HandleRequestVoteReplyResult::Ongoing);
+
+        common_state.check_validity();
     }
 
     #[test]
@@ -242,6 +244,8 @@ mod tests {
         };
         let result = handle_request_vote_reply(&mut common_state, &mut peers, &mut votes_from_others, reply);
         assert_eq!(result, HandleRequestVoteReplyResult::Won);
+
+        common_state.check_validity();
     }
 
     #[test]
@@ -266,6 +270,8 @@ mod tests {
         };
         let result = handle_request_vote_reply(&mut common_state, &mut peers, &mut votes_from_others, reply);
         assert_eq!(result, HandleRequestVoteReplyResult::Lost);
+
+        common_state.check_validity();
     }
 
     #[test]
@@ -299,5 +305,7 @@ mod tests {
         };
         let result = handle_request_vote_reply(&mut common_state, &mut peers, &mut votes_from_others, reply);
         assert_eq!(result, HandleRequestVoteReplyResult::Ongoing);
+
+        common_state.check_validity();
     }
 }
