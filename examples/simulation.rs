@@ -23,7 +23,7 @@ impl ExampleStateMachine {
 }
 
 // reminder: the apply method MUST be idempotent, meaning that
-// calling it with the same input more than once must not have any effect
+// calling it with the same input more than once must not have any effect after the first call
 impl StateMachine<u64, usize> for ExampleStateMachine {
     fn apply(&mut self, entry: &u64) -> usize {
         self.set.insert(*entry);
@@ -32,6 +32,8 @@ impl StateMachine<u64, usize> for ExampleStateMachine {
 }
 
 /// example of a client that sends groups of random entries to be replicated
+/// awaits for the confirmation of each entry, and when a group is done it sends another one
+/// also handles negative responses (e.g. the server is not the leader but knows who the leader is)
 #[instrument(name = "client" skip(servers, entries, period, timeout))]
 async fn send_entries_to_duplicate<SM, SMin, SMout>(
     servers: &Vec<Server<SM, SMin, SMout>>,
@@ -51,6 +53,7 @@ async fn send_entries_to_duplicate<SM, SMin, SMout>(
     'client: loop {
         tracing::debug!("Sending entries to replicate");
 
+        // channel to recieve the result of the replication
         let (tx, mut rx) = mpsc::channel::<AppendEntriesClientResponse<SMin, SMout>>(10);
 
         let request = AppendEntriesClientRequest {
@@ -78,7 +81,7 @@ async fn send_entries_to_duplicate<SM, SMin, SMout>(
                 Ok(Some(AppendEntriesClientResponse(Err(None)))) | Err(_) => {
                     tracing::debug!(
                         "Interrogated server does not know who the leader is or it did not answer, \
-                        switching to another random node"
+                        switching to another random node in a second"
                     );
                     leader = servers.iter().choose(&mut rng).unwrap().server_ref.clone();
                     sleep(Duration::from_millis(1000)).await;
@@ -108,7 +111,9 @@ async fn main() {
     let servers = spawn_raft_servers(5, ExampleStateMachine::new());
     send_peer_refs(&servers);
 
-    tokio::time::sleep(Duration::from_millis(2000)).await; // give the servers a moment to elect a leader
+    // give the servers a moment to elect a leader 
+    // (not mandatory, but we won't get a useful answer if a leader is not elected yet)
+    tokio::time::sleep(Duration::from_millis(2000)).await;
 
     send_entries_to_duplicate(
         &servers,
