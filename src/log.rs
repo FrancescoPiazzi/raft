@@ -63,7 +63,7 @@ impl<SMin> IndexMut<usize> for Log<SMin> {
 impl<SMin> Log<SMin> {
     pub const fn new() -> Self {
         Self {
-            log: Vec::new(),
+            log: Vec::new(),    // TLA: 153
             terms: Vec::new(),
         }
     }

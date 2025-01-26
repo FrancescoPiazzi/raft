@@ -40,7 +40,13 @@ where
 {
     let mut peers_state = BTreeMap::new();
     for (id, _) in peers.iter_mut() {
-        peers_state.insert(*id, PeerState::new((common_state.log.len() + 1) as u64));
+        // TLA: 233-234 would want initial_next_index to be log.len()+1, however I think that in my version this might
+        // create an inconsistent log in the following scenario: log(A) = [a, b, c], log(B) = [a, b, d], both have 
+        // commit_index = 2, A becomes the leader, recieves a replication request with x, the logs become 
+        // [a, b, c, x] and [a, b, d, x], if the majority recieves this new update, x is committed, along with the
+        // inconsistent c/d at position 3, I think logcabin has checks to prevent this, since I don't
+        // I just play it safer and use commit index instead of log length, they will be the same most of the time
+        peers_state.insert(*id, PeerState::new((common_state.commit_index + 1) as u64));
     }
 
     let mut follower_timeouts = JoinSet::new();
@@ -121,13 +127,15 @@ fn send_append_entries_request<SM, SMin, SMout>(
 {
     let entries_to_send = common_state.log[next_index as usize..].to_vec();
 
-    let prev_log_index = next_index - 1;
+    let prev_log_index = next_index - 1;    // TLA: 207
+    // TLA: 208-211
     let prev_log_term = if prev_log_index == 0 {
         0
     } else {
         common_state.log.get_term(prev_log_index as usize)
     };
 
+    // TLA: 215-225 (mcommitIndex   |-> Min({commitIndex[i], lastEntry}) is done when commit_index is updated)
     let request = AppendEntriesRequest::<SMin> {
         term: common_state.current_term,
         leader_id: me,
@@ -196,6 +204,9 @@ where
     }
 }
 
+// TLA: 245-253 (add it to your log and that's it) (logcabin and other implementations immediately send 
+// the new entry to the followers to reduce latency, but it's not necessary for correctness,
+// it will be sent to all followers when their respective timeouts trigger)
 #[tracing::instrument(level = "trace", skip_all)]
 fn handle_append_entries_client_request<SM, SMin, SMout>(
     common_state: &mut CommonState<SM, SMin, SMout>,
@@ -264,6 +275,7 @@ fn commit_log_entries_replicated_on_majority<SM, SMin, SMout>(
     SM: StateMachine<SMin, SMout> + Send,
     SMin: Clone,
 {
+    // TLA: 259-276, the implementation is different from how the TLA describes it, but it should be equivalent
     let mut n = common_state.commit_index;
     #[allow(clippy::int_plus_one)] // imo it's more clear this way: the next n (n+1), must be in the log's bounds
     while n + 1 <= common_state.log.len()

@@ -49,9 +49,9 @@ where
     loop {
         tracing::debug!("starting a new election");
 
-        common_state.current_term += 1;
+        common_state.current_term += 1; // TLA: 180
 
-        votes_from_others.clear();
+        votes_from_others.clear();  // TLA: 184-185
 
         let mut remaining_time_to_wait = thread_rng().gen_range(election_timeout.clone());
         let last_applied = common_state.last_applied;
@@ -178,8 +178,8 @@ where
     let n_granted_votes_including_self = votes_from_others.values().filter(|granted| **granted).count() + 1;
     let n_votes_against = votes_from_others.values().filter(|granted| !**granted).count();
 
-    #[allow(clippy::int_plus_one)]
-    if n_granted_votes_including_self >= peers.len() / 2 + 1 {
+    // TLA: 99
+    if n_granted_votes_including_self > (peers.len() + 1) / 2 {
         HandleRequestVoteReplyResult::Won
     } else if n_votes_against >= peers.len() / 2 + 1 {
         tracing::trace!("too many votes against, election lost");
@@ -223,6 +223,7 @@ mod tests {
         common_state.check_validity();
     }
 
+    // TLA: 99
     #[test]
     fn test_handle_request_vote_reply_result_won() {
         let n_servers = 5;
@@ -277,9 +278,10 @@ mod tests {
     #[test]
     fn test_handle_request_vote_reply_discard_vote(){
         let n_servers = 5;
+        let server_term = 1;
 
         let mut common_state: CommonState<VoidStateMachine, (), ()> = CommonState::new(VoidStateMachine::new());
-        let _ = common_state.update_term(1);
+        let _ = common_state.update_term(server_term);
         let mut peers: BTreeMap<u32, ActorRef<RaftMessage<(), ()>>> = BTreeMap::new();
         for i in 0..n_servers {
             let (tx, _) = futures_mpsc::channel(1);
@@ -291,16 +293,17 @@ mod tests {
         // repeated vote by the same peer
         let reply = RequestVoteReply {
             from: 1,
-            term: 1,
+            term: server_term,
             vote_granted: true,
         };
         let result = handle_request_vote_reply(&mut common_state, &mut peers, &mut votes_from_others, reply);
         assert_eq!(result, HandleRequestVoteReplyResult::Ongoing);
 
-        // wrong term: TLA: 310
+        // wrong term: TLA: 310 this should never happen anyway, as any request with a higher term 
+        // should trigger an update term as per TLA: 406, and requests with a lower term are ignored as per TLA: 415
         let reply = RequestVoteReply {
             from: 2,
-            term: 2,
+            term: server_term+1,
             vote_granted: true,
         };
         let result = handle_request_vote_reply(&mut common_state, &mut peers, &mut votes_from_others, reply);

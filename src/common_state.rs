@@ -21,11 +21,12 @@ pub struct CommonState<SM, SMin, SMout> {
 impl<SM, SMin, SMout> CommonState<SM, SMin, SMout> {
     pub const fn new(state_machine: SM) -> Self {
         Self {
+            // TLA: 143 would want this to be 1, but I don't see a problem with it being 0
             current_term: 0,
             leader_id: None,
             log: Log::new(),
             state_machine,
-            commit_index: 0,
+            commit_index: 0,    // TLA: 154
             last_applied: 0,
             voted_for: None,
             _phantom: PhantomData,

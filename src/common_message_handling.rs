@@ -65,7 +65,8 @@ where
 
 /// This enum is used ONLY for MINOR differences in the behaviour of the server depending on its state,
 /// such as whether to panic or not when we recieve an append entry with the same term as ours as the leader.
-/// Which is not something that should hapen anyway
+/// Which is not something that should hapen anyway. The state of the server is determined 
+/// by the function it is executing, not by a variable.
 #[derive(Debug, PartialEq, Eq)]
 pub enum RaftState {
     Follower,
@@ -89,12 +90,12 @@ where
     SMin: Clone + Send + 'static,
     SMout: Send + 'static,
 {
-    let mut step_down = false;
-
-    if common_state.update_term(request.term) {
+    let step_down = if common_state.update_term(request.term) {
         tracing::trace!("new term: {}, new leader: {}", request.term, request.leader_id);
-        step_down = true;
-    }
+        true
+    } else {
+        false
+    };
 
     // set a negative reply by default, we will update it if we can append the entries
     let mut reply = AppendEntriesReply {
