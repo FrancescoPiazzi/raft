@@ -2,10 +2,10 @@ use std::collections::HashSet as Set;
 use std::fmt::Debug;
 use std::time::Duration;
 
-use raft::messages::append_entries_client::AppendEntriesClientRequest;
-use raft::state_machine::StateMachine;
-use raft::types::AppendEntriesClientResponse;
-use raft::util::{send_peer_refs, spawn_raft_servers, Server};
+use oxidized_float::messages::append_entries_client::AppendEntriesClientRequest;
+use oxidized_float::state_machine::StateMachine;
+use oxidized_float::types::AppendEntriesClientResponse;
+use oxidized_float::util::{send_peer_refs, spawn_raft_servers, Server};
 use rand::seq::IteratorRandom;
 use tokio::sync::mpsc;
 use tokio::time::sleep;

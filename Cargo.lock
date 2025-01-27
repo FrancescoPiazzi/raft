@@ -300,6 +300,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b15813163c1d831bf4a13c3610c05c0d03b39feb07f7e09fa234dac9b15aaf39"
 
 [[package]]
+name = "oxidized_float"
+version = "0.1.0"
+dependencies = [
+ "actum",
+ "assert_matches",
+ "either",
+ "futures",
+ "futures-channel",
+ "rand",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "parking_lot"
 version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -359,21 +374,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b5b9d34b8991d19d98081b46eacdd8eb58c6f2b201139f7c5f643cc155a633af"
 dependencies = [
  "proc-macro2",
-]
-
-[[package]]
-name = "raft"
-version = "0.1.0"
-dependencies = [
- "actum",
- "assert_matches",
- "either",
- "futures",
- "futures-channel",
- "rand",
- "tokio",
- "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]
