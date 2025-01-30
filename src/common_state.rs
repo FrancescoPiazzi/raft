@@ -68,6 +68,7 @@ impl<SM, SMin, SMout> CommonState<SM, SMin, SMout> {
         self.last_applied = self.commit_index;
     }
 
+    // TLA: 407
     /// If the new term is greater than the current term, enters a new term by updating the current term
     /// to the new term and resetting the id of the candidate for which the vote is granted in the new term.
     ///
@@ -85,6 +86,8 @@ impl<SM, SMin, SMout> CommonState<SM, SMin, SMout> {
     }
 
     /// Returns true if the server can vote for the candidate with the given id, false otherwise.
+    // TLA: 288-290, except for "m.mterm = currentTerm[i]", which doesn't make any sense to me,
+    // under normal operation the term of the candidate is one grater than mine.
     pub fn can_grant_vote(&self, request: &RequestVoteRequest) -> bool {
         self.log.is_log_ok(request)
             && (self.voted_for.is_none() || self.voted_for.is_some_and(|id| id == request.candidate_id))

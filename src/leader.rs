@@ -236,6 +236,15 @@ fn handle_append_entries_reply<SM, SMin, SMout>(
     SM: StateMachine<SMin, SMout> + Send,
     SMin: Clone,
 {
+    if common_state.update_term(reply.term) {
+        panic!("Recieved an append entries reply with a term higher than mine, this should not happen");
+    }
+
+    // TLA: 394 (also TLA: 435, since it ignores requests with stale terms)
+    if reply.term != common_state.current_term {
+        return;
+    }
+
     let Some(peer_state) = peers_state.get_mut(&reply.from) else {
         tracing::error!("Couldn't get the state of peer {}", reply.from);
         return;
@@ -244,6 +253,8 @@ fn handle_append_entries_reply<SM, SMin, SMout>(
     let peer_match_idx = &mut peer_state.match_index;
 
     if reply.success {
+        // TLA: 386-397 uses a field called mmatchIndex in the match, which is not in the paper
+        // and I can't figure out what logcabin does, this should be right tough
         *peer_match_idx = reply.last_log_index;
         *peer_next_idx = *peer_match_idx + 1;
 
@@ -261,7 +272,9 @@ fn handle_append_entries_reply<SM, SMin, SMout>(
             committed_entries_smout_buf,
         );
     } else {
-        *peer_next_idx -= 1;
+        // TLA: 400 optimization: instead of decreasing by 1, have the follower send the index it is at
+        // so we don't have to guess
+        *peer_next_idx = reply.last_log_index + 1;
     }
 }
 
@@ -277,6 +290,8 @@ fn commit_log_entries_replicated_on_majority<SM, SMin, SMout>(
 {
     // TLA: 259-276, the implementation is different from how the TLA describes it, but it should be equivalent
     let mut n = common_state.commit_index;
+    // this could be optimized for large groups of entries being sent together
+    // by getting the median match_index instead of checking all of them
     #[allow(clippy::int_plus_one)] // imo it's more clear this way: the next n (n+1), must be in the log's bounds
     while n + 1 <= common_state.log.len()
         && common_state.log.get_term(n + 1) == common_state.current_term
@@ -307,8 +322,6 @@ fn commit_log_entries_replicated_on_majority<SM, SMin, SMout>(
 
 /// Returns whether the majority of servers, including self, have the log entry at the given index.
 fn majority_of_servers_have_log_entry(peers_state: &BTreeMap<u32, PeerState>, index: u64) -> bool {
-    // TOASK: this could be optimized for large groups of entries being sent together
-    // by getting the median match_index instead of checking all of them, worth it?
     let count_including_self = 1 + peers_state.values().filter(|state| state.match_index >= index).count();
     let n_servers = peers_state.len() + 1;
     count_including_self >= (n_servers + 1) / 2

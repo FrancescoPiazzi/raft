@@ -90,6 +90,7 @@ impl<SMin> Log<SMin> {
     }
 
     // https://github.com/logcabin/logcabin/blob/ee6c55ae9744b82b451becd9707d26c7c1b6bbfb/Server/RaftConsensus.cc#L1536
+    // also TLA 285-287
     pub fn is_log_ok(&self, request: &RequestVoteRequest) -> bool {
         request.last_log_term > self.get_last_log_term()
             || (request.last_log_term == self.get_last_log_term() && request.last_log_index >= self.len() as u64)
