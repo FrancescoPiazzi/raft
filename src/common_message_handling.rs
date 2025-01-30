@@ -52,6 +52,7 @@ where
 
     if let Some(candidate_ref) = peers.get_mut(&request.candidate_id) {
         if vote_granted {
+            // TLA: 292
             common_state.voted_for = Some(request.candidate_id);
         }
         reply.vote_granted = vote_granted;
@@ -105,6 +106,7 @@ where
         last_log_index: common_state.log.len() as u64,
     };
 
+    // TLA: 334
     if request.term < common_state.current_term {
         tracing::trace!(
             "request term = {} < current term = {}: ignoring",
@@ -141,17 +143,34 @@ where
     // as we can't know whether the candidate that sent the request will win the election
     common_state.leader_id = Some(request.leader_id);
 
-    if request.prev_log_index > common_state.log.len() as u64 {
-        tracing::trace!(
-            "missing entries: previous log index = {}, log length: {}: ignoring",
-            request.prev_log_index,
-            common_state.log.len()
-        );
+    // TLA: 329
+    if request.prev_log_index > 0 {
+        // TLA: 330
+        if request.prev_log_index > common_state.log.len() as u64 {
+            tracing::trace!(
+                "missing entries: previous log index = {}, log length: {}: ignoring",
+                request.prev_log_index,
+                common_state.log.len()
+            );
 
-        if let Some(sender_ref) = peers.get_mut(&request.leader_id) {
-            let _ = sender_ref.try_send(reply.into());
+            if let Some(sender_ref) = peers.get_mut(&request.leader_id) {
+                let _ = sender_ref.try_send(reply.into());
+            }
+            return step_down;
         }
-        return step_down;
+        // TLA: 331
+        if request.prev_log_term != common_state.log.get_term(request.prev_log_index as usize) {
+            tracing::trace!(
+                "term mismatch: previous log term = {}, log term: {}: ignoring",
+                request.prev_log_term,
+                common_state.log.get_term(request.prev_log_index as usize)
+            );
+
+            if let Some(sender_ref) = peers.get_mut(&request.leader_id) {
+                let _ = sender_ref.try_send(reply.into());
+            }
+            return step_down;
+        }
     }
 
     common_state
@@ -173,7 +192,6 @@ where
         let _ = leader_ref.try_send(reply.into());
     }
 
-    // TLA, L346
     assert_eq!(common_state.current_term, request.term);
 
     step_down
@@ -427,6 +445,7 @@ mod tests{
         common_state.check_validity();
     }
 
+    // TLA: 330
     #[test]
     fn reject_append_entries_hole_in_log(){
         let already_present_entries = vec![(), (), ()];
@@ -443,6 +462,44 @@ mod tests{
             leader_id: 2,
             prev_log_index: 5,
             prev_log_term: 1,
+            entries: vec![(), (), ()],
+            leader_commit: 0,
+        };
+
+        let step_down = handle_append_entries_request(1, &mut common_state, &mut peers, RaftState::Follower, request);
+        assert_eq!(step_down, false);
+
+        let reply = leader_channel.1.try_next().unwrap().unwrap();
+        assert_matches!(reply, RaftMessage::AppendEntriesReply(inner) if (
+            inner.success == false && 
+            inner.term == 1 && 
+            inner.from == 1 && 
+            inner.last_log_index == already_present_entries.len() as u64)
+        );
+
+        assert_eq!(common_state.log.len(), already_present_entries.len());
+        assert_eq!(common_state.commit_index, 0);
+
+        common_state.check_validity();
+    }
+
+    // TLA: 331
+    #[test]
+    fn reject_append_entries_term_mismatch(){
+        let already_present_entries = vec![(), (), ()];
+        let mut common_state: CommonState<VoidStateMachine, (), ()> = CommonState::new(VoidStateMachine::new());
+        common_state.current_term = 1;
+        common_state.log.insert(already_present_entries.clone(), 0, 1);
+        let mut peers = BTreeMap::new();
+
+        let mut leader_channel = futures_channel::mpsc::channel(10);
+        peers.insert(2, ActorRef::new(leader_channel.0.clone()));
+
+        let request = AppendEntriesRequest {
+            term: 1,
+            leader_id: 2,
+            prev_log_index: 1,
+            prev_log_term: 2,
             entries: vec![(), (), ()],
             leader_commit: 0,
         };
