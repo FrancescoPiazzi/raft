@@ -42,7 +42,7 @@ where
 }
 
 
-pub fn split_init<SM, SMin, SMout>(n_servers: usize, state_machine: SM) 
+pub fn init_split_servers<SM, SMin, SMout>(n_servers: usize, state_machine: SM) 
     -> SplitServers<SM, SMin, SMout>
 where
     SM: StateMachine<SMin, SMout> + Send + Clone + 'static,

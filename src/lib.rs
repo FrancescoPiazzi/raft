@@ -1,14 +1,14 @@
 mod common_message_handling;
 mod log;
+mod candidate;
+mod common_state;
+mod follower;
+mod leader;
 
 pub mod config;
 pub mod messages;
 pub mod server;
 pub mod state_machine;
-
-pub mod candidate;
-pub mod common_state;
-pub mod follower;
-pub mod leader;
+pub mod prelude;
 pub mod types;
 pub mod util;

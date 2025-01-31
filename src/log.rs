@@ -72,6 +72,7 @@ impl<SMin> Log<SMin> {
         self.log.len()
     }
 
+    #[cfg(test)]
     pub fn is_empty(&self) -> bool {
         self.log.is_empty()
     }

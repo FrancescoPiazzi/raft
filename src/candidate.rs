@@ -1,25 +1,19 @@
 use crate::common_message_handling::{handle_append_entries_request, handle_vote_request, RaftState};
 use crate::common_state::CommonState;
-use crate::messages::append_entries::AppendEntriesRequest;
 use crate::messages::request_vote::{RequestVoteReply, RequestVoteRequest};
 use crate::messages::*;
 use crate::state_machine::StateMachine;
 use crate::types::AppendEntriesClientResponse;
+
 use actum::actor_bounds::Recv;
 use actum::actor_ref::ActorRef;
 use actum::prelude::ActorBounds;
-use either::Either;
 use rand::{thread_rng, Rng};
 use std::collections::BTreeMap;
 use std::ops::Range;
 use std::time::{Duration, Instant};
 use tokio::time::{sleep, timeout};
 
-pub enum ElectionResult<SMin> {
-    Won,
-    LostDueToHigherTerm(Either<AppendEntriesRequest<SMin>, RequestVoteRequest>),
-    LostDueTooManyNegativeVotes,
-}
 
 pub enum CandidateResult {
     ElectionWon,

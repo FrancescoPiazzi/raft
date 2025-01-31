@@ -93,6 +93,7 @@ impl<SM, SMin, SMout> CommonState<SM, SMin, SMout> {
             && (self.voted_for.is_none() || self.voted_for.is_some_and(|id| id == request.candidate_id))
     }
 
+    #[cfg(test)]
     pub fn check_validity(&self) {
         if self.commit_index > self.log.len() {
             panic!("commit index is greater than log length");
