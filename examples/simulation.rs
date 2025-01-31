@@ -9,7 +9,10 @@ use oxidized_float::util::{send_peer_refs, spawn_raft_servers, Server};
 use rand::seq::IteratorRandom;
 use tokio::sync::mpsc;
 use tokio::time::sleep;
-use tracing::instrument;
+use tracing::{instrument, subscriber};
+use tracing_subscriber::{fmt, layer::SubscriberExt, EnvFilter, Registry};
+use tracing_appender::rolling::{RollingFileAppender, Rotation};
+use tracing_subscriber::Layer;
 
 #[derive(Clone)]
 struct ExampleStateMachine {
@@ -99,14 +102,8 @@ async fn send_entries_to_duplicate<SM, SMin, SMout>(
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt()
-        .with_span_events(
-            tracing_subscriber::fmt::format::FmtSpan::NONE,
-        )
-        .with_target(false)
-        .with_line_number(false)
-        .with_max_level(tracing::Level::TRACE)
-        .init();
+    let mut _guards = Vec::new();   // guards must remain in scope for the file appenders to work
+    set_global_subscriber(5, &mut _guards).await;
 
     let servers = spawn_raft_servers(5, ExampleStateMachine::new());
     send_peer_refs(&servers);
@@ -125,5 +122,41 @@ async fn main() {
 
     for server in servers {
         server.handle.await.unwrap();
+    }
+}
+
+
+async fn set_global_subscriber(n_servers: usize, guards: &mut Vec<tracing_appender::non_blocking::WorkerGuard>) {
+    if n_servers == 0 {
+        return;
+    }
+
+    let composite_layer = {
+        let mut layers: Option<Box<dyn Layer<Registry> + Send + Sync + 'static>> = None;
+
+        for i in 0..n_servers {
+            let file_appender = RollingFileAppender::new(Rotation::NEVER, "log", format!("server{}.log", i));
+            let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+            guards.push(guard);
+
+            let filter = EnvFilter::new(format!("[server{{id={}}}]", i));
+
+            let fmt_layer = fmt::Layer::new()
+                .with_writer(non_blocking)
+                .with_filter(filter)
+                .boxed();
+
+            layers = match layers {
+                Some(layer) => Some(layer.and_then(fmt_layer).boxed()),
+                None => Some(fmt_layer),
+            };
+        }
+
+        layers
+    };
+
+    if let Some(inner) = composite_layer {
+        let subscriber = Registry::default().with(inner);
+        subscriber::set_global_default(subscriber).expect("Unable to set global subscriber");
     }
 }
