@@ -10,6 +10,7 @@ use crate::messages::add_peer::AddPeer;
 use crate::messages::RaftMessage;
 use crate::server::raft_server;
 use crate::state_machine::StateMachine;
+use crate::types::SplitServers;
 
 pub struct Server<SM, SMin, SMout> {
     pub server_id: u32,
@@ -30,24 +31,19 @@ where
     send_peer_refs::<SM, SMin, SMout>(&refs, &ids);
 
     // zip together refs, ids, handles, and guards into a vector of Server structs
-    let servers = refs
-        .into_iter()
-        .zip(ids.into_iter())
-        .zip(handles.into_iter())
-        .zip(guards.into_iter())
+    refs.into_iter().zip(ids).zip(handles).zip(guards)
         .map(|(((server_ref, server_id), handle), guard)| Server {
             server_id,
             server_ref,
             guard,
             handle,
         })
-        .collect();
-    servers
+        .collect()
 }
 
 
 pub fn split_init<SM, SMin, SMout>(n_servers: usize, state_machine: SM) 
-    -> (Vec<ActorRef<RaftMessage<SMin, SMout>>>, Vec<u32>, Vec<JoinHandle<SM>>, Vec<ActorDropGuard>)
+    -> SplitServers<SM, SMin, SMout>
 where
     SM: StateMachine<SMin, SMout> + Send + Clone + 'static,
     SMin: Clone + Send + 'static,
@@ -60,7 +56,7 @@ where
 
 
 pub fn spawn_raft_servers<SM, SMin, SMout>(n_servers: usize, state_machine: SM) 
-    -> (Vec<ActorRef<RaftMessage<SMin, SMout>>>, Vec<u32>, Vec<JoinHandle<SM>>, Vec<ActorDropGuard>)
+    -> SplitServers<SM, SMin, SMout>
 where
     SM: StateMachine<SMin, SMout> + Send + Clone + 'static,
     SMin: Clone + Send + 'static,
@@ -146,7 +142,7 @@ pub async fn split_file_logs(n_servers: usize, guards: &mut Vec<tracing_appender
 
     if let Some(inner) = composite_layer {
         let subscriber = Registry::default().with(inner);
-        if let Err(_) = subscriber::set_global_default(subscriber){
+        if subscriber::set_global_default(subscriber).is_err(){
             tracing::error!("Unable to set global subscriber");
         }
     } else {

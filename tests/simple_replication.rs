@@ -31,8 +31,8 @@ impl StateMachine<u64, usize> for ExampleStateMachine {
 #[tokio::test]
 async fn simple_replication_single() {
     let n_servers = 5;
-    let time_to_elect_leader = Duration::from_millis(700);
-    let time_to_agree_on_value = Duration::from_millis(700);
+    let time_to_elect_leader = Duration::from_millis(500);
+    let time_to_agree_on_value = Duration::from_millis(500);
 
     let state_machine = ExampleStateMachine::new();
     let (mut refs, _, handles, guards) = split_init(n_servers, state_machine);

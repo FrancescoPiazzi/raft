@@ -101,7 +101,7 @@ impl<SM, SMin, SMout> CommonState<SM, SMin, SMout> {
             panic!("last applied is greater than commit index");
         }
 
-        if self.log.len() > 0{
+        if !self.log.is_empty(){
             for i in 1..=self.log.len() - 1 {
                 if self.log.get_term(i) > self.log.get_term(i + 1) {
                     panic!(
