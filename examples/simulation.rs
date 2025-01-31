@@ -5,14 +5,11 @@ use std::time::Duration;
 use oxidized_float::messages::append_entries_client::AppendEntriesClientRequest;
 use oxidized_float::state_machine::StateMachine;
 use oxidized_float::types::AppendEntriesClientResponse;
-use oxidized_float::util::{send_peer_refs, spawn_raft_servers, Server};
+use oxidized_float::util::{init, split_file_logs, Server};
 use rand::seq::IteratorRandom;
 use tokio::sync::mpsc;
 use tokio::time::sleep;
-use tracing::{instrument, subscriber};
-use tracing_subscriber::{fmt, layer::SubscriberExt, EnvFilter, Registry};
-use tracing_appender::rolling::{RollingFileAppender, Rotation};
-use tracing_subscriber::Layer;
+use tracing::instrument;
 
 #[derive(Clone)]
 struct ExampleStateMachine {
@@ -49,6 +46,9 @@ async fn send_entries_to_duplicate<SM, SMin, SMout>(
 {
     let mut interval = tokio::time::interval(period);
     interval.tick().await; // first tick is immediate, skip it
+    // give the servers a moment to elect a leader 
+    // not mandatory, but we won't get a useful answer if a leader is not elected yet
+    interval.tick().await;
 
     let mut leader = servers[0].server_ref.clone();
     let mut rng = rand::thread_rng();
@@ -102,15 +102,24 @@ async fn send_entries_to_duplicate<SM, SMin, SMout>(
 
 #[tokio::main]
 async fn main() {
-    let mut _guards = Vec::new();   // guards must remain in scope for the file appenders to work
-    set_global_subscriber(5, &mut _guards).await;
+    let n_servers = 5;
+    let separate_file_logs = false;
 
-    let servers = spawn_raft_servers(5, ExampleStateMachine::new());
-    send_peer_refs(&servers);
+    if separate_file_logs {
+        let mut _file_appender_guards = Vec::new();   // guards must remain in scope for the file appenders to work
+        split_file_logs(n_servers, &mut _file_appender_guards).await;
+    } else {
+        tracing_subscriber::fmt()
+            .with_span_events(
+                tracing_subscriber::fmt::format::FmtSpan::NONE,
+            )
+            .with_target(false)
+            .with_line_number(false)
+            .with_max_level(tracing::Level::TRACE)
+            .init();
+    }
 
-    // give the servers a moment to elect a leader 
-    // (not mandatory, but we won't get a useful answer if a leader is not elected yet)
-    tokio::time::sleep(Duration::from_millis(2000)).await;
+    let servers = init(n_servers, ExampleStateMachine::new());
 
     send_entries_to_duplicate(
         &servers,
@@ -122,41 +131,5 @@ async fn main() {
 
     for server in servers {
         server.handle.await.unwrap();
-    }
-}
-
-
-async fn set_global_subscriber(n_servers: usize, guards: &mut Vec<tracing_appender::non_blocking::WorkerGuard>) {
-    if n_servers == 0 {
-        return;
-    }
-
-    let composite_layer = {
-        let mut layers: Option<Box<dyn Layer<Registry> + Send + Sync + 'static>> = None;
-
-        for i in 0..n_servers {
-            let file_appender = RollingFileAppender::new(Rotation::NEVER, "log", format!("server{}.log", i));
-            let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
-            guards.push(guard);
-
-            let filter = EnvFilter::new(format!("[server{{id={}}}]", i));
-
-            let fmt_layer = fmt::Layer::new()
-                .with_writer(non_blocking)
-                .with_filter(filter)
-                .boxed();
-
-            layers = match layers {
-                Some(layer) => Some(layer.and_then(fmt_layer).boxed()),
-                None => Some(fmt_layer),
-            };
-        }
-
-        layers
-    };
-
-    if let Some(inner) = composite_layer {
-        let subscriber = Registry::default().with(inner);
-        subscriber::set_global_default(subscriber).expect("Unable to set global subscriber");
     }
 }

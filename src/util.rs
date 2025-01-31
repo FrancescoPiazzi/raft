@@ -1,7 +1,9 @@
 use actum::drop_guard::ActorDropGuard;
 use actum::prelude::*;
 use tokio::task::JoinHandle;
-use tracing::{info_span, Instrument};
+use tracing::{info_span, Instrument, subscriber};
+use tracing_subscriber::{fmt, layer::SubscriberExt, EnvFilter, Layer, Registry};
+use tracing_appender::rolling::{RollingFileAppender, Rotation};
 
 use crate::config::{DEFAULT_ELECTION_TIMEOUT, DEFAULT_HEARTBEAT_PERIOD, DEFAULT_REPLICATION_PERIOD};
 use crate::messages::add_peer::AddPeer;
@@ -13,17 +15,62 @@ pub struct Server<SM, SMin, SMout> {
     pub server_id: u32,
     pub server_ref: ActorRef<RaftMessage<SMin, SMout>>,
     #[allow(dead_code)] // guard is not used but must remain in scope or the actors are dropped as well
-    guard: ActorDropGuard,
+    pub guard: ActorDropGuard,
     pub handle: JoinHandle<SM>,
 }
 
-pub fn spawn_raft_servers<SM, SMin, SMout>(n_servers: usize, state_machine: SM) -> Vec<Server<SM, SMin, SMout>>
+/// Initialize a set of Raft servers with a given state machine and exchanges their references
+pub fn init<SM, SMin, SMout>(n_servers: usize, state_machine: SM) -> Vec<Server<SM, SMin, SMout>>
 where
     SM: StateMachine<SMin, SMout> + Send + Clone + 'static,
     SMin: Clone + Send + 'static,
     SMout: Send + 'static,
 {
-    let mut servers = Vec::with_capacity(n_servers);
+    let (refs, ids, handles, guards) = spawn_raft_servers(n_servers, state_machine);
+    send_peer_refs::<SM, SMin, SMout>(&refs, &ids);
+
+    // zip together refs, ids, handles, and guards into a vector of Server structs
+    let servers = refs
+        .into_iter()
+        .zip(ids.into_iter())
+        .zip(handles.into_iter())
+        .zip(guards.into_iter())
+        .map(|(((server_ref, server_id), handle), guard)| Server {
+            server_id,
+            server_ref,
+            guard,
+            handle,
+        })
+        .collect();
+    servers
+}
+
+
+pub fn split_init<SM, SMin, SMout>(n_servers: usize, state_machine: SM) 
+    -> (Vec<ActorRef<RaftMessage<SMin, SMout>>>, Vec<u32>, Vec<JoinHandle<SM>>, Vec<ActorDropGuard>)
+where
+    SM: StateMachine<SMin, SMout> + Send + Clone + 'static,
+    SMin: Clone + Send + 'static,
+    SMout: Send + 'static,
+{
+    let (refs, ids, handles, guards) = spawn_raft_servers(n_servers, state_machine);
+    send_peer_refs::<SM, SMin, SMout>(&refs, &ids);
+    (refs, ids, handles, guards)
+}
+
+
+pub fn spawn_raft_servers<SM, SMin, SMout>(n_servers: usize, state_machine: SM) 
+    -> (Vec<ActorRef<RaftMessage<SMin, SMout>>>, Vec<u32>, Vec<JoinHandle<SM>>, Vec<ActorDropGuard>)
+where
+    SM: StateMachine<SMin, SMout> + Send + Clone + 'static,
+    SMin: Clone + Send + 'static,
+    SMout: Send + 'static,
+{
+
+    let mut refs = Vec::with_capacity(n_servers);
+    let mut ids = Vec::with_capacity(n_servers);
+    let mut handles = Vec::with_capacity(n_servers);
+    let mut guards = Vec::with_capacity(n_servers);
 
     for id in 0..n_servers {
         let state_machine = state_machine.clone();
@@ -41,34 +88,68 @@ where
             .await
         });
         let handle = tokio::spawn(actor.task.run_task().instrument(info_span!("server", id)));
-        servers.push(Server {
-            server_id: id as u32,
-            server_ref: actor.m_ref,
-            guard: actor.guard,
-            handle,
-        });
+        refs.push(actor.m_ref);
+        ids.push(id as u32);
+        handles.push(handle);
+        guards.push(actor.guard);
     }
-    servers
+    (refs, ids, handles, guards)
 }
 
-pub fn send_peer_refs<SM, SMin, SMout>(servers: &[Server<SM, SMin, SMout>])
+
+pub fn send_peer_refs<SM, SMin, SMout>(refs: &[ActorRef<RaftMessage<SMin, SMout>>], ids: &[u32])
 where
     SMin: Send + 'static,
     SMout: Send + 'static,
 {
-    for i in 0..servers.len() {
-        let (server_id, mut server_ref) = {
-            let server = &servers[i];
-            (server.server_id, server.server_ref.clone())
-        };
-
-        for other_server in servers {
-            if server_id != other_server.server_id {
-                let _ = server_ref.try_send(RaftMessage::AddPeer(AddPeer {
-                    peer_id: other_server.server_id,
-                    peer_ref: other_server.server_ref.clone(),
+    for i in 0..refs.len() {
+        for j in 0..refs.len() {
+            if i != j {
+                let _ = refs[i].clone().try_send(RaftMessage::AddPeer(AddPeer {
+                    peer_id: ids[j],
+                    peer_ref: refs[j].clone(),
                 }));
             }
         }
+    }
+}
+
+/// Set the global subscriber to a composite layer that writes logs to different files for each server
+pub async fn split_file_logs(n_servers: usize, guards: &mut Vec<tracing_appender::non_blocking::WorkerGuard>) {
+    if n_servers == 0 {
+        return;
+    }
+
+    let composite_layer = {
+        let mut layers: Option<Box<dyn Layer<Registry> + Send + Sync + 'static>> = None;
+
+        for i in 0..n_servers {
+            let file_appender = RollingFileAppender::new(Rotation::NEVER, "log", format!("server{}.log", i));
+            let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+            guards.push(guard);
+
+            let filter = EnvFilter::new(format!("[server{{id={}}}]", i));
+
+            let fmt_layer = fmt::Layer::new()
+                .with_writer(non_blocking)
+                .with_filter(filter)
+                .boxed();
+
+            layers = match layers {
+                Some(layer) => Some(layer.and_then(fmt_layer).boxed()),
+                None => Some(fmt_layer),
+            };
+        }
+
+        layers
+    };
+
+    if let Some(inner) = composite_layer {
+        let subscriber = Registry::default().with(inner);
+        if let Err(_) = subscriber::set_global_default(subscriber){
+            tracing::error!("Unable to set global subscriber");
+        }
+    } else {
+        tracing::error!("No layers were created for the composite layer");
     }
 }
