@@ -1,6 +1,6 @@
 use actum::drop_guard::ActorDropGuard;
 use actum::prelude::*;
-use actum::testkit::testkit;
+use actum::testkit::{testkit, Testkit};
 use tokio::task::JoinHandle;
 use tracing::{info_span, Instrument, subscriber};
 use tracing_subscriber::{fmt, layer::SubscriberExt, EnvFilter, Layer, Registry};
@@ -10,7 +10,7 @@ use crate::config::{DEFAULT_ELECTION_TIMEOUT, DEFAULT_HEARTBEAT_PERIOD};
 use crate::messages::add_peer::AddPeer;
 use crate::messages::RaftMessage;
 use crate::server::raft_server;
-use crate::state_machine::{StateMachine, VoidStateMachine};
+use crate::state_machine::StateMachine;
 use crate::types::SplitServers;
 
 pub struct Server<SM, SMin, SMout> {
@@ -69,11 +69,10 @@ where
 
     for id in 0..n_servers {
         let state_machine = state_machine.clone();
-        let actor = actum::<RaftMessage<SMin, SMout>, _, _, SM>(move |cell, me| async move {
-            let me = (id as u32, me);
+        let actor = actum::<RaftMessage<SMin, SMout>, _, _, SM>(move |cell, _| async move {
             raft_server(
                 cell,
-                me,
+                id as u32,
                 n_servers - 1,
                 state_machine,
                 DEFAULT_ELECTION_TIMEOUT,
@@ -91,15 +90,26 @@ where
 }
 
 
-pub fn spawn_raft_servers_testkit() {
-    for id in 0..5 {
-        let state_machine = VoidStateMachine::new();
-        let (actor, tk) = testkit::<RaftMessage<(), ()>, _, _, VoidStateMachine>(move |cell, me| async move {
-            let me = (id as u32, me);
+pub fn spawn_raft_servers_testkit<SM, SMin, SMout>(n_servers: usize, state_machine: SM) 
+    -> (SplitServers<SM, SMin, SMout>, Vec<Testkit<RaftMessage<SMin, SMout>>>)
+where
+    SM: StateMachine<SMin, SMout> + Send + Clone + 'static,
+    SMin: Clone + Send + 'static,
+    SMout: Send + 'static,
+{
+    let mut refs = Vec::with_capacity(n_servers);
+    let mut ids = Vec::with_capacity(n_servers);
+    let mut handles = Vec::with_capacity(n_servers);
+    let mut guards = Vec::with_capacity(n_servers);
+    let mut testkits = Vec::with_capacity(n_servers);
+
+    for id in 0..n_servers {
+        let state_machine = state_machine.clone();
+        let (actor, tk) = testkit::<RaftMessage<SMin, SMout>, _, _, SM>(move |cell, _| async move {
             raft_server(
                 cell,
-                me,
-                4,
+                id as u32,
+                n_servers - 1,
                 state_machine,
                 DEFAULT_ELECTION_TIMEOUT,
                 DEFAULT_HEARTBEAT_PERIOD,
@@ -107,7 +117,13 @@ pub fn spawn_raft_servers_testkit() {
             .await
         });
         let handle = tokio::spawn(actor.task.run_task().instrument(info_span!("server", id)));
+        refs.push(actor.m_ref);
+        ids.push(id as u32);
+        handles.push(handle);
+        guards.push(actor.guard);
+        testkits.push(tk);
     }
+    ((refs, ids, handles, guards), testkits)
 }
 
 
