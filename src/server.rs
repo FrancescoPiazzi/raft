@@ -19,7 +19,6 @@ pub async fn raft_server<AB, SM, SMin, SMout>(
     state_machine: SM,
     election_timeout: Range<Duration>,
     heartbeat_period: Duration,
-    replication_period: Duration,
 ) -> (AB, SM)
 where
     AB: ActorBounds<RaftMessage<SMin, SMout>>,
@@ -27,7 +26,7 @@ where
     SMin: Send + Clone + 'static,
     SMout: Send + 'static,
 {
-    check_parameters(&election_timeout, &heartbeat_period, &replication_period);
+    check_parameters(&election_timeout, &heartbeat_period);
 
     let mut common_state = CommonState::new(state_machine, me.0);
     let mut message_stash = Vec::<RaftMessage<SMin, SMout>>::new();
@@ -93,7 +92,7 @@ where
     (cell, common_state.state_machine)
 }
 
-fn check_parameters(election_timeout: &Range<Duration>, heartbeat_period: &Duration, replication_period: &Duration) {
+fn check_parameters(election_timeout: &Range<Duration>, heartbeat_period: &Duration) {
     assert!(
         election_timeout.start < election_timeout.end,
         "election_timeout start must be less than end"
@@ -101,10 +100,6 @@ fn check_parameters(election_timeout: &Range<Duration>, heartbeat_period: &Durat
     assert!(
         *heartbeat_period > Duration::from_secs(0),
         "heartbeat_period must be greater than 0"
-    );
-    assert!(
-        *replication_period > Duration::from_secs(0),
-        "replication_period must be greater than 0"
     );
 
     if election_timeout.start < *heartbeat_period {
@@ -149,7 +144,6 @@ mod tests {
                 void_state_machine_1,
                 Duration::from_millis(100)..Duration::from_millis(100),
                 Duration::from_millis(50),
-                Duration::from_millis(50),
             )
             .await;
             actor
@@ -162,7 +156,6 @@ mod tests {
                 1,
                 void_state_machine_2,
                 Duration::from_millis(100)..Duration::from_millis(100),
-                Duration::from_millis(50),
                 Duration::from_millis(50),
             )
             .await;

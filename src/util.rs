@@ -6,7 +6,7 @@ use tracing::{info_span, Instrument, subscriber};
 use tracing_subscriber::{fmt, layer::SubscriberExt, EnvFilter, Layer, Registry};
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 
-use crate::config::{DEFAULT_ELECTION_TIMEOUT, DEFAULT_HEARTBEAT_PERIOD, DEFAULT_REPLICATION_PERIOD};
+use crate::config::{DEFAULT_ELECTION_TIMEOUT, DEFAULT_HEARTBEAT_PERIOD};
 use crate::messages::add_peer::AddPeer;
 use crate::messages::RaftMessage;
 use crate::server::raft_server;
@@ -78,7 +78,6 @@ where
                 state_machine,
                 DEFAULT_ELECTION_TIMEOUT,
                 DEFAULT_HEARTBEAT_PERIOD,
-                DEFAULT_REPLICATION_PERIOD,
             )
             .await
         });
@@ -104,7 +103,6 @@ pub fn spawn_raft_servers_testkit() {
                 state_machine,
                 DEFAULT_ELECTION_TIMEOUT,
                 DEFAULT_HEARTBEAT_PERIOD,
-                DEFAULT_REPLICATION_PERIOD,
             )
             .await
         });
