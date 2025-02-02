@@ -25,8 +25,6 @@ pub enum FollowerResult {
 /// Behavior of the Raft server in follower state.
 pub async fn follower_behavior<AB, SM, SMin, SMout>(
     cell: &mut AB,
-    me: u32,
-    peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin, SMout>>>,
     common_state: &mut CommonState<SM, SMin, SMout>,
     election_timeout_range: Range<Duration>,
     message_stash: &mut Vec<RaftMessage<SMin, SMout>>,
@@ -42,13 +40,13 @@ where
     for message in message_stash.drain(..) {
         match message {
             RaftMessage::AppendEntriesRequest(request) => {
-                handle_append_entries_request(me, common_state, peers, RaftState::Follower, request);
+                handle_append_entries_request(common_state, RaftState::Follower, request);
             }
             RaftMessage::RequestVoteRequest(request) => {
-                handle_vote_request(me, common_state, peers, request);
+                handle_vote_request(common_state, request);
             }
             RaftMessage::AppendEntriesClientRequest(request) => {
-                handle_append_entries_client_request(peers, common_state.leader_id.as_ref(), request);
+                handle_append_entries_client_request(&mut common_state.peers, common_state.leader_id.as_ref(), request);
             }
             RaftMessage::PollState(request) => {
                 let _ = request.reply_to.try_send(poll_state::PollStateResponse {
@@ -70,15 +68,16 @@ where
 
                 match message {
                     RaftMessage::AppendEntriesRequest(request) => {
-                        handle_append_entries_request(me, common_state, peers, RaftState::Follower, request);
+                        handle_append_entries_request(common_state, RaftState::Follower, request);
                         election_timeout = thread_rng().gen_range(election_timeout_range.clone());
                     }
                     RaftMessage::RequestVoteRequest(request) => {
-                        handle_vote_request(me, common_state, peers, request);
+                        handle_vote_request(common_state, request);
                         election_timeout = thread_rng().gen_range(election_timeout_range.clone());
                     }
                     RaftMessage::AppendEntriesClientRequest(request) => {
-                        handle_append_entries_client_request(peers, common_state.leader_id.as_ref(), request);
+                        handle_append_entries_client_request(
+                            &mut common_state.peers, common_state.leader_id.as_ref(), request);
                         if let Some(new_remaining_time_to_wait) = election_timeout.checked_sub(start_time.elapsed()) {
                             election_timeout = new_remaining_time_to_wait;
                         } else {

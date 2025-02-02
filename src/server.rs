@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use std::ops::Range;
 use std::time::Duration;
 
@@ -30,13 +29,12 @@ where
 {
     check_parameters(&election_timeout, &heartbeat_period, &replication_period);
 
-    let mut common_state = CommonState::new(state_machine);
-    let mut peers = BTreeMap::<u32, ActorRef<RaftMessage<SMin, SMout>>>::new();
+    let mut common_state = CommonState::new(state_machine, me.0);
     let mut message_stash = Vec::<RaftMessage<SMin, SMout>>::new();
 
     tracing::trace!("obtaining peer references");
 
-    while peers.len() < n_peers {
+    while common_state.peers.len() < n_peers {
         let Some(message) = cell.recv().await.message() else {
             return (cell, common_state.state_machine);
         };
@@ -44,7 +42,7 @@ where
         match message {
             RaftMessage::AddPeer(peer) => {
                 tracing::trace!(peer = ?peer);
-                peers.insert(peer.peer_id, peer.peer_ref);
+                common_state.peers.insert(peer.peer_id, peer.peer_ref);
             }
             other => {
                 tracing::trace!(stash = ?other);
@@ -56,8 +54,6 @@ where
     loop {
         let follower_result = follower_behavior(
             &mut cell,
-            me.0,
-            &mut peers,
             &mut common_state,
             election_timeout.clone(),
             &mut message_stash,
@@ -72,22 +68,20 @@ where
 
         tracing::debug!("transition: follower → candidate");
         let candidate_result =
-            candidate_behavior(&mut cell, me.0, &mut common_state, &mut peers, election_timeout.clone())
+            candidate_behavior(&mut cell, &mut common_state, election_timeout.clone())
                 .instrument(info_span!("candidate"))
                 .await;
 
         match candidate_result {
             CandidateResult::ElectionWon => {
                 tracing::debug!("transition: candidate → leader");
-                let leader_result = leader_behavior(&mut cell, me.0, &mut common_state, &mut peers, heartbeat_period)
+                let leader_result = leader_behavior(&mut cell, &mut common_state, heartbeat_period)
                     .instrument(info_span!("leader👑"))
                     .await;
 
                 match leader_result {
                     LeaderResult::Deposed => tracing::debug!("transition: leader → follower"),
-                    LeaderResult::Stopped | LeaderResult::NoMoreSenders => {
-                        break;
-                    }
+                    LeaderResult::Stopped | LeaderResult::NoMoreSenders => break,
                 }
             }
             CandidateResult::ElectionLost => tracing::debug!("transition: candidate → follower"),

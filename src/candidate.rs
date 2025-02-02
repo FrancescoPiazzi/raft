@@ -6,7 +6,6 @@ use crate::state_machine::StateMachine;
 use crate::types::AppendEntriesClientResponse;
 
 use actum::actor_bounds::Recv;
-use actum::actor_ref::ActorRef;
 use actum::prelude::ActorBounds;
 use rand::{thread_rng, Rng};
 use std::collections::BTreeMap;
@@ -25,9 +24,7 @@ pub enum CandidateResult {
 /// Behavior of the Raft server in candidate state.
 pub async fn candidate_behavior<AB, SM, SMin, SMout>(
     cell: &mut AB,
-    me: u32,
     common_state: &mut CommonState<SM, SMin, SMout>,
-    peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin, SMout>>>,
     election_timeout: Range<Duration>,
 ) -> CandidateResult
 where
@@ -36,7 +33,7 @@ where
     SMin: Clone + Send + 'static,
     SMout: Send + 'static,
 {
-    common_state.voted_for = Some(me);
+    common_state.voted_for = Some(common_state.me);
 
     let mut votes_from_others = BTreeMap::<u32, bool>::new();
 
@@ -52,12 +49,12 @@ where
 
         let request = RequestVoteRequest {
             term: common_state.current_term,
-            candidate_id: me,
+            candidate_id: common_state.me,
             last_log_index: last_applied as u64,
             last_log_term: common_state.log.get_last_log_term(),
         };
 
-        for peer in peers.values_mut() {
+        for peer in common_state.peers.values_mut() {
             let _ = peer.try_send(request.clone().into());
         }
 
@@ -72,7 +69,7 @@ where
                         match message {
                             RaftMessage::RequestVoteReply(reply) => {
                                 let result =
-                                    handle_request_vote_reply(common_state, peers, &mut votes_from_others, reply);
+                                    handle_request_vote_reply(common_state, &mut votes_from_others, reply);
                                 match result {
                                     HandleRequestVoteReplyResult::Ongoing => {}
                                     HandleRequestVoteReplyResult::Won => return CandidateResult::ElectionWon,
@@ -81,18 +78,14 @@ where
                             }
                             RaftMessage::AppendEntriesRequest(request) => {
                                 let step_down = handle_append_entries_request(
-                                    me,
-                                    common_state,
-                                    peers,
-                                    RaftState::Candidate,
-                                    request,
+                                    common_state, RaftState::Candidate, request
                                 );
                                 if step_down {
                                     return CandidateResult::ElectionLost;
                                 }
                             }
                             RaftMessage::RequestVoteRequest(request) => {
-                                let step_down = handle_vote_request(me, common_state, peers, request);
+                                let step_down = handle_vote_request(common_state, request);
                                 if step_down {
                                     return CandidateResult::ElectionLost;
                                 }
@@ -149,7 +142,6 @@ enum HandleRequestVoteReplyResult {
 #[tracing::instrument(level = "trace", skip_all)]
 fn handle_request_vote_reply<SM, SMin, SMout>(
     common_state: &mut CommonState<SM, SMin, SMout>,
-    peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin, SMout>>>,
     votes_from_others: &mut BTreeMap<u32, bool>,
     reply: RequestVoteReply,
 ) -> HandleRequestVoteReplyResult
@@ -173,9 +165,9 @@ where
     let n_granted_votes_including_self = votes_from_others.values().filter(|granted| **granted).count() + 1;
     let n_votes_against = votes_from_others.values().filter(|granted| !**granted).count();
 
-    if n_granted_votes_including_self > peers.len() / 2 {
+    if n_granted_votes_including_self > common_state.peers.len() / 2 {
         HandleRequestVoteReplyResult::Won
-    } else if n_votes_against > peers.len() / 2 {
+    } else if n_votes_against > common_state.peers.len() / 2 {
         tracing::trace!("too many votes against, election lost");
         HandleRequestVoteReplyResult::Lost
     } else {
@@ -187,21 +179,23 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state_machine::VoidStateMachine;
+    
+    use actum::actor_ref::ActorRef;
     use futures_channel::mpsc as futures_mpsc;
-
+    
+    use crate::state_machine::VoidStateMachine;
     
     #[test]
     fn test_handle_request_vote_reply_result_unkown() {
         let n_servers = 5;
 
-        let mut common_state: CommonState<VoidStateMachine, (), ()> = CommonState::new(VoidStateMachine::new());
+        let mut common_state: CommonState<VoidStateMachine, (), ()> = CommonState::new(VoidStateMachine::new(), 1);
         // enter new term so it's more "real", since a candidate will never have term 0
         let _ = common_state.update_term(1);
-        let mut peers: BTreeMap<u32, ActorRef<RaftMessage<(), ()>>> = BTreeMap::new();
+        
         for i in 0..n_servers {
-            let (tx, _) = futures_mpsc::channel(1);
-            peers.insert(i, ActorRef::new(tx));
+            let (tx, _) = futures_mpsc::channel(10);
+            common_state.peers.insert(i, ActorRef::new(tx));
         }
         let mut votes_from_others = BTreeMap::<u32, bool>::new();
         votes_from_others.insert(1, false);
@@ -211,7 +205,7 @@ mod tests {
             term: 1,
             vote_granted: true,
         };
-        let result = handle_request_vote_reply(&mut common_state, &mut peers, &mut votes_from_others, reply);
+        let result = handle_request_vote_reply(&mut common_state, &mut votes_from_others, reply);
         assert_eq!(result, HandleRequestVoteReplyResult::Ongoing);
 
         common_state.check_validity();
@@ -222,7 +216,7 @@ mod tests {
     fn test_handle_request_vote_reply_result_won() {
         let n_servers = 5;
 
-        let mut common_state: CommonState<VoidStateMachine, (), ()> = CommonState::new(VoidStateMachine::new());
+        let mut common_state: CommonState<VoidStateMachine, (), ()> = CommonState::new(VoidStateMachine::new(), 1);
         let _ = common_state.update_term(1);
         let mut peers: BTreeMap<u32, ActorRef<RaftMessage<(), ()>>> = BTreeMap::new();
         for i in 0..n_servers {
@@ -237,7 +231,7 @@ mod tests {
             term: 1,
             vote_granted: true,
         };
-        let result = handle_request_vote_reply(&mut common_state, &mut peers, &mut votes_from_others, reply);
+        let result = handle_request_vote_reply(&mut common_state, &mut votes_from_others, reply);
         assert_eq!(result, HandleRequestVoteReplyResult::Won);
 
         common_state.check_validity();
@@ -247,12 +241,12 @@ mod tests {
     fn test_handle_request_vote_reply_result_lost() {
         let n_servers = 5;
 
-        let mut common_state: CommonState<VoidStateMachine, (), ()> = CommonState::new(VoidStateMachine::new());
+        let mut common_state: CommonState<VoidStateMachine, (), ()> = CommonState::new(VoidStateMachine::new(), 1);
         let _ = common_state.update_term(1);
-        let mut peers: BTreeMap<u32, ActorRef<RaftMessage<(), ()>>> = BTreeMap::new();
+
         for i in 0..n_servers {
-            let (tx, _) = futures_mpsc::channel(1);
-            peers.insert(i, ActorRef::new(tx));
+            let (tx, _) = futures_mpsc::channel(10);
+            common_state.peers.insert(i, ActorRef::new(tx));
         }
         let mut votes_from_others = BTreeMap::<u32, bool>::new();
         votes_from_others.insert(0, false);
@@ -263,7 +257,7 @@ mod tests {
             term: 1,
             vote_granted: false,
         };
-        let result = handle_request_vote_reply(&mut common_state, &mut peers, &mut votes_from_others, reply);
+        let result = handle_request_vote_reply(&mut common_state, &mut votes_from_others, reply);
         assert_eq!(result, HandleRequestVoteReplyResult::Lost);
 
         common_state.check_validity();
@@ -274,7 +268,7 @@ mod tests {
         let n_servers = 5;
         let server_term = 1;
 
-        let mut common_state: CommonState<VoidStateMachine, (), ()> = CommonState::new(VoidStateMachine::new());
+        let mut common_state: CommonState<VoidStateMachine, (), ()> = CommonState::new(VoidStateMachine::new(), 1);
         let _ = common_state.update_term(server_term);
         let mut peers: BTreeMap<u32, ActorRef<RaftMessage<(), ()>>> = BTreeMap::new();
         for i in 0..n_servers {
@@ -290,7 +284,7 @@ mod tests {
             term: server_term,
             vote_granted: true,
         };
-        let result = handle_request_vote_reply(&mut common_state, &mut peers, &mut votes_from_others, reply);
+        let result = handle_request_vote_reply(&mut common_state, &mut votes_from_others, reply);
         assert_eq!(result, HandleRequestVoteReplyResult::Ongoing);
 
         // wrong term: TLA: 310 this should never happen anyway, as any request with a higher term 
@@ -300,7 +294,7 @@ mod tests {
             term: server_term+1,
             vote_granted: true,
         };
-        let result = handle_request_vote_reply(&mut common_state, &mut peers, &mut votes_from_others, reply);
+        let result = handle_request_vote_reply(&mut common_state, &mut votes_from_others, reply);
         assert_eq!(result, HandleRequestVoteReplyResult::Ongoing);
 
         common_state.check_validity();

@@ -1,5 +1,6 @@
 use actum::drop_guard::ActorDropGuard;
 use actum::prelude::*;
+use actum::testkit::testkit;
 use tokio::task::JoinHandle;
 use tracing::{info_span, Instrument, subscriber};
 use tracing_subscriber::{fmt, layer::SubscriberExt, EnvFilter, Layer, Registry};
@@ -9,7 +10,7 @@ use crate::config::{DEFAULT_ELECTION_TIMEOUT, DEFAULT_HEARTBEAT_PERIOD, DEFAULT_
 use crate::messages::add_peer::AddPeer;
 use crate::messages::RaftMessage;
 use crate::server::raft_server;
-use crate::state_machine::StateMachine;
+use crate::state_machine::{StateMachine, VoidStateMachine};
 use crate::types::SplitServers;
 
 pub struct Server<SM, SMin, SMout> {
@@ -55,14 +56,12 @@ where
 }
 
 
-pub fn spawn_raft_servers<SM, SMin, SMout>(n_servers: usize, state_machine: SM) 
-    -> SplitServers<SM, SMin, SMout>
+pub fn spawn_raft_servers<SM, SMin, SMout>(n_servers: usize, state_machine: SM) -> SplitServers<SM, SMin, SMout>
 where
     SM: StateMachine<SMin, SMout> + Send + Clone + 'static,
     SMin: Clone + Send + 'static,
     SMout: Send + 'static,
 {
-
     let mut refs = Vec::with_capacity(n_servers);
     let mut ids = Vec::with_capacity(n_servers);
     let mut handles = Vec::with_capacity(n_servers);
@@ -90,6 +89,27 @@ where
         guards.push(actor.guard);
     }
     (refs, ids, handles, guards)
+}
+
+
+pub fn spawn_raft_servers_testkit() {
+    for id in 0..5 {
+        let state_machine = VoidStateMachine::new();
+        let (actor, tk) = testkit::<RaftMessage<(), ()>, _, _, VoidStateMachine>(move |cell, me| async move {
+            let me = (id as u32, me);
+            raft_server(
+                cell,
+                me,
+                4,
+                state_machine,
+                DEFAULT_ELECTION_TIMEOUT,
+                DEFAULT_HEARTBEAT_PERIOD,
+                DEFAULT_REPLICATION_PERIOD,
+            )
+            .await
+        });
+        let handle = tokio::spawn(actor.task.run_task().instrument(info_span!("server", id)));
+    }
 }
 
 

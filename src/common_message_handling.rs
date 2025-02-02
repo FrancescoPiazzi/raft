@@ -1,12 +1,10 @@
 use std::cmp::min;
-use std::collections::BTreeMap;
 
 use crate::common_state::CommonState;
 use crate::messages::request_vote::{RequestVoteReply, RequestVoteRequest};
 use crate::messages::*;
 use crate::state_machine::StateMachine;
 
-use actum::actor_ref::ActorRef;
 use append_entries::{AppendEntriesReply, AppendEntriesRequest};
 
 /// Handles a vote request message, answering it with a positive or negative vote.
@@ -14,9 +12,7 @@ use append_entries::{AppendEntriesReply, AppendEntriesRequest};
 /// Returns `true` if the server should become a follower
 #[tracing::instrument(level = "trace", skip_all)]
 pub fn handle_vote_request<SM, SMin, SMout>(
-    me: u32,
     common_state: &mut CommonState<SM, SMin, SMout>,
-    peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin, SMout>>>,
     request: RequestVoteRequest,
 ) -> bool
 where
@@ -28,7 +24,7 @@ where
 
     // set a negative reply by default, we will update it if we can grant the vote
     let mut reply = RequestVoteReply {
-        from: me,
+        from: common_state.me,
         term: common_state.current_term,
         vote_granted: false,
     };
@@ -40,7 +36,7 @@ where
             common_state.current_term
         );
 
-        if let Some(sender_ref) = peers.get_mut(&request.candidate_id) {
+        if let Some(sender_ref) = common_state.peers.get_mut(&request.candidate_id) {
             let _ = sender_ref.try_send(reply.into());
         }
         return step_down;
@@ -50,7 +46,7 @@ where
 
     tracing::trace!("vote granted: {} for id: {}", vote_granted, request.candidate_id);
 
-    if let Some(candidate_ref) = peers.get_mut(&request.candidate_id) {
+    if let Some(candidate_ref) = common_state.peers.get_mut(&request.candidate_id) {
         if vote_granted {
             // TLA: 292
             common_state.voted_for = Some(request.candidate_id);
@@ -80,9 +76,7 @@ pub enum RaftState {
 /// Returns `true` if the server should become a follower
 #[tracing::instrument(level = "trace", skip_all)]
 pub fn handle_append_entries_request<SM, SMin, SMout>(
-    me: u32,
     common_state: &mut CommonState<SM, SMin, SMout>,
-    peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin, SMout>>>,
     state: RaftState,
     request: AppendEntriesRequest<SMin>,
 ) -> bool
@@ -100,7 +94,7 @@ where
 
     // set a negative reply by default, we will update it if we can append the entries
     let mut reply = AppendEntriesReply {
-        from: me,
+        from: common_state.me,
         term: common_state.current_term,
         success: false,
         last_log_index: common_state.log.len() as u64,
@@ -114,7 +108,7 @@ where
             common_state.current_term
         );
 
-        if let Some(sender_ref) = peers.get_mut(&request.leader_id) {
+        if let Some(sender_ref) = common_state.peers.get_mut(&request.leader_id) {
             let _ = sender_ref.try_send(reply.into());
         }
         return step_down;
@@ -126,7 +120,7 @@ where
             RaftState::Leader,
             "two leaders with the same term detected: {} and {} (me)",
             request.leader_id,
-            me
+            common_state.me
         );
         if let Some(leader_id) = common_state.leader_id.as_ref() {
             assert_eq!(
@@ -153,7 +147,7 @@ where
                 common_state.log.len()
             );
 
-            if let Some(sender_ref) = peers.get_mut(&request.leader_id) {
+            if let Some(sender_ref) = common_state.peers.get_mut(&request.leader_id) {
                 let _ = sender_ref.try_send(reply.into());
             }
             return step_down;
@@ -166,7 +160,7 @@ where
                 common_state.log.get_term(request.prev_log_index as usize)
             );
 
-            if let Some(sender_ref) = peers.get_mut(&request.leader_id) {
+            if let Some(sender_ref) = common_state.peers.get_mut(&request.leader_id) {
                 let _ = sender_ref.try_send(reply.into());
             }
             return step_down;
@@ -187,7 +181,7 @@ where
         common_state.commit_log_entries_up_to_commit_index();
     }
 
-    if let Some(leader_ref) = peers.get_mut(&request.leader_id) {
+    if let Some(leader_ref) = common_state.peers.get_mut(&request.leader_id) {
         reply.success = true;
         let _ = leader_ref.try_send(reply.into());
     }
@@ -200,6 +194,7 @@ where
 
 #[cfg(test)]
 mod tests{
+    use actum::actor_ref::ActorRef;
     use assert_matches::assert_matches;
 
     use super::*;
@@ -207,11 +202,10 @@ mod tests{
 
     #[test]
     fn grant_vote_and_step_down(){
-        let mut common_state: CommonState<VoidStateMachine, (), ()> = CommonState::new(VoidStateMachine::new());
-        let mut peers = BTreeMap::new();
-
         let mut candidate_channel = futures_channel::mpsc::channel(10);
-        peers.insert(2, ActorRef::new(candidate_channel.0.clone()));
+
+        let mut common_state: CommonState<VoidStateMachine, (), ()> = CommonState::new(VoidStateMachine::new(), 1);
+        common_state.peers.insert(2, ActorRef::new(candidate_channel.0.clone()));
 
         let request = RequestVoteRequest {
             term: 1,
@@ -220,7 +214,7 @@ mod tests{
             last_log_term: 1,
         };
 
-        let step_down = handle_vote_request(1, &mut common_state, &mut peers, request.clone());
+        let step_down = handle_vote_request(&mut common_state, request.clone());
         assert_eq!(step_down, true);
 
         let vote = candidate_channel.1.try_next().unwrap().unwrap();
@@ -232,12 +226,11 @@ mod tests{
 
     #[test]
     fn reject_vote_term_too_low(){
-        let mut common_state: CommonState<VoidStateMachine, (), ()> = CommonState::new(VoidStateMachine::new());
-        common_state.current_term = 2;
-        let mut peers = BTreeMap::new();
-
         let mut candidate_channel = futures_channel::mpsc::channel(10);
-        peers.insert(2, ActorRef::new(candidate_channel.0.clone()));
+
+        let mut common_state: CommonState<VoidStateMachine, (), ()> = CommonState::new(VoidStateMachine::new(), 1);
+        common_state.current_term = 2;
+        common_state.peers.insert(2, ActorRef::new(candidate_channel.0.clone()));
 
         let request = RequestVoteRequest {
             term: 1,
@@ -246,7 +239,7 @@ mod tests{
             last_log_term: 1,
         };
 
-        let step_down = handle_vote_request(1, &mut common_state, &mut peers, request.clone());
+        let step_down = handle_vote_request(&mut common_state, request.clone());
         assert_eq!(step_down, false);
 
         let vote = candidate_channel.1.try_next().unwrap().unwrap();
@@ -258,13 +251,12 @@ mod tests{
 
     #[test]
     fn reject_vote_already_voted(){
-        let mut common_state: CommonState<VoidStateMachine, (), ()> = CommonState::new(VoidStateMachine::new());
+        let mut candidate_channel = futures_channel::mpsc::channel(10);
+
+        let mut common_state: CommonState<VoidStateMachine, (), ()> = CommonState::new(VoidStateMachine::new(), 1);
         common_state.current_term = 1; // needed or voted_for will be reset because of the term of the message
         common_state.voted_for = Some(1);
-        let mut peers = BTreeMap::new();
-
-        let mut candidate_channel = futures_channel::mpsc::channel(10);
-        peers.insert(2, ActorRef::new(candidate_channel.0.clone()));
+        common_state.peers.insert(2, ActorRef::new(candidate_channel.0.clone()));
 
         let request = RequestVoteRequest {
             term: 1,
@@ -273,7 +265,7 @@ mod tests{
             last_log_term: 1,
         };
 
-        let step_down = handle_vote_request(1, &mut common_state, &mut peers, request.clone());
+        let step_down = handle_vote_request(&mut common_state, request.clone());
         assert_eq!(step_down, false);
 
         let vote = candidate_channel.1.try_next().unwrap().unwrap();
@@ -286,12 +278,11 @@ mod tests{
     #[test]
     /// The most normal case, where the request is valid, with no entries to commit
     fn test_handle_append_entries_request(){
-        let mut common_state: CommonState<VoidStateMachine, (), ()> = CommonState::new(VoidStateMachine::new());
-        common_state.current_term = 1;
-        let mut peers = BTreeMap::new();
-
         let mut leader_channel = futures_channel::mpsc::channel(10);
-        peers.insert(2, ActorRef::new(leader_channel.0.clone()));
+
+        let mut common_state: CommonState<VoidStateMachine, (), ()> = CommonState::new(VoidStateMachine::new(), 1);
+        common_state.current_term = 1;
+        common_state.peers.insert(2, ActorRef::new(leader_channel.0.clone()));
 
         let request = AppendEntriesRequest {
             term: 1,
@@ -302,7 +293,7 @@ mod tests{
             leader_commit: 0,
         };
 
-        let step_down = handle_append_entries_request(1, &mut common_state, &mut peers, RaftState::Follower, request);
+        let step_down = handle_append_entries_request(&mut common_state, RaftState::Follower, request);
         assert_eq!(step_down, false);
 
         let reply = leader_channel.1.try_next().unwrap().unwrap();
@@ -321,12 +312,11 @@ mod tests{
 
     #[test]
     fn test_handle_append_entries_request_commit_entries(){
-        let mut common_state: CommonState<VoidStateMachine, (), ()> = CommonState::new(VoidStateMachine::new());
-        common_state.current_term = 1;
-        let mut peers = BTreeMap::new();
-
         let mut leader_channel = futures_channel::mpsc::channel(10);
-        peers.insert(2, ActorRef::new(leader_channel.0.clone()));
+
+        let mut common_state: CommonState<VoidStateMachine, (), ()> = CommonState::new(VoidStateMachine::new(), 1);
+        common_state.current_term = 1;
+        common_state.peers.insert(2, ActorRef::new(leader_channel.0.clone()));
 
         let request = AppendEntriesRequest {
             term: 1,
@@ -337,7 +327,7 @@ mod tests{
             leader_commit: 2,
         };
 
-        let step_down = handle_append_entries_request(1, &mut common_state, &mut peers, RaftState::Follower, request);
+        let step_down = handle_append_entries_request(&mut common_state, RaftState::Follower, request);
         assert_eq!(step_down, false);
 
         let reply = leader_channel.1.try_next().unwrap().unwrap();
@@ -356,12 +346,11 @@ mod tests{
 
     #[test]
     fn reject_append_entries_request_term_too_low(){
-        let mut common_state: CommonState<VoidStateMachine, (), ()> = CommonState::new(VoidStateMachine::new());
-        common_state.current_term = 2;
-        let mut peers = BTreeMap::new();
-
         let mut leader_channel = futures_channel::mpsc::channel(10);
-        peers.insert(2, ActorRef::new(leader_channel.0.clone()));
+
+        let mut common_state: CommonState<VoidStateMachine, (), ()> = CommonState::new(VoidStateMachine::new(), 1);
+        common_state.current_term = 2;
+        common_state.peers.insert(2, ActorRef::new(leader_channel.0.clone()));
 
         let request = AppendEntriesRequest {
             term: 1,
@@ -372,7 +361,7 @@ mod tests{
             leader_commit: 0,
         };
 
-        let step_down = handle_append_entries_request(1, &mut common_state, &mut peers, RaftState::Follower, request);
+        let step_down = handle_append_entries_request(&mut common_state, RaftState::Follower, request);
         assert_eq!(step_down, false);
 
         let reply = leader_channel.1.try_next().unwrap().unwrap();
@@ -391,12 +380,11 @@ mod tests{
 
     #[test]
     fn step_down_after_append_entries_request(){
-        let mut common_state: CommonState<VoidStateMachine, (), ()> = CommonState::new(VoidStateMachine::new());
-        common_state.current_term = 1;
-        let mut peers = BTreeMap::new();
-
         let mut leader_channel = futures_channel::mpsc::channel(10);
-        peers.insert(2, ActorRef::new(leader_channel.0.clone()));
+
+        let mut common_state: CommonState<VoidStateMachine, (), ()> = CommonState::new(VoidStateMachine::new(), 1);
+        common_state.current_term = 1;
+        common_state.peers.insert(2, ActorRef::new(leader_channel.0.clone()));
 
         let request = AppendEntriesRequest {
             term: 2,
@@ -407,7 +395,7 @@ mod tests{
             leader_commit: 0,
         };
 
-        let step_down = handle_append_entries_request(1, &mut common_state, &mut peers, RaftState::Follower, request);
+        let step_down = handle_append_entries_request(&mut common_state, RaftState::Follower, request);
         assert_eq!(step_down, true);
 
         let reply = leader_channel.1.try_next().unwrap().unwrap();
@@ -427,9 +415,8 @@ mod tests{
     #[test]
     #[should_panic]
     fn panic_two_leaders_with_same_term_detected(){
-        let mut common_state: CommonState<VoidStateMachine, (), ()> = CommonState::new(VoidStateMachine::new());
+        let mut common_state: CommonState<VoidStateMachine, (), ()> = CommonState::new(VoidStateMachine::new(), 1);
         common_state.current_term = 1;
-        let mut peers = BTreeMap::new();
 
         let request = AppendEntriesRequest {
             term: 1,
@@ -440,7 +427,7 @@ mod tests{
             leader_commit: 0,
         };
 
-        handle_append_entries_request(1, &mut common_state, &mut peers, RaftState::Leader, request);
+        handle_append_entries_request(&mut common_state, RaftState::Leader, request);
 
         common_state.check_validity();
     }
@@ -449,13 +436,12 @@ mod tests{
     #[test]
     fn reject_append_entries_hole_in_log(){
         let already_present_entries = vec![(), (), ()];
-        let mut common_state: CommonState<VoidStateMachine, (), ()> = CommonState::new(VoidStateMachine::new());
+        let mut leader_channel = futures_channel::mpsc::channel(10);
+
+        let mut common_state: CommonState<VoidStateMachine, (), ()> = CommonState::new(VoidStateMachine::new(), 1);
         common_state.current_term = 1;
         common_state.log.insert(already_present_entries.clone(), 0, 1);
-        let mut peers = BTreeMap::new();
-
-        let mut leader_channel = futures_channel::mpsc::channel(10);
-        peers.insert(2, ActorRef::new(leader_channel.0.clone()));
+        common_state.peers.insert(2, ActorRef::new(leader_channel.0.clone()));
 
         let request = AppendEntriesRequest {
             term: 1,
@@ -466,7 +452,7 @@ mod tests{
             leader_commit: 0,
         };
 
-        let step_down = handle_append_entries_request(1, &mut common_state, &mut peers, RaftState::Follower, request);
+        let step_down = handle_append_entries_request(&mut common_state, RaftState::Follower, request);
         assert_eq!(step_down, false);
 
         let reply = leader_channel.1.try_next().unwrap().unwrap();
@@ -487,13 +473,13 @@ mod tests{
     #[test]
     fn reject_append_entries_term_mismatch(){
         let already_present_entries = vec![(), (), ()];
-        let mut common_state: CommonState<VoidStateMachine, (), ()> = CommonState::new(VoidStateMachine::new());
+        let mut leader_channel = futures_channel::mpsc::channel(10);
+
+        let mut common_state: CommonState<VoidStateMachine, (), ()> = CommonState::new(VoidStateMachine::new(), 1);
         common_state.current_term = 1;
         common_state.log.insert(already_present_entries.clone(), 0, 1);
-        let mut peers = BTreeMap::new();
+        common_state.peers.insert(2, ActorRef::new(leader_channel.0.clone()));
 
-        let mut leader_channel = futures_channel::mpsc::channel(10);
-        peers.insert(2, ActorRef::new(leader_channel.0.clone()));
 
         let request = AppendEntriesRequest {
             term: 1,
@@ -504,7 +490,7 @@ mod tests{
             leader_commit: 0,
         };
 
-        let step_down = handle_append_entries_request(1, &mut common_state, &mut peers, RaftState::Follower, request);
+        let step_down = handle_append_entries_request(&mut common_state, RaftState::Follower, request);
         assert_eq!(step_down, false);
 
         let reply = leader_channel.1.try_next().unwrap().unwrap();

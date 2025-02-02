@@ -27,9 +27,7 @@ pub enum LeaderResult {
 /// Behavior of the Raft server in leader state.
 pub async fn leader_behavior<AB, SM, SMin, SMout>(
     cell: &mut AB,
-    me: u32,
     common_state: &mut CommonState<SM, SMin, SMout>,
-    peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin, SMout>>>,
     heartbeat_period: Duration,
 ) -> LeaderResult
 where
@@ -39,7 +37,7 @@ where
     SMout: Send + 'static,
 {
     let mut peers_state = BTreeMap::new();
-    for (id, _) in peers.iter_mut() {
+    for (id, _) in common_state.peers.iter_mut() {
         // TLA: 233-234 would want initial_next_index to be log.len()+1, however I think that in my version this might
         // create an inconsistent log in the following scenario: log(A) = [a, b, c], log(B) = [a, b, d], both have 
         // commit_index = 2, A becomes the leader, recieves a replication request with x, the logs become 
@@ -50,7 +48,7 @@ where
     }
 
     let mut follower_timeouts = JoinSet::new();
-    for follower_id in peers.keys() {
+    for follower_id in common_state.peers.keys() {
         let follower_id = *follower_id;
         follower_timeouts.spawn(async move {
             tokio::time::sleep(heartbeat_period).await;
@@ -71,9 +69,7 @@ where
                 match message {
                     Recv::Message(message) => {
                         if handle_message_as_leader(
-                            me,
                             common_state,
-                            peers,
                             &mut peers_state,
                             &mut client_channel_per_input,
                             &mut committed_entries_smout_buf,
@@ -97,15 +93,17 @@ where
             },
             timed_out_follower_id = follower_timeouts.join_next() => {
                 let Some(timed_out_follower_id) = timed_out_follower_id else {
-                    debug_assert!(peers.is_empty());
+                    debug_assert!(common_state.peers.is_empty());
                     continue;
                 };
 
                 let timed_out_follower_id = timed_out_follower_id.unwrap();
-                let timed_out_follower_ref = peers.get_mut(&timed_out_follower_id).expect("all peers are known");
-                let timed_out_follower_state = peers_state.get_mut(&timed_out_follower_id).expect("all peers are known");
+                let mut timed_out_follower_ref = 
+                    common_state.peers.get_mut(&timed_out_follower_id).expect("all peers are known").clone();
+                let timed_out_follower_state = 
+                    peers_state.get_mut(&timed_out_follower_id).expect("all peers are known");
                 let next_index_of_follower = timed_out_follower_state.next_index;
-                send_append_entries_request(me, common_state, timed_out_follower_ref, next_index_of_follower);
+                send_append_entries_request(common_state, &mut timed_out_follower_ref, next_index_of_follower);
 
                 follower_timeouts.spawn(async move {
                     tokio::time::sleep(heartbeat_period).await;
@@ -117,7 +115,6 @@ where
 }
 
 fn send_append_entries_request<SM, SMin, SMout>(
-    me: u32,
     common_state: &CommonState<SM, SMin, SMout>,
     follower_ref: &mut ActorRef<RaftMessage<SMin, SMout>>,
     next_index: u64,
@@ -138,7 +135,7 @@ fn send_append_entries_request<SM, SMin, SMout>(
     // TLA: 215-225 (mcommitIndex   |-> Min({commitIndex[i], lastEntry}) is done when commit_index is updated)
     let request = AppendEntriesRequest::<SMin> {
         term: common_state.current_term,
-        leader_id: me,
+        leader_id: common_state.me,
         prev_log_index,
         prev_log_term,
         entries: entries_to_send,
@@ -150,9 +147,7 @@ fn send_append_entries_request<SM, SMin, SMout>(
 
 /// Returns true if we should step down, false otherwise.
 fn handle_message_as_leader<SM, SMin, SMout>(
-    me: u32,
     common_state: &mut CommonState<SM, SMin, SMout>,
-    peers: &mut BTreeMap<u32, ActorRef<RaftMessage<SMin, SMout>>>,
     peers_state: &mut BTreeMap<u32, PeerState>,
     client_channel_per_input: &mut VecDeque<(mpsc::Sender<AppendEntriesClientResponse<SMin, SMout>>, usize)>,
     committed_entries_smout_buf: &mut Vec<SMout>,
@@ -171,10 +166,10 @@ where
             false
         }
         RaftMessage::AppendEntriesRequest(append_entries_request) => {
-            handle_append_entries_request(me, common_state, peers, RaftState::Leader, append_entries_request)
+            handle_append_entries_request(common_state, RaftState::Leader, append_entries_request)
         }
         RaftMessage::RequestVoteRequest(request_vote_rpc) => {
-            handle_vote_request(me, common_state, peers, request_vote_rpc)
+            handle_vote_request(common_state, request_vote_rpc)
         }
         RaftMessage::AppendEntriesReply(reply) => {
             handle_append_entries_reply(
@@ -338,7 +333,7 @@ mod tests{
     fn test_handle_append_entries_reply() {
         let n_servers = 5;
 
-        let mut common_state = CommonState::new(VoidStateMachine::new());
+        let mut common_state = CommonState::new(VoidStateMachine::new(), 1);
         let mut peers_state = BTreeMap::new();
         let mut client_channel_per_input = VecDeque::new();
         let mut committed_entries_smout_buf = Vec::new();
@@ -380,7 +375,7 @@ mod tests{
     fn test_handle_append_entries_reply_commit_entry() {
         let n_servers = 5;
 
-        let mut common_state = CommonState::new(VoidStateMachine::new());
+        let mut common_state = CommonState::new(VoidStateMachine::new(), 1);
         let mut peers_state = BTreeMap::new();
         let mut client_channel_per_input = VecDeque::new();
         let mut committed_entries_smout_buf = Vec::new();

@@ -6,7 +6,7 @@ edition = "2021"    # this cargo's edition, not the project's
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-actum = { git = "https://github.com/andreastedile/actum.git", rev="1f16959a66f4278eed5eb84febcd74f35214da39" }
+actum = { git = "https://github.com/andreastedile/actum.git", rev="6aa127f0d8708c331d2885911773270db805ee5a" }
 rand = "0.8.4"
 futures = "0.3.30"
 tracing = { version = "0.1.40", features = ["attributes"] }

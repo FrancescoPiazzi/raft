@@ -3,18 +3,18 @@ pub trait StateMachine<SMin, SMout> {
     fn apply(&mut self, entry: &SMin) -> SMout;
 }
 
-#[cfg(test)]
+// #[cfg(test)]
 #[derive(Clone)]
 pub(crate) struct VoidStateMachine;
 
-#[cfg(test)]
+// #[cfg(test)]
 impl StateMachine<(), ()> for VoidStateMachine {
     fn apply(&mut self, _entry: &()) -> () {
         ()
     }
 }
 
-#[cfg(test)]
+// #[cfg(test)]
 impl VoidStateMachine {
     pub fn new() -> Self {
         Self

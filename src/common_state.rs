@@ -1,34 +1,39 @@
 use std::{
-    fmt::{Debug, Formatter, Result},
-    marker::PhantomData,
+    collections::BTreeMap, fmt::{Debug, Formatter, Result}, marker::PhantomData
 };
 
-use crate::log::Log;
+use actum::prelude::ActorRef;
+
+use crate::{log::Log, messages::RaftMessage};
 use crate::messages::request_vote::RequestVoteRequest;
 use crate::state_machine::StateMachine;
 
 pub struct CommonState<SM, SMin, SMout> {
-    pub current_term: u64,
-    pub leader_id: Option<u32>,
+    pub me: u32,
     pub log: Log<SMin>,
-    pub state_machine: SM,
-    pub commit_index: usize,
-    pub last_applied: usize,
+    pub current_term: u64,
     pub voted_for: Option<u32>,
+    pub last_applied: usize,
+    pub commit_index: usize,
+    pub leader_id: Option<u32>,
+    pub state_machine: SM,
+    pub peers: BTreeMap::<u32, ActorRef<RaftMessage<SMin, SMout>>>,
     _phantom: PhantomData<SMout>,
 }
 
 impl<SM, SMin, SMout> CommonState<SM, SMin, SMout> {
-    pub const fn new(state_machine: SM) -> Self {
+    pub const fn new(state_machine: SM, me: u32) -> Self {
         Self {
             // TLA: 143 would want this to be 1, but I don't see a problem with it being 0
-            current_term: 0,
-            leader_id: None,
+            me,
             log: Log::new(),
-            state_machine,
-            commit_index: 0,    // TLA: 154
-            last_applied: 0,
+            current_term: 0,
             voted_for: None,
+            last_applied: 0,
+            commit_index: 0,    // TLA: 154
+            leader_id: None,
+            state_machine,
+            peers: BTreeMap::new(),
             _phantom: PhantomData,
         }
     }
@@ -153,7 +158,7 @@ mod tests {
 
     #[test]
     fn test_commit_log_entries_up_to_commit_index() {
-        let mut common_state = CommonState::new(VoidStateMachine);
+        let mut common_state = CommonState::new(VoidStateMachine, 0);
         common_state.log.append(vec![()], 1);
         common_state.log.append(vec![()], 2);
         common_state.log.append(vec![()], 3);
@@ -171,7 +176,7 @@ mod tests {
 
     #[test]
     fn test_check_validity() {
-        let mut common_state = CommonState::<_, (), ()>::new(VoidStateMachine);
+        let mut common_state = CommonState::<_, (), ()>::new(VoidStateMachine, 0);
 
         common_state.log.append(vec![()], 1);
         common_state.log.append(vec![()], 2);
@@ -186,7 +191,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_check_validity_invalid_commit_index() {
-        let mut common_state = CommonState::<_, (), ()>::new(VoidStateMachine);
+        let mut common_state = CommonState::<_, (), ()>::new(VoidStateMachine, 0);
 
         common_state.log.append(vec![()], 1);
         common_state.log.append(vec![()], 2);
@@ -201,7 +206,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_check_validity_invalid_last_applied() {
-        let mut common_state = CommonState::<_, (), ()>::new(VoidStateMachine);
+        let mut common_state = CommonState::<_, (), ()>::new(VoidStateMachine, 0);
 
         common_state.log.append(vec![()], 1);
         common_state.log.append(vec![()], 2);
@@ -216,7 +221,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_check_validity_invalid_log_terms() {
-        let mut common_state = CommonState::<_, (), ()>::new(VoidStateMachine);
+        let mut common_state = CommonState::<_, (), ()>::new(VoidStateMachine, 0);
 
         common_state.log.append(vec![()], 1);
         common_state.log.append(vec![()], 2);
