@@ -1,7 +1,10 @@
+use std::ops::Range;
+
 use actum::drop_guard::ActorDropGuard;
 use actum::prelude::*;
 use actum::testkit::{testkit, Testkit};
 use tokio::task::JoinHandle;
+use tokio::time::Duration;
 use tracing::{info_span, Instrument, subscriber};
 use tracing_subscriber::{fmt, layer::SubscriberExt, EnvFilter, Layer, Registry};
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
@@ -22,13 +25,18 @@ pub struct Server<SM, SMin, SMout> {
 }
 
 /// Initialize a set of Raft servers with a given state machine and exchanges their references
-pub fn init<SM, SMin, SMout>(n_servers: usize, state_machine: SM) -> Vec<Server<SM, SMin, SMout>>
+pub fn init<SM, SMin, SMout>(
+    n_servers: usize, 
+    state_machine: SM, 
+    election_timeout: Option<Range<Duration>>, 
+    heartbeat_period: Option<Duration>
+) -> Vec<Server<SM, SMin, SMout>>
 where
     SM: StateMachine<SMin, SMout> + Send + Clone + 'static,
     SMin: Clone + Send + 'static,
     SMout: Send + 'static,
 {
-    let (refs, ids, handles, guards) = spawn_raft_servers(n_servers, state_machine);
+    let (refs, ids, handles, guards) = spawn_raft_servers(n_servers, state_machine, election_timeout, heartbeat_period);
     send_peer_refs::<SM, SMin, SMout>(&refs, &ids);
 
     // zip together refs, ids, handles, and guards into a vector of Server structs
@@ -42,21 +50,28 @@ where
         .collect()
 }
 
-
-pub fn init_split_servers<SM, SMin, SMout>(n_servers: usize, state_machine: SM) 
-    -> SplitServers<SM, SMin, SMout>
+pub fn init_servers_split<SM, SMin, SMout>(
+    n_servers: usize, 
+    state_machine: SM, 
+    election_timeout: Option<Range<Duration>>, 
+    heartbeat_period: Option<Duration>
+) -> SplitServers<SM, SMin, SMout>
 where
     SM: StateMachine<SMin, SMout> + Send + Clone + 'static,
     SMin: Clone + Send + 'static,
     SMout: Send + 'static,
 {
-    let (refs, ids, handles, guards) = spawn_raft_servers(n_servers, state_machine);
+    let (refs, ids, handles, guards) = spawn_raft_servers(n_servers, state_machine, election_timeout, heartbeat_period);
     send_peer_refs::<SM, SMin, SMout>(&refs, &ids);
     (refs, ids, handles, guards)
 }
 
-
-pub fn spawn_raft_servers<SM, SMin, SMout>(n_servers: usize, state_machine: SM) -> SplitServers<SM, SMin, SMout>
+pub fn spawn_raft_servers<SM, SMin, SMout>(
+    n_servers: usize, 
+    state_machine: SM, 
+    election_timeout: Option<Range<Duration>>, 
+    heartbeat_period: Option<Duration>
+) -> SplitServers<SM, SMin, SMout>
 where
     SM: StateMachine<SMin, SMout> + Send + Clone + 'static,
     SMin: Clone + Send + 'static,
@@ -69,14 +84,15 @@ where
 
     for id in 0..n_servers {
         let state_machine = state_machine.clone();
+        let election_timeout = election_timeout.clone();
         let actor = actum::<RaftMessage<SMin, SMout>, _, _, SM>(move |cell, _| async move {
             raft_server(
                 cell,
                 id as u32,
                 n_servers - 1,
                 state_machine,
-                DEFAULT_ELECTION_TIMEOUT,
-                DEFAULT_HEARTBEAT_PERIOD,
+                election_timeout.unwrap_or(DEFAULT_ELECTION_TIMEOUT),
+                heartbeat_period.unwrap_or(DEFAULT_HEARTBEAT_PERIOD),
             )
             .await
         });
@@ -90,8 +106,20 @@ where
 }
 
 
-pub fn spawn_raft_servers_testkit<SM, SMin, SMout>(n_servers: usize, state_machine: SM) 
-    -> (SplitServers<SM, SMin, SMout>, Vec<Testkit<RaftMessage<SMin, SMout>>>)
+/// Initializes a set of Raft servers, returns parallel vectors containing all the information about them
+/// Parameters:
+/// - `n_servers`: the number of servers to spawn
+/// - `state_machine`: the state machine to use for each server
+/// - `election_timeout`: the range of election timeouts to use for each server, None to use the default
+/// - `heartbeat_period`: the heartbeat period to use for each server, None to use the default
+/// - `n_servers_total`: the total number of servers in the cluster, None to use `n_servers`
+pub fn spawn_raft_servers_testkit<SM, SMin, SMout>(
+    n_servers: usize, 
+    state_machine: SM,
+    election_timeout: Option<Range<Duration>>,
+    heartbeat_period: Option<Duration>,
+    n_servers_total: Option<usize>,
+) -> (SplitServers<SM, SMin, SMout>, Vec<Testkit<RaftMessage<SMin, SMout>>>)
 where
     SM: StateMachine<SMin, SMout> + Send + Clone + 'static,
     SMin: Clone + Send + 'static,
@@ -105,14 +133,15 @@ where
 
     for id in 0..n_servers {
         let state_machine = state_machine.clone();
+        let election_timeout = election_timeout.clone();
         let (actor, tk) = testkit::<RaftMessage<SMin, SMout>, _, _, SM>(move |cell, _| async move {
             raft_server(
                 cell,
                 id as u32,
-                n_servers - 1,
+                n_servers_total.unwrap_or(n_servers) - 1,
                 state_machine,
-                DEFAULT_ELECTION_TIMEOUT,
-                DEFAULT_HEARTBEAT_PERIOD,
+                election_timeout.unwrap_or(DEFAULT_ELECTION_TIMEOUT),
+                heartbeat_period.unwrap_or(DEFAULT_HEARTBEAT_PERIOD),
             )
             .await
         });

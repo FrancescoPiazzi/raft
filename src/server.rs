@@ -93,7 +93,7 @@ where
 
 fn check_parameters(election_timeout: &Range<Duration>, heartbeat_period: &Duration) {
     assert!(
-        election_timeout.start < election_timeout.end,
+        election_timeout.start <= election_timeout.end,
         "election_timeout start must be less than end"
     );
     assert!(

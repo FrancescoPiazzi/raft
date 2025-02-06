@@ -12,10 +12,15 @@ use crate::test_state_machine::TestStateMachine;
 #[tokio::test]
 async fn simple_replication_random_leader() {
     let n_servers = 5;
-    let time_to_elect_leader = Duration::from_millis(500);
-    let time_to_agree_on_value = Duration::from_millis(500);
+    let time_to_elect_leader = Duration::from_millis(300);
+    let time_to_agree_on_value = Duration::from_millis(200);
 
-    let (mut refs, _, handles, guards) = init_split_servers(n_servers, TestStateMachine::new());
+    let (mut refs, _, handles, guards) = init_servers_split(
+        n_servers, 
+        TestStateMachine::new(), 
+        Some(Duration::from_millis(100)..Duration::from_millis(200)),
+        Some(Duration::from_millis(50))
+    );
 
     let (tx, _rx) = mpsc::channel::<AppendEntriesClientResponse<u64, usize>>(10);
 

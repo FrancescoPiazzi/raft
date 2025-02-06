@@ -116,7 +116,7 @@ async fn main() {
             .init();
     }
 
-    let servers = init(n_servers, ExampleStateMachine::new());
+    let servers = init(n_servers, ExampleStateMachine::new(), None, None);
 
     send_entries_to_duplicate(
         &servers,
