@@ -35,18 +35,11 @@ impl StateMachine<u64, usize> for ExampleStateMachine {
 async fn send_entries_to_duplicate<SM, SMin, SMout>(
     servers: &Vec<Server<SM, SMin, SMout>>,
     entries: Set<Vec<SMin>>,
-    period: Duration,
     timeout: Duration,
 ) where
     SMin: Clone + Send + 'static,
     SMout: Send + Debug + 'static,
 {
-    let mut interval = tokio::time::interval(period);
-    interval.tick().await; // first tick is immediate, skip it
-                           // give the servers a moment to elect a leader
-                           // not mandatory, but we won't get a useful answer if a leader is not elected yet
-    interval.tick().await;
-
     let mut leader = servers[0].server_ref.clone();
     let mut rng = rand::thread_rng();
 
@@ -93,7 +86,6 @@ async fn send_entries_to_duplicate<SM, SMin, SMout>(
                 }
             }
         }
-        interval.tick().await;
     }
 }
 
@@ -120,11 +112,13 @@ async fn main() {
 
     let servers = split_servers.into_server_vec();
 
+    println!("sleeping for two seconds, so that a leader can be elected.");
+    tokio::time::sleep(Duration::from_secs(2)).await;
+
     send_entries_to_duplicate(
         &servers,
         Set::from([vec![1, 3, 5, 7, 11], vec![1, 4, 9], vec![2, 4, 6]]),
         Duration::from_millis(1000),
-        Duration::from_millis(2000),
     )
     .await;
 
