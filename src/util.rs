@@ -18,7 +18,8 @@ use tracing_subscriber::{fmt, layer::SubscriberExt, EnvFilter, Layer, Registry};
 pub struct Server<SM, SMin, SMout> {
     pub server_id: u32,
     pub server_ref: ActorRef<RaftMessage<SMin, SMout>>,
-    #[allow(dead_code)] // guard is not used but must remain in scope or the actors are dropped as well
+    #[allow(dead_code)]
+    /// Although the actor guard is never used, it must remain in scope or the actor is otherwise dropped.
     pub guard: ActorDropGuard,
     pub handle: JoinHandle<SM>,
 }
