@@ -32,7 +32,7 @@ impl StateMachine<u64, usize> for ExampleStateMachine {
 /// awaits for the confirmation of each entry, and when a group is done it sends another one
 /// also handles negative responses (e.g. the server is not the leader but knows who the leader is)
 #[instrument(name = "client" skip(servers, entries, period, timeout))]
-async fn send_entries_to_duplicate<SM, SMin, SMout>(
+async fn replicate_entries<SM, SMin, SMout>(
     servers: &Vec<Server<SM, SMin, SMout>>,
     entries: Set<Vec<SMin>>,
     timeout: Duration,
@@ -115,7 +115,7 @@ async fn main() {
     println!("sleeping for two seconds, so that a leader can be elected.");
     tokio::time::sleep(Duration::from_secs(2)).await;
 
-    send_entries_to_duplicate(
+    replicate_entries(
         &servers,
         Set::from([vec![1, 3, 5, 7, 11], vec![1, 4, 9], vec![2, 4, 6]]),
         Duration::from_millis(1000),
