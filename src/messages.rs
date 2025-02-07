@@ -24,6 +24,50 @@ pub enum RaftMessage<SMin, SMout> {
     PollState(PollStateRequest),
 }
 
+impl<SMin, SMout> RaftMessage<SMin, SMout> {
+    pub fn unwrap_add_peer(self) -> AddPeer<SMin, SMout> {
+        match self {
+            RaftMessage::AddPeer(inner) => inner,
+            other => panic!("called `RaftMessage::unwrap_add_peer()` on a `{:?}` value", other),
+        }
+    }
+
+    pub fn unwrap_append_entries_request(self) -> AppendEntriesRequest<SMin> {
+        match self {
+            RaftMessage::AppendEntriesRequest(inner) => inner,
+            other => panic!("called `RaftMessage::unwrap_append_entries_request()` on a `{:?}` value", other),
+        }
+    }
+
+    pub fn unwrap_append_entries_reply(self) -> AppendEntriesReply {
+        match self {
+            RaftMessage::AppendEntriesReply(inner) => inner,
+            other => panic!("called `RaftMessage::unwrap_append_entries_reply()` on a `{:?}` value", other),
+        }
+    }
+
+    pub fn unwrap_request_vote_request(self) -> RequestVoteRequest {
+        match self {
+            RaftMessage::RequestVoteRequest(inner) => inner,
+            other => panic!("called `RaftMessage::unwrap_request_vote_request()` on a `{:?}` value", other),
+        }
+    }
+
+    pub fn unwrap_request_vote_reply(self) -> RequestVoteReply {
+        match self {
+            RaftMessage::RequestVoteReply(inner) => inner,
+            other => panic!("called `RaftMessage::unwrap_request_vote_reply()` on a `{:?}` value", other),
+        }
+    }
+
+    pub fn unwrap_append_entries_client_request(self) -> AppendEntriesClientRequest<SMin, SMout> {
+        match self {
+            RaftMessage::AppendEntriesClientRequest(inner) => inner,
+            other => panic!("called `RaftMessage::unwrap_append_entries_client_request()` on a `{:?}` value", other),
+        }
+    }
+}
+
 impl<SMin, SMout> Debug for RaftMessage<SMin, SMout> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
