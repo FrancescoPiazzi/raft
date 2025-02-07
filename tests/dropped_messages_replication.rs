@@ -8,11 +8,10 @@ use tokio::sync::mpsc;
 use tokio::time::sleep;
 use tracing::{info_span, Instrument};
 
-mod message_forwarder;
 mod test_state_machine;
 
-use crate::message_forwarder::run_testkit_until_actor_returns;
 use crate::test_state_machine::TestStateMachine;
+use oxidized_float::util::run_testkit_until_actor_returns;
 
 #[tokio::test]
 async fn dropped_messages_replication() {

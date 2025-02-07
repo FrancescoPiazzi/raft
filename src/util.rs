@@ -14,6 +14,7 @@ use tokio::time::Duration;
 use tracing::{info_span, subscriber, Instrument};
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::{fmt, layer::SubscriberExt, EnvFilter, Layer, Registry};
+use actum::effect::EffectType;
 
 pub struct Server<SM, SMin, SMout> {
     pub server_id: u32,
@@ -234,5 +235,21 @@ impl<SM, SMin, SMout> SplitServersWithTestkit<SM, SMin, SMout> {
             ServerWithTestkit::new(server_id, server_ref, guard, handle, testkit)
         })
         .collect()
+    }
+}
+
+pub async fn run_testkit_until_actor_returns<SMin, SMout>(mut testkit: Testkit<RaftMessage<SMin, SMout>>)
+where
+    SMin: Clone + Send + 'static,
+    SMout: Send + 'static,
+{
+    let mut stopped = false;
+    while !stopped {
+        testkit
+            .test_next_effect(|effect| match effect {
+                EffectType::Returned(_) => stopped = true,
+                _ => {}
+            })
+            .await;
     }
 }
