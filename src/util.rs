@@ -1,20 +1,19 @@
 use std::ops::Range;
 
-use actum::drop_guard::ActorDropGuard;
-use actum::prelude::*;
-use actum::testkit::{testkit, Testkit};
-use tokio::task::JoinHandle;
-use tokio::time::Duration;
-use tracing::{info_span, subscriber, Instrument};
-use tracing_appender::rolling::{RollingFileAppender, Rotation};
-use tracing_subscriber::{fmt, layer::SubscriberExt, EnvFilter, Layer, Registry};
-
 use crate::config::{DEFAULT_ELECTION_TIMEOUT, DEFAULT_HEARTBEAT_PERIOD};
 use crate::messages::add_peer::AddPeer;
 use crate::messages::RaftMessage;
 use crate::server::raft_server;
 use crate::state_machine::StateMachine;
-use crate::types::SplitServers;
+use actum::drop_guard::ActorDropGuard;
+use actum::prelude::*;
+use actum::testkit::{testkit, Testkit};
+use itertools::izip;
+use tokio::task::JoinHandle;
+use tokio::time::Duration;
+use tracing::{info_span, subscriber, Instrument};
+use tracing_appender::rolling::{RollingFileAppender, Rotation};
+use tracing_subscriber::{fmt, layer::SubscriberExt, EnvFilter, Layer, Registry};
 
 pub struct Server<SM, SMin, SMout> {
     pub server_id: u32,
@@ -22,6 +21,22 @@ pub struct Server<SM, SMin, SMout> {
     #[allow(dead_code)] // guard is not used but must remain in scope or the actors are dropped as well
     pub guard: ActorDropGuard,
     pub handle: JoinHandle<SM>,
+}
+
+impl<SM, SMin, SMout> Server<SM, SMin, SMout> {
+    pub fn new(
+        server_id: u32,
+        server_ref: ActorRef<RaftMessage<SMin, SMout>>,
+        guard: ActorDropGuard,
+        handle: JoinHandle<SM>,
+    ) -> Self {
+        Self {
+            server_id,
+            server_ref,
+            guard,
+            handle,
+        }
+    }
 }
 
 /// Initialize a set of Raft servers with a given state machine and exchanges their references
@@ -36,21 +51,10 @@ where
     SMin: Clone + Send + 'static,
     SMout: Send + 'static,
 {
-    let (refs, ids, handles, guards) = spawn_raft_servers(n_servers, state_machine, election_timeout, heartbeat_period);
-    send_peer_refs::<SM, SMin, SMout>(&refs, &ids);
+    let split_servers = spawn_raft_servers(n_servers, state_machine, election_timeout, heartbeat_period);
+    send_peer_refs::<SM, SMin, SMout>(&split_servers.server_ref_vec, &split_servers.server_id_vec);
 
-    // zip together refs, ids, handles, and guards into a vector of Server structs
-    refs.into_iter()
-        .zip(ids)
-        .zip(handles)
-        .zip(guards)
-        .map(|(((server_ref, server_id), handle), guard)| Server {
-            server_id,
-            server_ref,
-            guard,
-            handle,
-        })
-        .collect()
+    split_servers.into_server_vec()
 }
 
 pub fn init_servers_split<SM, SMin, SMout>(
@@ -64,9 +68,9 @@ where
     SMin: Clone + Send + 'static,
     SMout: Send + 'static,
 {
-    let (refs, ids, handles, guards) = spawn_raft_servers(n_servers, state_machine, election_timeout, heartbeat_period);
-    send_peer_refs::<SM, SMin, SMout>(&refs, &ids);
-    (refs, ids, handles, guards)
+    let split_servers = spawn_raft_servers(n_servers, state_machine, election_timeout, heartbeat_period);
+    send_peer_refs::<SM, SMin, SMout>(&split_servers.server_ref_vec, &split_servers.server_id_vec);
+    split_servers
 }
 
 pub fn spawn_raft_servers<SM, SMin, SMout>(
@@ -80,10 +84,10 @@ where
     SMin: Clone + Send + 'static,
     SMout: Send + 'static,
 {
-    let mut refs = Vec::with_capacity(n_servers);
-    let mut ids = Vec::with_capacity(n_servers);
-    let mut handles = Vec::with_capacity(n_servers);
-    let mut guards = Vec::with_capacity(n_servers);
+    let mut server_ref_vec = Vec::with_capacity(n_servers);
+    let mut server_id_vec = Vec::with_capacity(n_servers);
+    let mut handle_vec = Vec::with_capacity(n_servers);
+    let mut guard_vec = Vec::with_capacity(n_servers);
 
     for id in 0..n_servers {
         let state_machine = state_machine.clone();
@@ -100,12 +104,18 @@ where
             .await
         });
         let handle = tokio::spawn(actor.task.run_task().instrument(info_span!("server", id)));
-        refs.push(actor.m_ref);
-        ids.push(id as u32);
-        handles.push(handle);
-        guards.push(actor.guard);
+        server_ref_vec.push(actor.m_ref);
+        server_id_vec.push(id as u32);
+        handle_vec.push(handle);
+        guard_vec.push(actor.guard);
     }
-    (refs, ids, handles, guards)
+
+    SplitServers {
+        server_ref_vec,
+        server_id_vec,
+        handle_vec,
+        guard_vec,
+    }
 }
 
 /// Initializes a set of Raft servers, returns parallel vectors containing all the information about them
@@ -127,11 +137,11 @@ where
     SMin: Clone + Send + 'static,
     SMout: Send + 'static,
 {
-    let mut refs = Vec::with_capacity(n_servers);
-    let mut ids = Vec::with_capacity(n_servers);
-    let mut handles = Vec::with_capacity(n_servers);
-    let mut guards = Vec::with_capacity(n_servers);
-    let mut testkits = Vec::with_capacity(n_servers);
+    let mut server_ref_vec = Vec::with_capacity(n_servers);
+    let mut server_id_vec = Vec::with_capacity(n_servers);
+    let mut handle_vec = Vec::with_capacity(n_servers);
+    let mut guard_vec = Vec::with_capacity(n_servers);
+    let mut testkit_vec = Vec::with_capacity(n_servers);
 
     for id in 0..n_servers {
         let state_machine = state_machine.clone();
@@ -148,13 +158,20 @@ where
             .await
         });
         let handle = tokio::spawn(actor.task.run_task().instrument(info_span!("server", id)));
-        refs.push(actor.m_ref);
-        ids.push(id as u32);
-        handles.push(handle);
-        guards.push(actor.guard);
-        testkits.push(tk);
+        server_ref_vec.push(actor.m_ref);
+        server_id_vec.push(id as u32);
+        handle_vec.push(handle);
+        guard_vec.push(actor.guard);
+        testkit_vec.push(tk);
     }
-    ((refs, ids, handles, guards), testkits)
+
+    let split_servers = SplitServers {
+        server_ref_vec,
+        server_id_vec,
+        handle_vec,
+        guard_vec,
+    };
+    (split_servers, testkit_vec)
 }
 
 pub fn send_peer_refs<SM, SMin, SMout>(refs: &[ActorRef<RaftMessage<SMin, SMout>>], ids: &[u32])
@@ -208,5 +225,20 @@ pub async fn split_file_logs(n_servers: usize, guards: &mut Vec<tracing_appender
         }
     } else {
         tracing::error!("No layers were created for the composite layer");
+    }
+}
+
+pub struct SplitServers<SM, SMin, SMout> {
+    pub server_id_vec: Vec<u32>,
+    pub server_ref_vec: Vec<ActorRef<RaftMessage<SMin, SMout>>>,
+    pub guard_vec: Vec<ActorDropGuard>,
+    pub handle_vec: Vec<JoinHandle<SM>>,
+}
+
+impl<SM, SMin, SMout> SplitServers<SM, SMin, SMout> {
+    pub fn into_server_vec(self) -> Vec<Server<SM, SMin, SMout>> {
+        let zip = izip!(self.server_ref_vec, self.server_id_vec, self.handle_vec, self.guard_vec);
+        zip.map(|(server_ref, server_id, handle, guard)| Server::new(server_id, server_ref, guard, handle))
+            .collect()
     }
 }

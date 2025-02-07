@@ -30,7 +30,15 @@ async fn dropped_messages_replication() {
     let time_to_agree_on_value = Duration::from_millis(1000);
 
     // use the utility function to create all the followers with one call
-    let ((mut refs, mut ids, mut handles, mut guards), mut testkits) = spawn_raft_servers_testkit(
+    let (
+        SplitServers {
+            mut server_id_vec,
+            mut server_ref_vec,
+            mut guard_vec,
+            mut handle_vec,
+        },
+        mut testkits,
+    ) = spawn_raft_servers_testkit(
         n_servers - 1,
         TestStateMachine::new(),
         Some(Duration::from_millis(1000)..Duration::from_millis(2000)),
@@ -54,10 +62,10 @@ async fn dropped_messages_replication() {
     let handle = tokio::spawn(actor.task.run_task().instrument(info_span!("leader")));
     let mut leader_ref = actor.m_ref.clone(); // useful to contact the leader later
 
-    refs.push(actor.m_ref);
-    ids.push(leader_id);
-    handles.push(handle);
-    guards.push(actor.guard);
+    server_ref_vec.push(actor.m_ref);
+    server_id_vec.push(leader_id);
+    handle_vec.push(handle);
+    guard_vec.push(actor.guard);
     testkits.push(tk);
 
     let message_forwarders_handles = testkits
@@ -65,7 +73,7 @@ async fn dropped_messages_replication() {
         .map(|tk| init_message_forwarder(tk))
         .collect::<Vec<_>>();
 
-    send_peer_refs::<TestStateMachine, u64, usize>(&refs, &ids);
+    send_peer_refs::<TestStateMachine, u64, usize>(&server_ref_vec, &server_id_vec);
 
     let (tx, mut rx) = mpsc::channel::<AppendEntriesClientResponse<u64, usize>>(10);
 
@@ -86,9 +94,9 @@ async fn dropped_messages_replication() {
 
     tracing::debug!("Response ok");
 
-    let _ = guards.into_iter().for_each(|g| drop(g));
+    let _ = guard_vec.into_iter().for_each(|g| drop(g));
     let mut state_machines: Vec<TestStateMachine> = Vec::new();
-    for (i, handle) in handles.into_iter().rev().enumerate() {
+    for (i, handle) in handle_vec.into_iter().rev().enumerate() {
         tracing::debug!("Waiting for server {} to return", i);
         state_machines.push(handle.await.unwrap());
         tracing::debug!("Server {} returned", i);

@@ -14,7 +14,12 @@ async fn simple_replication_random_leader() {
     let time_to_elect_leader = Duration::from_millis(300);
     let time_to_agree_on_value = Duration::from_millis(200);
 
-    let (mut refs, _, handles, guards) = init_servers_split(
+    let SplitServers {
+        server_id_vec,
+        mut server_ref_vec,
+        guard_vec,
+        handle_vec,
+    } = init_servers_split(
         n_servers,
         TestStateMachine::new(),
         Some(Duration::from_millis(100)..Duration::from_millis(200)),
@@ -31,14 +36,14 @@ async fn simple_replication_random_leader() {
         entries_to_replicate: vec![1],
     };
     for i in 0..n_servers {
-        refs[i].try_send(msg.clone().into()).unwrap();
+        server_ref_vec[i].try_send(msg.clone().into()).unwrap();
     }
 
     sleep(time_to_agree_on_value).await;
 
-    let _ = guards.into_iter().for_each(|g| drop(g));
+    let _ = guard_vec.into_iter().for_each(|g| drop(g));
     let mut state_machines: Vec<TestStateMachine> = Vec::new();
-    for handle in handles {
+    for handle in handle_vec {
         state_machines.push(handle.await.unwrap());
     }
 
