@@ -26,7 +26,7 @@ async fn simple_replication_random_leader() {
         Some(Duration::from_millis(50)),
     );
 
-    send_peer_refs::<TestStateMachine, u64, usize>(&server_ref_vec, &server_id_vec);
+    send_peer_refs::<u64, usize>(&server_ref_vec, &server_id_vec);
 
     let (tx, _rx) = mpsc::channel::<AppendEntriesClientResponse<u64, usize>>(10);
 

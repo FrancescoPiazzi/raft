@@ -73,7 +73,7 @@ async fn dropped_messages_replication() {
         .map(|tk| init_message_forwarder(tk))
         .collect::<Vec<_>>();
 
-    send_peer_refs::<TestStateMachine, u64, usize>(&server_ref_vec, &server_id_vec);
+    send_peer_refs::<u64, usize>(&server_ref_vec, &server_id_vec);
 
     let (tx, mut rx) = mpsc::channel::<AppendEntriesClientResponse<u64, usize>>(10);
 

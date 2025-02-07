@@ -52,7 +52,7 @@ where
     SMout: Send + 'static,
 {
     let split_servers = spawn_raft_servers(n_servers, state_machine, election_timeout, heartbeat_period);
-    send_peer_refs::<SM, SMin, SMout>(&split_servers.server_ref_vec, &split_servers.server_id_vec);
+    send_peer_refs::<SMin, SMout>(&split_servers.server_ref_vec, &split_servers.server_id_vec);
     split_servers
 }
 
@@ -157,7 +157,7 @@ where
     (split_servers, testkit_vec)
 }
 
-pub fn send_peer_refs<SM, SMin, SMout>(refs: &[ActorRef<RaftMessage<SMin, SMout>>], ids: &[u32])
+pub fn send_peer_refs<SMin, SMout>(refs: &[ActorRef<RaftMessage<SMin, SMout>>], ids: &[u32])
 where
     SMin: Send + 'static,
     SMout: Send + 'static,
