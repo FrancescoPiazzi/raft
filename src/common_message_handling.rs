@@ -194,7 +194,6 @@ where
 #[cfg(test)]
 mod tests {
     use actum::actor_ref::ActorRef;
-    use assert_matches::assert_matches;
 
     use super::*;
     use crate::state_machine::VoidStateMachine;
@@ -217,8 +216,13 @@ mod tests {
         assert_eq!(step_down, true);
 
         let vote = candidate_channel.1.try_next().unwrap().unwrap();
-        assert_matches!(vote, RaftMessage::RequestVoteReply(inner) if (
-            inner.vote_granted == true && inner.term == 1 && inner.from == 1));
+        let reply = vote.unwrap_request_vote_reply();
+        let expected = RequestVoteReply {
+            from: 1,
+            term: 1,
+            vote_granted: true,
+        };
+        assert_eq!(reply, expected);
 
         common_state.check_validity();
     }
@@ -242,8 +246,13 @@ mod tests {
         assert_eq!(step_down, false);
 
         let vote = candidate_channel.1.try_next().unwrap().unwrap();
-        assert_matches!(vote, RaftMessage::RequestVoteReply(inner) if (
-            inner.vote_granted == false && inner.term == 2 && inner.from == 1));
+        let reply = vote.unwrap_request_vote_reply();
+        let expected = RequestVoteReply {
+            from: 1,
+            term: 2,
+            vote_granted: false,
+        };
+        assert_eq!(reply, expected);
 
         common_state.check_validity();
     }
@@ -268,8 +277,13 @@ mod tests {
         assert_eq!(step_down, false);
 
         let vote = candidate_channel.1.try_next().unwrap().unwrap();
-        assert_matches!(vote, RaftMessage::RequestVoteReply(inner) if (
-            inner.vote_granted == false && inner.term == 1 && inner.from == 1));
+        let reply = vote.unwrap_request_vote_reply();
+        let expected = RequestVoteReply {
+            from: 1,
+            term: 1,
+            vote_granted: false,
+        };
+        assert_eq!(reply, expected);
 
         common_state.check_validity();
     }
@@ -296,12 +310,11 @@ mod tests {
         assert_eq!(step_down, false);
 
         let reply = leader_channel.1.try_next().unwrap().unwrap();
-        assert_matches!(reply, RaftMessage::AppendEntriesReply(inner) if (
-            inner.success == true && 
-            inner.term == 1 && 
-            inner.from == 1 && 
-            inner.last_log_index == 0)
-        );
+        let reply = reply.unwrap_append_entries_reply();
+        assert!(reply.success);
+        assert_eq!(reply.term, 1);
+        assert_eq!(reply.from, 1);
+        assert_eq!(reply.last_log_index, 0);
 
         assert_eq!(common_state.log.len(), 3);
         assert_eq!(common_state.commit_index, 0);
@@ -330,12 +343,11 @@ mod tests {
         assert_eq!(step_down, false);
 
         let reply = leader_channel.1.try_next().unwrap().unwrap();
-        assert_matches!(reply, RaftMessage::AppendEntriesReply(inner) if (
-            inner.success == true && 
-            inner.term == 1 && 
-            inner.from == 1 && 
-            inner.last_log_index == 0)
-        );
+        let reply = reply.unwrap_append_entries_reply();
+        assert!(reply.success);
+        assert_eq!(reply.term, 1);
+        assert_eq!(reply.from, 1);
+        assert_eq!(reply.last_log_index, 0);
 
         assert_eq!(common_state.log.len(), 3);
         assert_eq!(common_state.commit_index, 2);
@@ -364,12 +376,11 @@ mod tests {
         assert_eq!(step_down, false);
 
         let reply = leader_channel.1.try_next().unwrap().unwrap();
-        assert_matches!(reply, RaftMessage::AppendEntriesReply(inner) if (
-            inner.success == false && 
-            inner.term == 2 && 
-            inner.from == 1 && 
-            inner.last_log_index == 0)
-        );
+        let reply = reply.unwrap_append_entries_reply();
+        assert!(!reply.success);
+        assert_eq!(reply.term, 2);
+        assert_eq!(reply.from, 1);
+        assert_eq!(reply.last_log_index, 0);
 
         assert_eq!(common_state.log.len(), 0);
         assert_eq!(common_state.commit_index, 0);
@@ -398,12 +409,11 @@ mod tests {
         assert_eq!(step_down, true);
 
         let reply = leader_channel.1.try_next().unwrap().unwrap();
-        assert_matches!(reply, RaftMessage::AppendEntriesReply(inner) if (
-            inner.success == true && 
-            inner.term == 2 && 
-            inner.from == 1 && 
-            inner.last_log_index == 0)
-        );
+        let reply = reply.unwrap_append_entries_reply();
+        assert!(reply.success);
+        assert_eq!(reply.term, 2);
+        assert_eq!(reply.from, 1);
+        assert_eq!(reply.last_log_index, 0);
 
         assert_eq!(common_state.log.len(), 3);
         assert_eq!(common_state.commit_index, 0);
@@ -455,12 +465,11 @@ mod tests {
         assert_eq!(step_down, false);
 
         let reply = leader_channel.1.try_next().unwrap().unwrap();
-        assert_matches!(reply, RaftMessage::AppendEntriesReply(inner) if (
-            inner.success == false && 
-            inner.term == 1 && 
-            inner.from == 1 && 
-            inner.last_log_index == already_present_entries.len() as u64)
-        );
+        let reply = reply.unwrap_append_entries_reply();
+        assert!(!reply.success);
+        assert_eq!(reply.term, 1);
+        assert_eq!(reply.from, 1);
+        assert_eq!(reply.last_log_index, already_present_entries.len() as u64);
 
         assert_eq!(common_state.log.len(), already_present_entries.len());
         assert_eq!(common_state.commit_index, 0);
@@ -492,12 +501,11 @@ mod tests {
         assert_eq!(step_down, false);
 
         let reply = leader_channel.1.try_next().unwrap().unwrap();
-        assert_matches!(reply, RaftMessage::AppendEntriesReply(inner) if (
-            inner.success == false && 
-            inner.term == 1 && 
-            inner.from == 1 && 
-            inner.last_log_index == already_present_entries.len() as u64)
-        );
+        let reply = reply.unwrap_append_entries_reply();
+        assert!(!reply.success);
+        assert_eq!(reply.term, 1);
+        assert_eq!(reply.from, 1);
+        assert_eq!(reply.last_log_index, already_present_entries.len() as u64);
 
         assert_eq!(common_state.log.len(), already_present_entries.len());
         assert_eq!(common_state.commit_index, 0);
