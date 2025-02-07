@@ -40,24 +40,6 @@ impl<SM, SMin, SMout> Server<SM, SMin, SMout> {
     }
 }
 
-/// Initialize a set of Raft servers with a given state machine and exchanges their references
-pub fn init<SM, SMin, SMout>(
-    n_servers: usize,
-    state_machine: SM,
-    election_timeout: Option<Range<Duration>>,
-    heartbeat_period: Option<Duration>,
-) -> Vec<Server<SM, SMin, SMout>>
-where
-    SM: StateMachine<SMin, SMout> + Send + Clone + 'static,
-    SMin: Clone + Send + 'static,
-    SMout: Send + 'static,
-{
-    let split_servers = spawn_raft_servers(n_servers, state_machine, election_timeout, heartbeat_period);
-    send_peer_refs::<SM, SMin, SMout>(&split_servers.server_ref_vec, &split_servers.server_id_vec);
-
-    split_servers.into_server_vec()
-}
-
 pub fn init_servers_split<SM, SMin, SMout>(
     n_servers: usize,
     state_machine: SM,

@@ -19,12 +19,14 @@ async fn simple_replication_random_leader() {
         mut server_ref_vec,
         guard_vec,
         handle_vec,
-    } = init_servers_split(
+    } = spawn_raft_servers(
         n_servers,
         TestStateMachine::new(),
         Some(Duration::from_millis(100)..Duration::from_millis(200)),
         Some(Duration::from_millis(50)),
     );
+
+    send_peer_refs::<TestStateMachine, u64, usize>(&server_ref_vec, &server_id_vec);
 
     let (tx, _rx) = mpsc::channel::<AppendEntriesClientResponse<u64, usize>>(10);
 

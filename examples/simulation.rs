@@ -114,7 +114,11 @@ async fn main() {
             .init();
     }
 
-    let servers = init(n_servers, ExampleStateMachine::new(), None, None);
+    let split_servers = spawn_raft_servers(n_servers, ExampleStateMachine::new(), None, None);
+
+    send_peer_refs::<ExampleStateMachine, u64, usize>(&split_servers.server_ref_vec, &split_servers.server_id_vec);
+
+    let servers = split_servers.into_server_vec();
 
     send_entries_to_duplicate(
         &servers,
