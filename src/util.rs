@@ -40,22 +40,6 @@ impl<SM, SMin, SMout> Server<SM, SMin, SMout> {
     }
 }
 
-pub fn init_servers_split<SM, SMin, SMout>(
-    n_servers: usize,
-    state_machine: SM,
-    election_timeout: Option<Range<Duration>>,
-    heartbeat_period: Option<Duration>,
-) -> SplitServers<SM, SMin, SMout>
-where
-    SM: StateMachine<SMin, SMout> + Send + Clone + 'static,
-    SMin: Clone + Send + 'static,
-    SMout: Send + 'static,
-{
-    let split_servers = spawn_raft_servers(n_servers, state_machine, election_timeout, heartbeat_period);
-    send_peer_refs::<SMin, SMout>(&split_servers.server_ref_vec, &split_servers.server_id_vec);
-    split_servers
-}
-
 pub fn spawn_raft_servers<SM, SMin, SMout>(
     n_servers: usize,
     state_machine: SM,
