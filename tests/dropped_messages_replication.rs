@@ -11,7 +11,7 @@ use tracing::{info_span, Instrument};
 mod message_forwarder;
 mod test_state_machine;
 
-use crate::message_forwarder::init_message_forwarder;
+use crate::message_forwarder::run_testkit_until_actor_returns;
 use crate::test_state_machine::TestStateMachine;
 
 #[tokio::test]
@@ -30,15 +30,13 @@ async fn dropped_messages_replication() {
     let time_to_agree_on_value = Duration::from_millis(1000);
 
     // use the utility function to create all the followers with one call
-    let (
-        SplitServers {
-            mut server_id_vec,
-            mut server_ref_vec,
-            mut guard_vec,
-            mut handle_vec,
-        },
-        mut testkits,
-    ) = spawn_raft_servers_testkit(
+    let SplitServersWithTestkit {
+        mut server_id_vec,
+        mut server_ref_vec,
+        mut guard_vec,
+        mut handle_vec,
+        mut testkit_vec,
+    } = spawn_raft_servers_testkit(
         n_servers - 1,
         TestStateMachine::new(),
         Some(Duration::from_millis(1000)..Duration::from_millis(2000)),
@@ -66,12 +64,13 @@ async fn dropped_messages_replication() {
     server_id_vec.push(leader_id);
     handle_vec.push(handle);
     guard_vec.push(actor.guard);
-    testkits.push(tk);
+    testkit_vec.push(tk);
 
-    let message_forwarders_handles = testkits
-        .into_iter()
-        .map(|tk| init_message_forwarder(tk))
-        .collect::<Vec<_>>();
+    let mut testkit_handles = Vec::with_capacity(testkit_vec.len());
+    for testkit in testkit_vec {
+        let handle = tokio::spawn(run_testkit_until_actor_returns(testkit));
+        testkit_handles.push(handle);
+    }
 
     send_peer_refs::<u64, usize>(&server_ref_vec, &server_id_vec);
 
@@ -108,7 +107,7 @@ async fn dropped_messages_replication() {
         assert_eq!(state_machines[i].set.len(), 1);
     }
 
-    for handle in message_forwarders_handles.into_iter() {
+    for handle in testkit_handles.into_iter() {
         handle
             .await
             .expect("the testkit loop should return after that the actor has returned");

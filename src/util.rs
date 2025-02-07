@@ -40,6 +40,24 @@ impl<SM, SMin, SMout> Server<SM, SMin, SMout> {
     }
 }
 
+pub struct ServerWithTestkit<SM, SMin, SMout> {
+    pub server: Server<SM, SMin, SMout>,
+    pub testkit: Testkit<RaftMessage<SMin, SMout>>,
+}
+
+impl<SM, SMin, SMout> ServerWithTestkit<SM, SMin, SMout> {
+    pub fn new(
+        server_id: u32,
+        server_ref: ActorRef<RaftMessage<SMin, SMout>>,
+        guard: ActorDropGuard,
+        handle: JoinHandle<SM>,
+        testkit: Testkit<RaftMessage<SMin, SMout>>,
+    ) -> Self {
+        let server = Server::new(server_id, server_ref, guard, handle);
+        Self { server, testkit }
+    }
+}
+
 pub fn spawn_raft_servers<SM, SMin, SMout>(
     n_servers: usize,
     state_machine: SM,
@@ -98,7 +116,7 @@ pub fn spawn_raft_servers_testkit<SM, SMin, SMout>(
     election_timeout: Option<Range<Duration>>,
     heartbeat_period: Option<Duration>,
     n_servers_total: Option<usize>,
-) -> (SplitServers<SM, SMin, SMout>, Vec<Testkit<RaftMessage<SMin, SMout>>>)
+) -> SplitServersWithTestkit<SM, SMin, SMout>
 where
     SM: StateMachine<SMin, SMout> + Send + Clone + 'static,
     SMin: Clone + Send + 'static,
@@ -132,13 +150,13 @@ where
         testkit_vec.push(tk);
     }
 
-    let split_servers = SplitServers {
+    SplitServersWithTestkit {
         server_ref_vec,
         server_id_vec,
         handle_vec,
         guard_vec,
-    };
-    (split_servers, testkit_vec)
+        testkit_vec,
+    }
 }
 
 pub fn send_peer_refs<SMin, SMout>(refs: &[ActorRef<RaftMessage<SMin, SMout>>], ids: &[u32])
@@ -198,5 +216,23 @@ impl<SM, SMin, SMout> SplitServers<SM, SMin, SMout> {
         let zip = izip!(self.server_ref_vec, self.server_id_vec, self.handle_vec, self.guard_vec);
         zip.map(|(server_ref, server_id, handle, guard)| Server::new(server_id, server_ref, guard, handle))
             .collect()
+    }
+}
+
+pub struct SplitServersWithTestkit<SM, SMin, SMout> {
+    pub server_id_vec: Vec<u32>,
+    pub server_ref_vec: Vec<ActorRef<RaftMessage<SMin, SMout>>>,
+    pub guard_vec: Vec<ActorDropGuard>,
+    pub handle_vec: Vec<JoinHandle<SM>>,
+    pub testkit_vec: Vec<Testkit<RaftMessage<SMin, SMout>>>,
+}
+
+impl<SM, SMin, SMout> SplitServersWithTestkit<SM, SMin, SMout> {
+    pub fn into_server_with_testkt_vec(self) -> Vec<ServerWithTestkit<SM, SMin, SMout>> {
+        let zip = izip!(self.server_ref_vec, self.server_id_vec, self.handle_vec, self.guard_vec, self.testkit_vec);
+        zip.map(|(server_ref, server_id, handle, guard, testkit)| {
+            ServerWithTestkit::new(server_id, server_ref, guard, handle, testkit)
+        })
+        .collect()
     }
 }
