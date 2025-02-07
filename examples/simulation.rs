@@ -85,11 +85,12 @@ where
 #[tokio::main]
 async fn main() {
     let n_servers = 5;
-    let separate_file_logs = false;
+    let separate_file_logs = true;
+
+    let guards;
 
     if separate_file_logs {
-        let mut _file_appender_guards = Vec::new(); // guards must remain in scope for the file appenders to work
-        split_file_logs(n_servers, &mut _file_appender_guards).await;
+        guards = split_file_logs(n_servers);
     } else {
         tracing_subscriber::fmt()
             .with_span_events(tracing_subscriber::fmt::format::FmtSpan::NONE)

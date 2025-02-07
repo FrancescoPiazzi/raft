@@ -159,13 +159,11 @@ where
 }
 
 /// Set the global subscriber to a composite layer that writes logs to different files for each server
-pub async fn split_file_logs(n_servers: usize, guards: &mut Vec<tracing_appender::non_blocking::WorkerGuard>) {
-    if n_servers == 0 {
-        return;
-    }
+pub fn split_file_logs(n_servers: usize) -> Vec<tracing_appender::non_blocking::WorkerGuard> {
+    let mut guards = Vec::new();
 
     let composite_layer = {
-        let mut layers: Option<Box<dyn Layer<Registry> + Send + Sync + 'static>> = None;
+        let mut layers: Box<dyn Layer<Registry> + Send + Sync + 'static> = Box::new(fmt::Layer::new());
 
         for i in 0..n_servers {
             let file_appender = RollingFileAppender::new(Rotation::NEVER, "log", format!("server{}.log", i));
@@ -176,23 +174,16 @@ pub async fn split_file_logs(n_servers: usize, guards: &mut Vec<tracing_appender
 
             let fmt_layer = fmt::Layer::new().with_writer(non_blocking).with_filter(filter).boxed();
 
-            layers = match layers {
-                Some(layer) => Some(layer.and_then(fmt_layer).boxed()),
-                None => Some(fmt_layer),
-            };
+            layers = layers.and_then(fmt_layer).boxed();
         }
 
         layers
     };
 
-    if let Some(inner) = composite_layer {
-        let subscriber = Registry::default().with(inner);
-        if subscriber::set_global_default(subscriber).is_err() {
-            tracing::error!("Unable to set global subscriber");
-        }
-    } else {
-        tracing::error!("No layers were created for the composite layer");
-    }
+    let subscriber = Registry::default().with(composite_layer);
+    subscriber::set_global_default(subscriber).expect("failed to set global default subscriber");
+
+    guards
 }
 
 pub struct SplitServers<SM, SMin, SMout> {
