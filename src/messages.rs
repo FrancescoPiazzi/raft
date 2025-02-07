@@ -1,8 +1,8 @@
 pub mod add_peer;
 pub mod append_entries;
 pub mod append_entries_client;
-pub mod request_vote;
 pub mod poll_state;
+pub mod request_vote;
 
 use std::fmt::{self, Debug, Formatter};
 
@@ -20,7 +20,7 @@ pub enum RaftMessage<SMin, SMout> {
     RequestVoteRequest(RequestVoteRequest),
     RequestVoteReply(RequestVoteReply),
     AppendEntriesClientRequest(AppendEntriesClientRequest<SMin, SMout>),
-    
+
     PollState(PollStateRequest),
 }
 

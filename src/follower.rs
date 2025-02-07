@@ -14,7 +14,6 @@ use actum::actor_ref::ActorRef;
 use rand::{thread_rng, Rng};
 use tokio::time::{timeout, Instant};
 
-
 #[derive(Debug, Eq, PartialEq)]
 pub enum FollowerResult {
     ElectionTimeout,
@@ -77,7 +76,10 @@ where
                     }
                     RaftMessage::AppendEntriesClientRequest(request) => {
                         handle_append_entries_client_request(
-                            &mut common_state.peers, common_state.leader_id.as_ref(), request);
+                            &mut common_state.peers,
+                            common_state.leader_id.as_ref(),
+                            request,
+                        );
                         if let Some(new_remaining_time_to_wait) = election_timeout.checked_sub(start_time.elapsed()) {
                             election_timeout = new_remaining_time_to_wait;
                         } else {

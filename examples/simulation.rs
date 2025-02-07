@@ -43,8 +43,8 @@ async fn send_entries_to_duplicate<SM, SMin, SMout>(
 {
     let mut interval = tokio::time::interval(period);
     interval.tick().await; // first tick is immediate, skip it
-    // give the servers a moment to elect a leader 
-    // not mandatory, but we won't get a useful answer if a leader is not elected yet
+                           // give the servers a moment to elect a leader
+                           // not mandatory, but we won't get a useful answer if a leader is not elected yet
     interval.tick().await;
 
     let mut leader = servers[0].server_ref.clone();
@@ -103,13 +103,11 @@ async fn main() {
     let separate_file_logs = false;
 
     if separate_file_logs {
-        let mut _file_appender_guards = Vec::new();   // guards must remain in scope for the file appenders to work
+        let mut _file_appender_guards = Vec::new(); // guards must remain in scope for the file appenders to work
         split_file_logs(n_servers, &mut _file_appender_guards).await;
     } else {
         tracing_subscriber::fmt()
-            .with_span_events(
-                tracing_subscriber::fmt::format::FmtSpan::NONE,
-            )
+            .with_span_events(tracing_subscriber::fmt::format::FmtSpan::NONE)
             .with_target(false)
             .with_line_number(false)
             .with_max_level(tracing::Level::TRACE)

@@ -7,7 +7,7 @@ impl PeerState {
     pub const fn new(initial_next_index: u64) -> Self {
         Self {
             next_index: initial_next_index,
-            match_index: 0,     // TLA: 152 and 235
+            match_index: 0, // TLA: 152 and 235
         }
     }
 }

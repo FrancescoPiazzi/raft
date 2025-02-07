@@ -13,7 +13,6 @@ use std::ops::Range;
 use std::time::{Duration, Instant};
 use tokio::time::{sleep, timeout};
 
-
 pub enum CandidateResult {
     ElectionWon,
     ElectionLost,
@@ -42,7 +41,7 @@ where
 
         common_state.current_term += 1; // TLA: 180
 
-        votes_from_others.clear();  // TLA: 184-185
+        votes_from_others.clear(); // TLA: 184-185
 
         let mut remaining_time_to_wait = thread_rng().gen_range(election_timeout.clone());
         let last_applied = common_state.last_applied;
@@ -68,8 +67,7 @@ where
 
                         match message {
                             RaftMessage::RequestVoteReply(reply) => {
-                                let result =
-                                    handle_request_vote_reply(common_state, &mut votes_from_others, reply);
+                                let result = handle_request_vote_reply(common_state, &mut votes_from_others, reply);
                                 match result {
                                     HandleRequestVoteReplyResult::Ongoing => {}
                                     HandleRequestVoteReplyResult::Won => return CandidateResult::ElectionWon,
@@ -77,9 +75,8 @@ where
                                 }
                             }
                             RaftMessage::AppendEntriesRequest(request) => {
-                                let step_down = handle_append_entries_request(
-                                    common_state, RaftState::Candidate, request
-                                );
+                                let step_down =
+                                    handle_append_entries_request(common_state, RaftState::Candidate, request);
                                 if step_down {
                                     return CandidateResult::ElectionLost;
                                 }
@@ -150,7 +147,7 @@ where
     SMin: Clone + Send + 'static,
     SMout: Send + 'static,
 {
-    // TLA:310, don't count votes with terms different than the current 
+    // TLA:310, don't count votes with terms different than the current
     // (also TLA: 430, since it ignores requests with stale terms)
     if reply.term != common_state.current_term {
         return HandleRequestVoteReplyResult::Ongoing;
@@ -175,16 +172,15 @@ where
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     use actum::actor_ref::ActorRef;
     use futures_channel::mpsc as futures_mpsc;
-    
+
     use crate::state_machine::VoidStateMachine;
-    
+
     #[test]
     fn test_handle_request_vote_reply_result_unkown() {
         let n_servers = 5;
@@ -192,7 +188,7 @@ mod tests {
         let mut common_state: CommonState<VoidStateMachine, (), ()> = CommonState::new(VoidStateMachine::new(), 1);
         // enter new term so it's more "real", since a candidate will never have term 0
         let _ = common_state.update_term(1);
-        
+
         for i in 0..n_servers {
             let (tx, _) = futures_mpsc::channel(10);
             common_state.peers.insert(i, ActorRef::new(tx));
@@ -264,7 +260,7 @@ mod tests {
     }
 
     #[test]
-    fn test_handle_request_vote_reply_discard_vote(){
+    fn test_handle_request_vote_reply_discard_vote() {
         let n_servers = 5;
         let server_term = 1;
 
@@ -287,11 +283,11 @@ mod tests {
         let result = handle_request_vote_reply(&mut common_state, &mut votes_from_others, reply);
         assert_eq!(result, HandleRequestVoteReplyResult::Ongoing);
 
-        // wrong term: TLA: 310 this should never happen anyway, as any request with a higher term 
+        // wrong term: TLA: 310 this should never happen anyway, as any request with a higher term
         // should trigger an update term as per TLA: 406, and requests with a lower term are ignored as per TLA: 415
         let reply = RequestVoteReply {
             from: 2,
-            term: server_term+1,
+            term: server_term + 1,
             vote_granted: true,
         };
         let result = handle_request_vote_reply(&mut common_state, &mut votes_from_others, reply);

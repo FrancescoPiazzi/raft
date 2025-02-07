@@ -62,7 +62,7 @@ where
 
 /// This enum is used ONLY for MINOR differences in the behaviour of the server depending on its state,
 /// such as whether to panic or not when we recieve an append entry with the same term as ours as the leader.
-/// Which is not something that should hapen anyway. The state of the server is determined 
+/// Which is not something that should hapen anyway. The state of the server is determined
 /// by the function it is executing, not by a variable.
 #[derive(Debug, PartialEq, Eq)]
 pub enum RaftState {
@@ -191,9 +191,8 @@ where
     step_down
 }
 
-
 #[cfg(test)]
-mod tests{
+mod tests {
     use actum::actor_ref::ActorRef;
     use assert_matches::assert_matches;
 
@@ -201,7 +200,7 @@ mod tests{
     use crate::state_machine::VoidStateMachine;
 
     #[test]
-    fn grant_vote_and_step_down(){
+    fn grant_vote_and_step_down() {
         let mut candidate_channel = futures_channel::mpsc::channel(10);
 
         let mut common_state: CommonState<VoidStateMachine, (), ()> = CommonState::new(VoidStateMachine::new(), 1);
@@ -225,7 +224,7 @@ mod tests{
     }
 
     #[test]
-    fn reject_vote_term_too_low(){
+    fn reject_vote_term_too_low() {
         let mut candidate_channel = futures_channel::mpsc::channel(10);
 
         let mut common_state: CommonState<VoidStateMachine, (), ()> = CommonState::new(VoidStateMachine::new(), 1);
@@ -250,7 +249,7 @@ mod tests{
     }
 
     #[test]
-    fn reject_vote_already_voted(){
+    fn reject_vote_already_voted() {
         let mut candidate_channel = futures_channel::mpsc::channel(10);
 
         let mut common_state: CommonState<VoidStateMachine, (), ()> = CommonState::new(VoidStateMachine::new(), 1);
@@ -277,7 +276,7 @@ mod tests{
 
     #[test]
     /// The most normal case, where the request is valid, with no entries to commit
-    fn test_handle_append_entries_request(){
+    fn test_handle_append_entries_request() {
         let mut leader_channel = futures_channel::mpsc::channel(10);
 
         let mut common_state: CommonState<VoidStateMachine, (), ()> = CommonState::new(VoidStateMachine::new(), 1);
@@ -311,7 +310,7 @@ mod tests{
     }
 
     #[test]
-    fn test_handle_append_entries_request_commit_entries(){
+    fn test_handle_append_entries_request_commit_entries() {
         let mut leader_channel = futures_channel::mpsc::channel(10);
 
         let mut common_state: CommonState<VoidStateMachine, (), ()> = CommonState::new(VoidStateMachine::new(), 1);
@@ -345,7 +344,7 @@ mod tests{
     }
 
     #[test]
-    fn reject_append_entries_request_term_too_low(){
+    fn reject_append_entries_request_term_too_low() {
         let mut leader_channel = futures_channel::mpsc::channel(10);
 
         let mut common_state: CommonState<VoidStateMachine, (), ()> = CommonState::new(VoidStateMachine::new(), 1);
@@ -379,7 +378,7 @@ mod tests{
     }
 
     #[test]
-    fn step_down_after_append_entries_request(){
+    fn step_down_after_append_entries_request() {
         let mut leader_channel = futures_channel::mpsc::channel(10);
 
         let mut common_state: CommonState<VoidStateMachine, (), ()> = CommonState::new(VoidStateMachine::new(), 1);
@@ -414,7 +413,7 @@ mod tests{
 
     #[test]
     #[should_panic]
-    fn panic_two_leaders_with_same_term_detected(){
+    fn panic_two_leaders_with_same_term_detected() {
         let mut common_state: CommonState<VoidStateMachine, (), ()> = CommonState::new(VoidStateMachine::new(), 1);
         common_state.current_term = 1;
 
@@ -434,7 +433,7 @@ mod tests{
 
     // TLA: 330
     #[test]
-    fn reject_append_entries_hole_in_log(){
+    fn reject_append_entries_hole_in_log() {
         let already_present_entries = vec![(), (), ()];
         let mut leader_channel = futures_channel::mpsc::channel(10);
 
@@ -471,7 +470,7 @@ mod tests{
 
     // TLA: 331
     #[test]
-    fn reject_append_entries_term_mismatch(){
+    fn reject_append_entries_term_mismatch() {
         let already_present_entries = vec![(), (), ()];
         let mut leader_channel = futures_channel::mpsc::channel(10);
 
@@ -479,7 +478,6 @@ mod tests{
         common_state.current_term = 1;
         common_state.log.insert(already_present_entries.clone(), 0, 1);
         common_state.peers.insert(2, ActorRef::new(leader_channel.0.clone()));
-
 
         let request = AppendEntriesRequest {
             term: 1,

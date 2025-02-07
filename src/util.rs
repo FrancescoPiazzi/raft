@@ -5,9 +5,9 @@ use actum::prelude::*;
 use actum::testkit::{testkit, Testkit};
 use tokio::task::JoinHandle;
 use tokio::time::Duration;
-use tracing::{info_span, Instrument, subscriber};
-use tracing_subscriber::{fmt, layer::SubscriberExt, EnvFilter, Layer, Registry};
+use tracing::{info_span, subscriber, Instrument};
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
+use tracing_subscriber::{fmt, layer::SubscriberExt, EnvFilter, Layer, Registry};
 
 use crate::config::{DEFAULT_ELECTION_TIMEOUT, DEFAULT_HEARTBEAT_PERIOD};
 use crate::messages::add_peer::AddPeer;
@@ -26,10 +26,10 @@ pub struct Server<SM, SMin, SMout> {
 
 /// Initialize a set of Raft servers with a given state machine and exchanges their references
 pub fn init<SM, SMin, SMout>(
-    n_servers: usize, 
-    state_machine: SM, 
-    election_timeout: Option<Range<Duration>>, 
-    heartbeat_period: Option<Duration>
+    n_servers: usize,
+    state_machine: SM,
+    election_timeout: Option<Range<Duration>>,
+    heartbeat_period: Option<Duration>,
 ) -> Vec<Server<SM, SMin, SMout>>
 where
     SM: StateMachine<SMin, SMout> + Send + Clone + 'static,
@@ -40,7 +40,10 @@ where
     send_peer_refs::<SM, SMin, SMout>(&refs, &ids);
 
     // zip together refs, ids, handles, and guards into a vector of Server structs
-    refs.into_iter().zip(ids).zip(handles).zip(guards)
+    refs.into_iter()
+        .zip(ids)
+        .zip(handles)
+        .zip(guards)
         .map(|(((server_ref, server_id), handle), guard)| Server {
             server_id,
             server_ref,
@@ -51,10 +54,10 @@ where
 }
 
 pub fn init_servers_split<SM, SMin, SMout>(
-    n_servers: usize, 
-    state_machine: SM, 
-    election_timeout: Option<Range<Duration>>, 
-    heartbeat_period: Option<Duration>
+    n_servers: usize,
+    state_machine: SM,
+    election_timeout: Option<Range<Duration>>,
+    heartbeat_period: Option<Duration>,
 ) -> SplitServers<SM, SMin, SMout>
 where
     SM: StateMachine<SMin, SMout> + Send + Clone + 'static,
@@ -67,10 +70,10 @@ where
 }
 
 pub fn spawn_raft_servers<SM, SMin, SMout>(
-    n_servers: usize, 
-    state_machine: SM, 
-    election_timeout: Option<Range<Duration>>, 
-    heartbeat_period: Option<Duration>
+    n_servers: usize,
+    state_machine: SM,
+    election_timeout: Option<Range<Duration>>,
+    heartbeat_period: Option<Duration>,
 ) -> SplitServers<SM, SMin, SMout>
 where
     SM: StateMachine<SMin, SMout> + Send + Clone + 'static,
@@ -105,7 +108,6 @@ where
     (refs, ids, handles, guards)
 }
 
-
 /// Initializes a set of Raft servers, returns parallel vectors containing all the information about them
 /// Parameters:
 /// - `n_servers`: the number of servers to spawn
@@ -114,7 +116,7 @@ where
 /// - `heartbeat_period`: the heartbeat period to use for each server, None to use the default
 /// - `n_servers_total`: the total number of servers in the cluster, None to use `n_servers`
 pub fn spawn_raft_servers_testkit<SM, SMin, SMout>(
-    n_servers: usize, 
+    n_servers: usize,
     state_machine: SM,
     election_timeout: Option<Range<Duration>>,
     heartbeat_period: Option<Duration>,
@@ -155,7 +157,6 @@ where
     ((refs, ids, handles, guards), testkits)
 }
 
-
 pub fn send_peer_refs<SM, SMin, SMout>(refs: &[ActorRef<RaftMessage<SMin, SMout>>], ids: &[u32])
 where
     SMin: Send + 'static,
@@ -189,10 +190,7 @@ pub async fn split_file_logs(n_servers: usize, guards: &mut Vec<tracing_appender
 
             let filter = EnvFilter::new(format!("[server{{id={}}}]", i));
 
-            let fmt_layer = fmt::Layer::new()
-                .with_writer(non_blocking)
-                .with_filter(filter)
-                .boxed();
+            let fmt_layer = fmt::Layer::new().with_writer(non_blocking).with_filter(filter).boxed();
 
             layers = match layers {
                 Some(layer) => Some(layer.and_then(fmt_layer).boxed()),
@@ -205,7 +203,7 @@ pub async fn split_file_logs(n_servers: usize, guards: &mut Vec<tracing_appender
 
     if let Some(inner) = composite_layer {
         let subscriber = Registry::default().with(inner);
-        if subscriber::set_global_default(subscriber).is_err(){
+        if subscriber::set_global_default(subscriber).is_err() {
             tracing::error!("Unable to set global subscriber");
         }
     } else {

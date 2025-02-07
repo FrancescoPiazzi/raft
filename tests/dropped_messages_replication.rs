@@ -8,12 +8,11 @@ use tokio::sync::mpsc;
 use tokio::time::sleep;
 use tracing::{info_span, Instrument};
 
-mod test_state_machine;
 mod message_forwarder;
+mod test_state_machine;
 
-use crate::test_state_machine::TestStateMachine;
 use crate::message_forwarder::init_message_forwarder;
-
+use crate::test_state_machine::TestStateMachine;
 
 #[tokio::test]
 async fn dropped_messages_replication() {
@@ -29,12 +28,12 @@ async fn dropped_messages_replication() {
     let n_servers = 5;
     let time_to_elect_leader = Duration::from_millis(1000);
     let time_to_agree_on_value = Duration::from_millis(1000);
- 
+
     // use the utility function to create all the followers with one call
     let ((mut refs, mut ids, mut handles, mut guards), mut testkits) = spawn_raft_servers_testkit(
-        n_servers-1, 
-        TestStateMachine::new(), 
-        Some(Duration::from_millis(1000)..Duration::from_millis(2000)), 
+        n_servers - 1,
+        TestStateMachine::new(),
+        Some(Duration::from_millis(1000)..Duration::from_millis(2000)),
         None, // heartbeat period does not matter, these will be followers
         Some(n_servers),
     );
@@ -53,15 +52,18 @@ async fn dropped_messages_replication() {
         .await
     });
     let handle = tokio::spawn(actor.task.run_task().instrument(info_span!("leader")));
-    let mut leader_ref = actor.m_ref.clone();   // useful to contact the leader later
-    
+    let mut leader_ref = actor.m_ref.clone(); // useful to contact the leader later
+
     refs.push(actor.m_ref);
     ids.push(leader_id);
     handles.push(handle);
     guards.push(actor.guard);
     testkits.push(tk);
 
-    let message_forwarders_handles = testkits.into_iter().map(|tk| init_message_forwarder(tk)).collect::<Vec<_>>();
+    let message_forwarders_handles = testkits
+        .into_iter()
+        .map(|tk| init_message_forwarder(tk))
+        .collect::<Vec<_>>();
 
     send_peer_refs::<TestStateMachine, u64, usize>(&refs, &ids);
 
@@ -99,6 +101,8 @@ async fn dropped_messages_replication() {
     }
 
     for handle in message_forwarders_handles.into_iter() {
-        handle.await.expect("the testkit loop should return after that the actor has returned");
+        handle
+            .await
+            .expect("the testkit loop should return after that the actor has returned");
     }
 }

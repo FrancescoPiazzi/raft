@@ -1,8 +1,8 @@
-pub struct PollStateRequest{
+pub struct PollStateRequest {
     pub reply_to: tokio::sync::mpsc::Sender<PollStateResponse>,
 }
 
-pub struct PollStateResponse{
+pub struct PollStateResponse {
     pub state: ServerStateOnlyForTesting,
 }
 

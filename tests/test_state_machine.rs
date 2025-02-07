@@ -1,6 +1,5 @@
-use std::collections::HashSet as Set;
 use oxidized_float::state_machine::StateMachine;
-
+use std::collections::HashSet as Set;
 
 #[derive(Clone)]
 pub struct TestStateMachine {
