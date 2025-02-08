@@ -23,7 +23,7 @@ async fn dropped_messages_replication() {
         )
         .with_target(false)
         .with_line_number(true)
-        .with_max_level(tracing::Level::DEBUG)
+        .with_max_level(tracing::Level::TRACE)
         .init();
 
     let n_servers = 5;
@@ -48,7 +48,7 @@ async fn dropped_messages_replication() {
             n_servers - 1,
             TestStateMachine::new(),
             Duration::from_millis(100)..Duration::from_millis(101),
-            Duration::from_millis(10), // if I set this too low the test will fail, idk why
+            Duration::from_millis(20), // if I set this too low the test will fail, idk why
         )
         .await
     });
@@ -61,7 +61,11 @@ async fn dropped_messages_replication() {
     guards.push(actor.guard);
     testkits.push(tk);
 
-    let message_forwarders_handles = testkits.into_iter().map(|tk| init_message_forwarder(tk)).collect::<Vec<_>>();
+    let message_forwarders_handles = testkits
+        .into_iter()
+        .enumerate()
+        .map(|(i, tk)| init_message_forwarder(tk, i))
+        .collect::<Vec<_>>();
 
     send_peer_refs::<TestStateMachine, u64, usize>(&refs, &ids);
 
@@ -97,6 +101,8 @@ async fn dropped_messages_replication() {
     for i in 0..n_servers {
         assert_eq!(state_machines[i].set.len(), 1);
     }
+
+    // sleep(Duration::from_millis(3000)).await;
 
     for handle in message_forwarders_handles.into_iter() {
         handle.await.expect("the testkit loop should return after that the actor has returned");
