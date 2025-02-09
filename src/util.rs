@@ -6,7 +6,6 @@ use crate::messages::RaftMessage;
 use crate::server::raft_server;
 use crate::state_machine::StateMachine;
 use actum::drop_guard::ActorDropGuard;
-use actum::effect::EffectType;
 use actum::prelude::*;
 use actum::testkit::{testkit, Testkit};
 use futures::StreamExt;
@@ -231,7 +230,13 @@ pub struct SplitServersWithTestkit<SM, SMin, SMout> {
 
 impl<SM, SMin, SMout> SplitServersWithTestkit<SM, SMin, SMout> {
     pub fn into_server_with_testkt_vec(self) -> Vec<ServerWithTestkit<SM, SMin, SMout>> {
-        let zip = izip!(self.server_ref_vec, self.server_id_vec, self.handle_vec, self.guard_vec, self.testkit_vec);
+        let zip = izip!(
+            self.server_ref_vec,
+            self.server_id_vec,
+            self.handle_vec,
+            self.guard_vec,
+            self.testkit_vec
+        );
         zip.map(|(server_ref, server_id, handle, guard, testkit)| {
             ServerWithTestkit::new(server_id, server_ref, guard, handle, testkit)
         })
