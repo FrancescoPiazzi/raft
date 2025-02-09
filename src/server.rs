@@ -86,7 +86,7 @@ where
         }
     }
 
-    tracing::trace!("stopping server");
+    tracing::trace!("returning");
     (cell, common_state.state_machine)
 }
 

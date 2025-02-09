@@ -6,15 +6,16 @@ use crate::messages::RaftMessage;
 use crate::server::raft_server;
 use crate::state_machine::StateMachine;
 use actum::drop_guard::ActorDropGuard;
+use actum::effect::EffectType;
 use actum::prelude::*;
 use actum::testkit::{testkit, Testkit};
+use futures::StreamExt;
 use itertools::izip;
 use tokio::task::JoinHandle;
 use tokio::time::Duration;
 use tracing::{info_span, subscriber, Instrument};
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::{fmt, layer::SubscriberExt, EnvFilter, Layer, Registry};
-use actum::effect::EffectType;
 
 pub struct Server<SM, SMin, SMout> {
     pub server_id: u32,
@@ -243,13 +244,12 @@ where
     SMin: Clone + Send + 'static,
     SMout: Send + 'static,
 {
-    let mut stopped = false;
-    while !stopped {
-        testkit
-            .test_next_effect(|effect| match effect {
-                EffectType::Returned(_) => stopped = true,
-                _ => {}
-            })
-            .await;
+    loop {
+        match testkit.test_next_effect(|_| {}).await {
+            None => break,
+            Some((returned, ())) => {
+                testkit = returned;
+            }
+        }
     }
 }

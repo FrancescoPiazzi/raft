@@ -63,15 +63,15 @@ async fn dropped_messages_replication(
     let handle = tokio::spawn(leader.task.run_task().instrument(info_span!("leader")));
     let mut leader_ref = leader.m_ref; // useful to contact the leader later
 
-    server_ref_vec.push(leader_ref.clone());
     server_id_vec.push(leader_id);
-    handle_vec.push(handle);
+    server_ref_vec.push(leader_ref.clone());
     guard_vec.push(leader.guard);
+    handle_vec.push(handle);
     testkit_vec.push(leader_tk);
 
     let mut testkit_handles = Vec::with_capacity(n_servers);
-    for testkit in testkit_vec {
-        let handle = tokio::spawn(run_testkit_until_actor_returns(testkit));
+    for (i, testkit) in testkit_vec.into_iter().enumerate() {
+        let handle = tokio::spawn(run_testkit_until_actor_returns(testkit).instrument(info_span!("testkit", i)));
         testkit_handles.push(handle);
     }
 
@@ -114,7 +114,8 @@ async fn dropped_messages_replication(
     }
 
     tracing::debug!("waiting for testkits to return");
-    for handle in testkit_handles.into_iter() {
+    for (i, handle) in testkit_handles.into_iter().enumerate() {
+        tracing::debug!("waiting for testkit {} to return", i);
         handle
             .await
             .expect("the testkit loop should return after that the actor has returned");
