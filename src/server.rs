@@ -65,10 +65,9 @@ where
         }
 
         tracing::debug!("transition: follower → candidate");
-        let candidate_result =
-            candidate_behavior(&mut cell, &mut common_state, election_timeout.clone())
-                .instrument(info_span!("candidate"))
-                .await;
+        let candidate_result = candidate_behavior(&mut cell, &mut common_state, election_timeout.clone())
+            .instrument(info_span!("candidate"))
+            .await;
 
         match candidate_result {
             CandidateResult::ElectionWon => {
@@ -87,7 +86,7 @@ where
         }
     }
 
-    tracing::trace!("stopping server");
+    tracing::trace!("returning");
     (cell, common_state.state_machine)
 }
 
@@ -129,7 +128,6 @@ mod tests {
     use crate::server::add_peer::AddPeer;
     use crate::server::raft_server;
     use crate::state_machine::VoidStateMachine;
-
 
     #[tokio::test]
     async fn test_stash() {

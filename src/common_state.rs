@@ -1,12 +1,14 @@
 use std::{
-    collections::BTreeMap, fmt::{Debug, Formatter, Result}, marker::PhantomData
+    collections::BTreeMap,
+    fmt::{Debug, Formatter, Result},
+    marker::PhantomData,
 };
 
 use actum::prelude::ActorRef;
 
-use crate::{log::Log, messages::RaftMessage};
 use crate::messages::request_vote::RequestVoteRequest;
 use crate::state_machine::StateMachine;
+use crate::{log::Log, messages::RaftMessage};
 
 pub struct CommonState<SM, SMin, SMout> {
     pub me: u32,
@@ -17,7 +19,7 @@ pub struct CommonState<SM, SMin, SMout> {
     pub commit_index: usize,
     pub leader_id: Option<u32>,
     pub state_machine: SM,
-    pub peers: BTreeMap::<u32, ActorRef<RaftMessage<SMin, SMout>>>,
+    pub peers: BTreeMap<u32, ActorRef<RaftMessage<SMin, SMout>>>,
     _phantom: PhantomData<SMout>,
 }
 
@@ -30,7 +32,7 @@ impl<SM, SMin, SMout> CommonState<SM, SMin, SMout> {
             current_term: 0,
             voted_for: None,
             last_applied: 0,
-            commit_index: 0,    // TLA: 154
+            commit_index: 0, // TLA: 154
             leader_id: None,
             state_machine,
             peers: BTreeMap::new(),
@@ -107,7 +109,7 @@ impl<SM, SMin, SMout> CommonState<SM, SMin, SMout> {
             panic!("last applied is greater than commit index");
         }
 
-        if !self.log.is_empty(){
+        if !self.log.is_empty() {
             for i in 1..=self.log.len() - 1 {
                 if self.log.get_term(i) > self.log.get_term(i + 1) {
                     panic!(

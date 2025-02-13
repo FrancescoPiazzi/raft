@@ -1,12 +1,12 @@
+use oxidized_float::prelude::*;
+use rand::seq::IteratorRandom;
+use rand::Rng;
 use std::collections::HashSet as Set;
 use std::fmt::Debug;
 use std::time::Duration;
-
-use oxidized_float::prelude::*;
-use rand::seq::IteratorRandom;
 use tokio::sync::mpsc;
 use tokio::time::sleep;
-use tracing::instrument;
+use tracing::{info_span, instrument, Instrument};
 
 #[derive(Clone)]
 struct ExampleStateMachine {
@@ -28,102 +28,99 @@ impl StateMachine<u64, usize> for ExampleStateMachine {
     }
 }
 
-/// example of a client that sends groups of random entries to be replicated
-/// awaits for the confirmation of each entry, and when a group is done it sends another one
-/// also handles negative responses (e.g. the server is not the leader but knows who the leader is)
-#[instrument(name = "client" skip(servers, entries, period, timeout))]
-async fn send_entries_to_duplicate<SM, SMin, SMout>(
+async fn replicate_entries<SM, SMin, SMout>(
     servers: &Vec<Server<SM, SMin, SMout>>,
-    entries: Set<Vec<SMin>>,
-    period: Duration,
+    entries: Vec<SMin>,
     timeout: Duration,
-) where
+) -> Vec<SMout>
+where
     SMin: Clone + Send + 'static,
     SMout: Send + Debug + 'static,
 {
-    let mut interval = tokio::time::interval(period);
-    interval.tick().await; // first tick is immediate, skip it
-    // give the servers a moment to elect a leader 
-    // not mandatory, but we won't get a useful answer if a leader is not elected yet
-    interval.tick().await;
-
-    let mut leader = servers[0].server_ref.clone();
     let mut rng = rand::thread_rng();
 
-    'client: loop {
-        tracing::debug!("Sending entries to replicate");
+    let mut leader = servers[0].server_ref.clone();
+    let mut output_vec = Vec::with_capacity(entries.len());
 
-        // channel to recieve the result of the replication
+    'outer: loop {
+        tracing::debug!("sending entries to replicate");
+
+        // create a channel to receive the outputs of the state machine.
         let (tx, mut rx) = mpsc::channel::<AppendEntriesClientResponse<SMin, SMout>>(10);
 
         let request = AppendEntriesClientRequest {
-            entries_to_replicate: entries.iter().choose(&mut rng).unwrap().clone(),
+            entries_to_replicate: entries.clone(),
             reply_to: tx,
         };
-        let mut n_remaining_entries_to_replicate = request.entries_to_replicate.len();
-
         let _ = leader.try_send(request.into());
 
-        while n_remaining_entries_to_replicate > 0 {
+        'inner: while output_vec.len() < entries.len() {
             match tokio::time::timeout(timeout, rx.recv()).await {
-                Ok(Some(AppendEntriesClientResponse(Ok(result)))) => {
-                    tracing::debug!(
-                        "✅ Received confirmation of successful entry replication, result is: {:?}",
-                        result
-                    );
-                    n_remaining_entries_to_replicate -= 1;
+                Ok(Some(AppendEntriesClientResponse(Ok(output)))) => {
+                    tracing::debug!("entry have been successfully replicated");
+                    output_vec.push(output);
                 }
                 Ok(Some(AppendEntriesClientResponse(Err(Some(new_leader_ref))))) => {
-                    tracing::debug!("Interrogated server is not the leader, switching to the indicated one");
+                    tracing::debug!("this server is not the leader: switching to the provided leader");
                     leader = new_leader_ref;
-                    break;
+                    break 'inner;
                 }
                 Ok(Some(AppendEntriesClientResponse(Err(None)))) | Err(_) => {
-                    tracing::debug!(
-                        "Interrogated server does not know who the leader is or it did not answer, \
-                        switching to another random node in a second"
-                    );
+                    tracing::debug!("this server did not answer or does not know who the leader is: switching to another random server in a second.");
                     leader = servers.iter().choose(&mut rng).unwrap().server_ref.clone();
                     sleep(Duration::from_millis(1000)).await;
-                    break;
+                    break 'inner;
                 }
                 Ok(None) => {
                     tracing::error!("channel closed, exiting");
-                    break 'client;
+                    break 'outer;
                 }
             }
         }
-        interval.tick().await;
     }
+
+    output_vec
 }
 
 #[tokio::main]
 async fn main() {
     let n_servers = 5;
-    let separate_file_logs = false;
+    let separate_file_logs = true;
+
+    let guards;
 
     if separate_file_logs {
-        let mut _file_appender_guards = Vec::new();   // guards must remain in scope for the file appenders to work
-        split_file_logs(n_servers, &mut _file_appender_guards).await;
+        guards = split_file_logs(n_servers);
     } else {
         tracing_subscriber::fmt()
-            .with_span_events(
-                tracing_subscriber::fmt::format::FmtSpan::NONE,
-            )
+            .with_span_events(tracing_subscriber::fmt::format::FmtSpan::NONE)
             .with_target(false)
             .with_line_number(false)
             .with_max_level(tracing::Level::TRACE)
             .init();
     }
 
-    let servers = init(n_servers, ExampleStateMachine::new(), None, None);
+    let split_servers = spawn_raft_servers(n_servers, ExampleStateMachine::new(), None, None);
 
-    send_entries_to_duplicate(
-        &servers,
-        Set::from([vec![1, 3, 5, 7, 11], vec![1, 4, 9], vec![2, 4, 6]]),
-        Duration::from_millis(1000),
-        Duration::from_millis(2000),
-    )
+    send_peer_refs::<u64, usize>(&split_servers.server_ref_vec, &split_servers.server_id_vec);
+
+    let servers = split_servers.into_server_vec();
+
+    println!("sleeping for two seconds, so that a leader can be elected.");
+    tokio::time::sleep(Duration::from_secs(2)).await;
+
+    let batch0 = vec![1, 3, 5, 7, 11];
+    let batch1 = vec![1, 4, 9];
+    let batch2 = vec![2, 4, 6];
+
+    let choice = rand::thread_rng().gen_range(0..=2);
+
+    match choice {
+        0 => replicate_entries(&servers, batch0, Duration::from_millis(1000)).instrument(info_span!("replicator")),
+        1 => replicate_entries(&servers, batch1, Duration::from_millis(1000)).instrument(info_span!("replicator")),
+        2 => replicate_entries(&servers, batch2, Duration::from_millis(1000)).instrument(info_span!("replicator")),
+        _ => unreachable!(),
+    }
     .await;
 
     for server in servers {

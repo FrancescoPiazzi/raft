@@ -62,7 +62,7 @@ where
 
 /// This enum is used ONLY for MINOR differences in the behaviour of the server depending on its state,
 /// such as whether to panic or not when we recieve an append entry with the same term as ours as the leader.
-/// Which is not something that should hapen anyway. The state of the server is determined 
+/// Which is not something that should hapen anyway. The state of the server is determined
 /// by the function it is executing, not by a variable.
 #[derive(Debug, PartialEq, Eq)]
 pub enum RaftState {
@@ -191,17 +191,15 @@ where
     step_down
 }
 
-
 #[cfg(test)]
-mod tests{
+mod tests {
     use actum::actor_ref::ActorRef;
-    use assert_matches::assert_matches;
 
     use super::*;
     use crate::state_machine::VoidStateMachine;
 
     #[test]
-    fn grant_vote_and_step_down(){
+    fn grant_vote_and_step_down() {
         let mut candidate_channel = futures_channel::mpsc::channel(10);
 
         let mut common_state: CommonState<VoidStateMachine, (), ()> = CommonState::new(VoidStateMachine::new(), 1);
@@ -218,14 +216,19 @@ mod tests{
         assert_eq!(step_down, true);
 
         let vote = candidate_channel.1.try_next().unwrap().unwrap();
-        assert_matches!(vote, RaftMessage::RequestVoteReply(inner) if (
-            inner.vote_granted == true && inner.term == 1 && inner.from == 1));
+        let reply = vote.unwrap_request_vote_reply();
+        let expected = RequestVoteReply {
+            from: 1,
+            term: 1,
+            vote_granted: true,
+        };
+        assert_eq!(reply, expected);
 
         common_state.check_validity();
     }
 
     #[test]
-    fn reject_vote_term_too_low(){
+    fn reject_vote_term_too_low() {
         let mut candidate_channel = futures_channel::mpsc::channel(10);
 
         let mut common_state: CommonState<VoidStateMachine, (), ()> = CommonState::new(VoidStateMachine::new(), 1);
@@ -243,14 +246,19 @@ mod tests{
         assert_eq!(step_down, false);
 
         let vote = candidate_channel.1.try_next().unwrap().unwrap();
-        assert_matches!(vote, RaftMessage::RequestVoteReply(inner) if (
-            inner.vote_granted == false && inner.term == 2 && inner.from == 1));
+        let reply = vote.unwrap_request_vote_reply();
+        let expected = RequestVoteReply {
+            from: 1,
+            term: 2,
+            vote_granted: false,
+        };
+        assert_eq!(reply, expected);
 
         common_state.check_validity();
     }
 
     #[test]
-    fn reject_vote_already_voted(){
+    fn reject_vote_already_voted() {
         let mut candidate_channel = futures_channel::mpsc::channel(10);
 
         let mut common_state: CommonState<VoidStateMachine, (), ()> = CommonState::new(VoidStateMachine::new(), 1);
@@ -269,15 +277,20 @@ mod tests{
         assert_eq!(step_down, false);
 
         let vote = candidate_channel.1.try_next().unwrap().unwrap();
-        assert_matches!(vote, RaftMessage::RequestVoteReply(inner) if (
-            inner.vote_granted == false && inner.term == 1 && inner.from == 1));
+        let reply = vote.unwrap_request_vote_reply();
+        let expected = RequestVoteReply {
+            from: 1,
+            term: 1,
+            vote_granted: false,
+        };
+        assert_eq!(reply, expected);
 
         common_state.check_validity();
     }
 
     #[test]
     /// The most normal case, where the request is valid, with no entries to commit
-    fn test_handle_append_entries_request(){
+    fn test_handle_append_entries_request() {
         let mut leader_channel = futures_channel::mpsc::channel(10);
 
         let mut common_state: CommonState<VoidStateMachine, (), ()> = CommonState::new(VoidStateMachine::new(), 1);
@@ -297,12 +310,11 @@ mod tests{
         assert_eq!(step_down, false);
 
         let reply = leader_channel.1.try_next().unwrap().unwrap();
-        assert_matches!(reply, RaftMessage::AppendEntriesReply(inner) if (
-            inner.success == true && 
-            inner.term == 1 && 
-            inner.from == 1 && 
-            inner.last_log_index == 0)
-        );
+        let reply = reply.unwrap_append_entries_reply();
+        assert!(reply.success);
+        assert_eq!(reply.term, 1);
+        assert_eq!(reply.from, 1);
+        assert_eq!(reply.last_log_index, 0);
 
         assert_eq!(common_state.log.len(), 3);
         assert_eq!(common_state.commit_index, 0);
@@ -311,7 +323,7 @@ mod tests{
     }
 
     #[test]
-    fn test_handle_append_entries_request_commit_entries(){
+    fn test_handle_append_entries_request_commit_entries() {
         let mut leader_channel = futures_channel::mpsc::channel(10);
 
         let mut common_state: CommonState<VoidStateMachine, (), ()> = CommonState::new(VoidStateMachine::new(), 1);
@@ -331,12 +343,11 @@ mod tests{
         assert_eq!(step_down, false);
 
         let reply = leader_channel.1.try_next().unwrap().unwrap();
-        assert_matches!(reply, RaftMessage::AppendEntriesReply(inner) if (
-            inner.success == true && 
-            inner.term == 1 && 
-            inner.from == 1 && 
-            inner.last_log_index == 0)
-        );
+        let reply = reply.unwrap_append_entries_reply();
+        assert!(reply.success);
+        assert_eq!(reply.term, 1);
+        assert_eq!(reply.from, 1);
+        assert_eq!(reply.last_log_index, 0);
 
         assert_eq!(common_state.log.len(), 3);
         assert_eq!(common_state.commit_index, 2);
@@ -345,7 +356,7 @@ mod tests{
     }
 
     #[test]
-    fn reject_append_entries_request_term_too_low(){
+    fn reject_append_entries_request_term_too_low() {
         let mut leader_channel = futures_channel::mpsc::channel(10);
 
         let mut common_state: CommonState<VoidStateMachine, (), ()> = CommonState::new(VoidStateMachine::new(), 1);
@@ -365,12 +376,11 @@ mod tests{
         assert_eq!(step_down, false);
 
         let reply = leader_channel.1.try_next().unwrap().unwrap();
-        assert_matches!(reply, RaftMessage::AppendEntriesReply(inner) if (
-            inner.success == false && 
-            inner.term == 2 && 
-            inner.from == 1 && 
-            inner.last_log_index == 0)
-        );
+        let reply = reply.unwrap_append_entries_reply();
+        assert!(!reply.success);
+        assert_eq!(reply.term, 2);
+        assert_eq!(reply.from, 1);
+        assert_eq!(reply.last_log_index, 0);
 
         assert_eq!(common_state.log.len(), 0);
         assert_eq!(common_state.commit_index, 0);
@@ -379,7 +389,7 @@ mod tests{
     }
 
     #[test]
-    fn step_down_after_append_entries_request(){
+    fn step_down_after_append_entries_request() {
         let mut leader_channel = futures_channel::mpsc::channel(10);
 
         let mut common_state: CommonState<VoidStateMachine, (), ()> = CommonState::new(VoidStateMachine::new(), 1);
@@ -399,12 +409,11 @@ mod tests{
         assert_eq!(step_down, true);
 
         let reply = leader_channel.1.try_next().unwrap().unwrap();
-        assert_matches!(reply, RaftMessage::AppendEntriesReply(inner) if (
-            inner.success == true && 
-            inner.term == 2 && 
-            inner.from == 1 && 
-            inner.last_log_index == 0)
-        );
+        let reply = reply.unwrap_append_entries_reply();
+        assert!(reply.success);
+        assert_eq!(reply.term, 2);
+        assert_eq!(reply.from, 1);
+        assert_eq!(reply.last_log_index, 0);
 
         assert_eq!(common_state.log.len(), 3);
         assert_eq!(common_state.commit_index, 0);
@@ -414,7 +423,7 @@ mod tests{
 
     #[test]
     #[should_panic]
-    fn panic_two_leaders_with_same_term_detected(){
+    fn panic_two_leaders_with_same_term_detected() {
         let mut common_state: CommonState<VoidStateMachine, (), ()> = CommonState::new(VoidStateMachine::new(), 1);
         common_state.current_term = 1;
 
@@ -434,7 +443,7 @@ mod tests{
 
     // TLA: 330
     #[test]
-    fn reject_append_entries_hole_in_log(){
+    fn reject_append_entries_hole_in_log() {
         let already_present_entries = vec![(), (), ()];
         let mut leader_channel = futures_channel::mpsc::channel(10);
 
@@ -456,12 +465,11 @@ mod tests{
         assert_eq!(step_down, false);
 
         let reply = leader_channel.1.try_next().unwrap().unwrap();
-        assert_matches!(reply, RaftMessage::AppendEntriesReply(inner) if (
-            inner.success == false && 
-            inner.term == 1 && 
-            inner.from == 1 && 
-            inner.last_log_index == already_present_entries.len() as u64)
-        );
+        let reply = reply.unwrap_append_entries_reply();
+        assert!(!reply.success);
+        assert_eq!(reply.term, 1);
+        assert_eq!(reply.from, 1);
+        assert_eq!(reply.last_log_index, already_present_entries.len() as u64);
 
         assert_eq!(common_state.log.len(), already_present_entries.len());
         assert_eq!(common_state.commit_index, 0);
@@ -471,7 +479,7 @@ mod tests{
 
     // TLA: 331
     #[test]
-    fn reject_append_entries_term_mismatch(){
+    fn reject_append_entries_term_mismatch() {
         let already_present_entries = vec![(), (), ()];
         let mut leader_channel = futures_channel::mpsc::channel(10);
 
@@ -479,7 +487,6 @@ mod tests{
         common_state.current_term = 1;
         common_state.log.insert(already_present_entries.clone(), 0, 1);
         common_state.peers.insert(2, ActorRef::new(leader_channel.0.clone()));
-
 
         let request = AppendEntriesRequest {
             term: 1,
@@ -494,12 +501,11 @@ mod tests{
         assert_eq!(step_down, false);
 
         let reply = leader_channel.1.try_next().unwrap().unwrap();
-        assert_matches!(reply, RaftMessage::AppendEntriesReply(inner) if (
-            inner.success == false && 
-            inner.term == 1 && 
-            inner.from == 1 && 
-            inner.last_log_index == already_present_entries.len() as u64)
-        );
+        let reply = reply.unwrap_append_entries_reply();
+        assert!(!reply.success);
+        assert_eq!(reply.term, 1);
+        assert_eq!(reply.from, 1);
+        assert_eq!(reply.last_log_index, already_present_entries.len() as u64);
 
         assert_eq!(common_state.log.len(), already_present_entries.len());
         assert_eq!(common_state.commit_index, 0);

@@ -1,8 +1,8 @@
 pub mod add_peer;
 pub mod append_entries;
 pub mod append_entries_client;
-pub mod request_vote;
 pub mod poll_state;
+pub mod request_vote;
 
 use std::fmt::{self, Debug, Formatter};
 
@@ -20,8 +20,52 @@ pub enum RaftMessage<SMin, SMout> {
     RequestVoteRequest(RequestVoteRequest),
     RequestVoteReply(RequestVoteReply),
     AppendEntriesClientRequest(AppendEntriesClientRequest<SMin, SMout>),
-    
+
     PollState(PollStateRequest),
+}
+
+impl<SMin, SMout> RaftMessage<SMin, SMout> {
+    pub fn unwrap_add_peer(self) -> AddPeer<SMin, SMout> {
+        match self {
+            RaftMessage::AddPeer(inner) => inner,
+            other => panic!("called `RaftMessage::unwrap_add_peer()` on a `{:?}` value", other),
+        }
+    }
+
+    pub fn unwrap_append_entries_request(self) -> AppendEntriesRequest<SMin> {
+        match self {
+            RaftMessage::AppendEntriesRequest(inner) => inner,
+            other => panic!("called `RaftMessage::unwrap_append_entries_request()` on a `{:?}` value", other),
+        }
+    }
+
+    pub fn unwrap_append_entries_reply(self) -> AppendEntriesReply {
+        match self {
+            RaftMessage::AppendEntriesReply(inner) => inner,
+            other => panic!("called `RaftMessage::unwrap_append_entries_reply()` on a `{:?}` value", other),
+        }
+    }
+
+    pub fn unwrap_request_vote_request(self) -> RequestVoteRequest {
+        match self {
+            RaftMessage::RequestVoteRequest(inner) => inner,
+            other => panic!("called `RaftMessage::unwrap_request_vote_request()` on a `{:?}` value", other),
+        }
+    }
+
+    pub fn unwrap_request_vote_reply(self) -> RequestVoteReply {
+        match self {
+            RaftMessage::RequestVoteReply(inner) => inner,
+            other => panic!("called `RaftMessage::unwrap_request_vote_reply()` on a `{:?}` value", other),
+        }
+    }
+
+    pub fn unwrap_append_entries_client_request(self) -> AppendEntriesClientRequest<SMin, SMout> {
+        match self {
+            RaftMessage::AppendEntriesClientRequest(inner) => inner,
+            other => panic!("called `RaftMessage::unwrap_append_entries_client_request()` on a `{:?}` value", other),
+        }
+    }
 }
 
 impl<SMin, SMout> Debug for RaftMessage<SMin, SMout> {
