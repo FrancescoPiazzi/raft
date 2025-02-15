@@ -6,7 +6,7 @@ use std::fmt::Debug;
 use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::time::sleep;
-use tracing::{info_span, instrument, Instrument};
+use tracing::{info_span, Instrument};
 
 #[derive(Clone)]
 struct ExampleStateMachine {
@@ -87,8 +87,8 @@ async fn main() {
     let n_servers = 5;
     let separate_file_logs = true;
 
+    #[allow(unused_variables)]
     let guards;
-
     if separate_file_logs {
         guards = split_file_logs(n_servers);
     } else {

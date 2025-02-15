@@ -134,7 +134,8 @@ where
     // update this here and not in update_term, as the update_term in handle_vote_request()
     // might have already updated the term, causing the update_term here to never return true
     // leaving us with the correct term, but no leader_id. We also can't set the leader_id in update_term itself
-    // as we can't know whether the candidate that sent the request will win the election
+    // as we can't know whether the candidate that sent the request
+    // (in case it is called after a request vote request) will win the election
     common_state.leader_id = Some(request.leader_id);
 
     // TLA: 329
@@ -161,6 +162,7 @@ where
             );
 
             if let Some(sender_ref) = common_state.peers.get_mut(&request.leader_id) {
+                reply.last_log_index-=1;
                 let _ = sender_ref.try_send(reply.into());
             }
             return step_down;
@@ -505,7 +507,7 @@ mod tests {
         assert!(!reply.success);
         assert_eq!(reply.term, 1);
         assert_eq!(reply.from, 1);
-        assert_eq!(reply.last_log_index, already_present_entries.len() as u64);
+        assert!(reply.last_log_index < already_present_entries.len() as u64);
 
         assert_eq!(common_state.log.len(), already_present_entries.len());
         assert_eq!(common_state.commit_index, 0);

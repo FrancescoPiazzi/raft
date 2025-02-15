@@ -8,7 +8,6 @@ use crate::state_machine::StateMachine;
 use actum::drop_guard::ActorDropGuard;
 use actum::prelude::*;
 use actum::testkit::{testkit, Testkit};
-use futures::StreamExt;
 use itertools::izip;
 use tokio::task::JoinHandle;
 use tokio::time::Duration;

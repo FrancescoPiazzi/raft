@@ -20,8 +20,10 @@ async fn dropped_messages_replication(
     time_to_elect_leader: Duration,
     time_to_replicate_entry: Duration,
 ) {
+    #[allow(unused_variables)]
     let guards;
     if USE_FILE_LOGS {
+        // #[allow(unused_assignments)] // commented because it is experimental
         guards = split_file_logs(n_servers);
     } else {
         tracing_subscriber::fmt()
