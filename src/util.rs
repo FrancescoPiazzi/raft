@@ -1,16 +1,22 @@
 use std::ops::Range;
+use std::fmt::Debug;
 
 use crate::config::{DEFAULT_ELECTION_TIMEOUT, DEFAULT_HEARTBEAT_PERIOD};
 use crate::messages::add_peer::AddPeer;
 use crate::messages::RaftMessage;
 use crate::server::raft_server;
 use crate::state_machine::StateMachine;
+use crate::types::AppendEntriesClientResponse;
+use crate::prelude::AppendEntriesClientRequest;
 use actum::drop_guard::ActorDropGuard;
-use actum::prelude::*;
+use actum::effect::Effect;
+use actum::{effect, prelude::*};
 use actum::testkit::{testkit, Testkit};
 use itertools::izip;
+use rand::prelude::IteratorRandom;
 use tokio::task::JoinHandle;
 use tokio::time::Duration;
+use tokio::sync::mpsc;
 use tracing::{info_span, subscriber, Instrument};
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::{fmt, layer::SubscriberExt, EnvFilter, Layer, Registry};
@@ -256,4 +262,77 @@ where
             }
         }
     }
+}
+
+pub async fn run_testkit_until_actor_returns_and_drop_messages<SMin, SMout>(
+    mut testkit: Testkit<RaftMessage<SMin, SMout>>, 
+    message_drop_probability: f64
+) where
+    SMin: Clone + Send + 'static,
+    SMout: Send + 'static,
+{
+    loop {
+        match testkit.test_next_effect(|effect| {
+            if let Effect::Recv(mut inner) = effect{
+                if rand::random::<f64>() < message_drop_probability {
+                    inner.discard();
+                }
+            }
+        }).await {
+            None => break,
+            Some((returned, ())) => {
+                testkit = returned;
+            }
+        }
+    }
+}
+
+pub async fn request_entry_replication<SM, SMin, SMout>(
+    server_refs: &Vec<ActorRef<RaftMessage<SMin, SMout>>>,
+    entries: Vec<SMin>,
+    request_timeout: Duration,
+) -> Vec<SMout>
+where
+    SMin: Clone + Send + 'static,
+    SMout: Send + Debug + 'static,
+{
+    let mut rng = rand::thread_rng();
+
+    let mut leader = server_refs[0].clone();
+    let mut output_vec = Vec::with_capacity(entries.len());
+
+    tracing::debug!("sending entries to replicate");
+
+    while output_vec.len() < entries.len() {
+        // channel to receive the outputs of the state machine.
+        let (tx, mut rx) = mpsc::channel::<AppendEntriesClientResponse<SMin, SMout>>(10);
+
+        let request = AppendEntriesClientRequest {
+            entries_to_replicate: entries.clone(),
+            reply_to: tx,
+        };
+        let _ = leader.try_send(request.into());
+
+        match tokio::time::timeout(request_timeout, rx.recv()).await {
+            Ok(Some(AppendEntriesClientResponse(Ok(output)))) => {
+                tracing::debug!("entry has been successfully replicated");
+                output_vec.push(output);
+            }
+            Ok(Some(AppendEntriesClientResponse(Err(Some(new_leader_ref))))) => {
+                tracing::debug!("this server is not the leader: switching to the provided leader");
+                leader = new_leader_ref;
+            }
+            Ok(Some(AppendEntriesClientResponse(Err(None)))) | Err(_) => {
+                tracing::debug!("this server did not answer or does not know who the leader is: \
+                    switching to another random server");
+                leader = server_refs.iter().choose(&mut rng).unwrap().clone();
+            }
+            Ok(None) => {
+                tracing::error!("channel closed, exiting");
+                break;
+            }
+        }
+    }
+
+    output_vec
 }
