@@ -26,7 +26,6 @@ pub struct CommonState<SM, SMin, SMout> {
 impl<SM, SMin, SMout> CommonState<SM, SMin, SMout> {
     pub const fn new(state_machine: SM, me: u32) -> Self {
         Self {
-            // TLA: 143 would want this to be 1, but I don't see a problem with it being 0
             me,
             log: Log::new(),
             current_term: 0,

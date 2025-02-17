@@ -72,6 +72,7 @@ where
         match candidate_result {
             CandidateResult::ElectionWon => {
                 tracing::debug!("transition: candidate → leader");
+                tracing::info!("-------> I am the leader, term: {}", common_state.current_term);
                 let leader_result = leader_behavior(&mut cell, &mut common_state, heartbeat_period)
                     .instrument(info_span!("leader👑"))
                     .await;

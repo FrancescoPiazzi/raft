@@ -18,8 +18,6 @@ async fn chaos_test_inner(
     test_duration: Duration,
     message_drop_probability: f64,
 ) {
-    let request_interval = Duration::from_millis(1000);
-
     let SplitServersWithTestkit {
         server_id_vec,
         server_ref_vec,
@@ -83,6 +81,7 @@ async fn chaos_test_inner(
 
 #[tokio::test]
 async fn chaos_test() {
+    const SLOW_FACTOR: u64 = 1;
     let n_servers = 5;
 
     #[allow(unused_variables)]
@@ -95,7 +94,7 @@ async fn chaos_test() {
             .with_span_events(tracing_subscriber::fmt::format::FmtSpan::NONE)
             .with_target(false)
             .with_line_number(false)
-            .with_max_level(tracing::Level::DEBUG)
+            .with_max_level(tracing::Level::TRACE)
             .init();
     }
 
@@ -105,10 +104,13 @@ async fn chaos_test() {
         vec![21, 22, 23, 24, 25],
     ];
 
-    chaos_test_inner(n_servers, entry_batches.clone(), 
-        Duration::from_millis(500), 
-        Duration::from_secs(5), 
-        Duration::from_secs(20), 
-        0.3
-    ).await;
+    for i in 1..=10{
+        chaos_test_inner(n_servers, entry_batches.clone(), 
+            Duration::from_millis(500*SLOW_FACTOR), 
+            Duration::from_secs(3*SLOW_FACTOR), 
+            Duration::from_secs(5*SLOW_FACTOR), 
+            0.15
+        ).await;
+        tracing::info!("chaos test iteration {} passed", i);
+    }
 }

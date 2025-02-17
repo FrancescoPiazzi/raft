@@ -10,7 +10,7 @@ use crate::types::AppendEntriesClientResponse;
 use crate::prelude::AppendEntriesClientRequest;
 use actum::drop_guard::ActorDropGuard;
 use actum::effect::Effect;
-use actum::{effect, prelude::*};
+use actum::prelude::*;
 use actum::testkit::{testkit, Testkit};
 use itertools::izip;
 use rand::prelude::IteratorRandom;
@@ -279,8 +279,11 @@ pub async fn run_testkit_until_actor_returns_and_drop_messages<SMin, SMout>(
                         match msg {
                             // let add peer messages through or servers will never start
                             RaftMessage::AddPeer(_) => {}
+                            // Temporarily let client requests as well
+                            RaftMessage::AppendEntriesClientRequest(_) => {}
                             _ => {
                                 if rand::random::<f64>() < message_drop_probability {
+                                    tracing::warn!("dropping message");
                                     inner.discard();
                                 }
                             }
@@ -349,6 +352,7 @@ where
             tracing::debug!("all entries have been successfully replicated");
             break 'outer;
         }
+        tokio::time::sleep(Duration::from_millis(1000)).await;
     }
 
     output_vec

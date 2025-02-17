@@ -33,6 +33,7 @@ where
     SMout: Send + 'static,
 {
     common_state.voted_for = Some(common_state.me);
+    common_state.leader_id = None;
 
     let mut votes_from_others = BTreeMap::<u32, bool>::new();
 
@@ -136,7 +137,7 @@ enum HandleRequestVoteReplyResult {
     Lost,
 }
 
-#[tracing::instrument(level = "trace", skip_all)]
+#[tracing::instrument(level = "debug", skip(common_state, votes_from_others))]
 fn handle_request_vote_reply<SM, SMin, SMout>(
     common_state: &mut CommonState<SM, SMin, SMout>,
     votes_from_others: &mut BTreeMap<u32, bool>,

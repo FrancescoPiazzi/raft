@@ -10,7 +10,7 @@ use append_entries::{AppendEntriesReply, AppendEntriesRequest};
 /// Handles a vote request message, answering it with a positive or negative vote.
 ///
 /// Returns `true` if the server should become a follower
-#[tracing::instrument(level = "trace", skip_all)]
+#[tracing::instrument(level = "debug", skip(common_state))]
 pub fn handle_vote_request<SM, SMin, SMout>(
     common_state: &mut CommonState<SM, SMin, SMout>,
     request: RequestVoteRequest,
@@ -114,6 +114,13 @@ where
         return step_down;
     }
 
+    assert_ne!(
+        state,
+        RaftState::Leader,
+        "two leaders with the same term detected: {} and {} (me)",
+        request.leader_id,
+        common_state.me
+    );
     /*
     TOASK (discuss): is there a way to write this so it works?
     For now it does not work because of the following scenario:
@@ -125,24 +132,13 @@ where
         because we haven't updated the leader_id yet, we will panic here, 
         thinking we have two leaders with the same term, even if it's not true
     */
-    /*
-    if request.term == common_state.current_term {
-        assert_ne!(
-            state,
-            RaftState::Leader,
-            "two leaders with the same term detected: {} and {} (me)",
-            request.leader_id,
-            common_state.me
+    if let Some(leader_id) = common_state.leader_id.as_ref() {
+        assert_eq!(
+            request.leader_id, *leader_id,
+            "two leaders with the same term detected: {} and {}",
+            request.leader_id, *leader_id
         );
-        if let Some(leader_id) = common_state.leader_id.as_ref() {
-            assert_eq!(
-                request.leader_id, *leader_id,
-                "two leaders with the same term detected: {} and {}",
-                request.leader_id, *leader_id
-            );
-        }
     }
-    */
 
     // update this here and not in update_term, as the update_term in handle_vote_request()
     // might have already updated the term, causing the update_term here to never return true

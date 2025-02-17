@@ -218,7 +218,7 @@ fn handle_append_entries_client_request<SM, SMin, SMout>(
         .append(request.entries_to_replicate, common_state.current_term);
 }
 
-#[tracing::instrument(level = "trace", skip_all)]
+// #[tracing::instrument(level = "trace", skip_all)]
 fn handle_append_entries_reply<SM, SMin, SMout>(
     common_state: &mut CommonState<SM, SMin, SMout>,
     peers_state: &mut BTreeMap<u32, PeerState>,
@@ -246,13 +246,6 @@ fn handle_append_entries_reply<SM, SMin, SMout>(
         // and I can't figure out what logcabin does, this should be right tough
         *peer_match_idx = reply.last_log_index;
         *peer_next_idx = *peer_match_idx + 1;
-
-        tracing::trace!(
-            "follower {}: match idx: {}, next idx: {}",
-            reply.from,
-            peer_match_idx,
-            peer_next_idx
-        );
 
         commit_log_entries_replicated_on_majority(
             common_state,
