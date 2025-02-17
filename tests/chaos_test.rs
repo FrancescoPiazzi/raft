@@ -18,6 +18,8 @@ async fn chaos_test_inner(
     test_duration: Duration,
     message_drop_probability: f64,
 ) {
+    let request_interval = Duration::from_millis(1000);
+
     let SplitServersWithTestkit {
         server_id_vec,
         server_ref_vec,
@@ -27,8 +29,8 @@ async fn chaos_test_inner(
     } = spawn_raft_servers_testkit(
         n_servers,
         TestStateMachine::new(),
-        Some(Duration::from_millis(150)..Duration::from_millis(250)),
-        Some(Duration::from_millis(20)),
+        Some(Duration::from_millis(350)..Duration::from_millis(550)),
+        Some(Duration::from_millis(100)),
         Some(n_servers),
     );
 
@@ -44,7 +46,7 @@ async fn chaos_test_inner(
 
     send_peer_refs::<u64, usize>(&server_ref_vec, &server_id_vec);
 
-    tokio::time::sleep(Duration::from_secs(1)).await;
+    // tokio::time::sleep(Duration::from_secs(1)).await;
 
     tracing::debug!("beginning requesting replications");
     let replication_start_timestamp = tokio::time::Instant::now();
@@ -93,7 +95,7 @@ async fn chaos_test() {
             .with_span_events(tracing_subscriber::fmt::format::FmtSpan::NONE)
             .with_target(false)
             .with_line_number(false)
-            .with_max_level(tracing::Level::TRACE)
+            .with_max_level(tracing::Level::DEBUG)
             .init();
     }
 
@@ -104,9 +106,9 @@ async fn chaos_test() {
     ];
 
     chaos_test_inner(n_servers, entry_batches.clone(), 
-    Duration::from_millis(500), 
-    Duration::from_secs(3), 
-        Duration::from_secs(4), 
-        0.1
+        Duration::from_millis(500), 
+        Duration::from_secs(5), 
+        Duration::from_secs(20), 
+        0.3
     ).await;
 }

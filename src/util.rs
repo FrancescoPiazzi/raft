@@ -274,8 +274,19 @@ pub async fn run_testkit_until_actor_returns_and_drop_messages<SMin, SMout>(
     loop {
         match testkit.test_next_effect(|effect| {
             if let Effect::Recv(mut inner) = effect{
-                if rand::random::<f64>() < message_drop_probability {
-                    inner.discard();
+                match inner.recv {
+                    Recv::Message(msg) => {
+                        match msg {
+                            // let add peer messages through or servers will never start
+                            RaftMessage::AddPeer(_) => {}
+                            _ => {
+                                if rand::random::<f64>() < message_drop_probability {
+                                    inner.discard();
+                                }
+                            }
+                        }
+                    },
+                    _ => {}
                 }
             }
         }).await {
@@ -296,41 +307,47 @@ where
     SMin: Clone + Send + 'static,
     SMout: Send + Debug + 'static,
 {
+    let mut output_vec;
     let mut rng = rand::thread_rng();
-
     let mut leader = server_refs[0].clone();
-    let mut output_vec = Vec::with_capacity(entries.len());
-
-    tracing::debug!("sending entries to replicate");
-
-    while output_vec.len() < entries.len() {
+    
+    'outer: loop{
+        tracing::debug!("sending entries to replicate");
+        output_vec = Vec::with_capacity(entries.len());
+        
         // channel to receive the outputs of the state machine.
         let (tx, mut rx) = mpsc::channel::<AppendEntriesClientResponse<SMin, SMout>>(10);
-
+        
         let request = AppendEntriesClientRequest {
             entries_to_replicate: entries.clone(),
             reply_to: tx,
         };
         let _ = leader.try_send(request.into());
 
-        match tokio::time::timeout(request_timeout, rx.recv()).await {
-            Ok(Some(AppendEntriesClientResponse(Ok(output)))) => {
-                tracing::debug!("entry has been successfully replicated");
-                output_vec.push(output);
+        'inner: while output_vec.len() < entries.len() {
+            match tokio::time::timeout(request_timeout, rx.recv()).await {
+                Ok(Some(AppendEntriesClientResponse(Ok(output)))) => {
+                    tracing::debug!("entry has been successfully replicated");
+                    output_vec.push(output);
+                }
+                Ok(Some(AppendEntriesClientResponse(Err(Some(new_leader_ref))))) => {
+                    tracing::debug!("this server is not the leader: switching to the provided leader");
+                    leader = new_leader_ref;
+                }
+                Ok(Some(AppendEntriesClientResponse(Err(None)))) | Err(_) => {
+                    tracing::debug!("this server did not answer or does not know who the leader is: \
+                        switching to another random server");
+                    leader = server_refs.iter().choose(&mut rng).unwrap().clone();
+                }
+                Ok(None) => {
+                    tracing::debug!("channel closed (probably the request was dropped), retrying");
+                    break 'inner;
+                }
             }
-            Ok(Some(AppendEntriesClientResponse(Err(Some(new_leader_ref))))) => {
-                tracing::debug!("this server is not the leader: switching to the provided leader");
-                leader = new_leader_ref;
-            }
-            Ok(Some(AppendEntriesClientResponse(Err(None)))) | Err(_) => {
-                tracing::debug!("this server did not answer or does not know who the leader is: \
-                    switching to another random server");
-                leader = server_refs.iter().choose(&mut rng).unwrap().clone();
-            }
-            Ok(None) => {
-                tracing::error!("channel closed, exiting");
-                break;
-            }
+        }
+        if output_vec.len() == entries.len() {
+            tracing::debug!("all entries have been successfully replicated");
+            break 'outer;
         }
     }
 
