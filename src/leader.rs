@@ -209,7 +209,7 @@ fn handle_append_entries_client_request<SM, SMin, SMout>(
     SM: StateMachine<SMin, SMout> + Send,
     SMin: Send + Clone + 'static,
 {
-    tracing::trace!("Received a client message, replicating it");
+    tracing::debug!("Received a client message, replicating it");
 
     client_channel_per_input.push_back((request.reply_to, request.entries_to_replicate.len()));
 
@@ -229,10 +229,6 @@ fn handle_append_entries_reply<SM, SMin, SMout>(
     SM: StateMachine<SMin, SMout> + Send,
     SMin: Clone,
 {
-    if common_state.update_term(reply.term) {
-        panic!("Recieved an append entries reply with a term higher than mine, this should not happen");
-    }
-
     // TLA: 394 (also TLA: 435, since it ignores requests with stale terms)
     if reply.term != common_state.current_term {
         return;
