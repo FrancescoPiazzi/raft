@@ -114,6 +114,18 @@ where
         return step_down;
     }
 
+    /*
+    TOASK (discuss): is there a way to write this so it works?
+    For now it does not work because of the following scenario:
+    - 0 is leader with term 5 and crashes
+    - 1 becomes candidate, sends out request votes, with term 6
+    - everyone else votes for 1, and because the term is greater, they all update it to 6
+    - 1 becomes leader, sends out append entries with term 6
+    - we have request.term == common_state.current_term,
+        because we haven't updated the leader_id yet, we will panic here, 
+        thinking we have two leaders with the same term, even if it's not true
+    */
+    /*
     if request.term == common_state.current_term {
         assert_ne!(
             state,
@@ -130,6 +142,7 @@ where
             );
         }
     }
+    */
 
     // update this here and not in update_term, as the update_term in handle_vote_request()
     // might have already updated the term, causing the update_term here to never return true
