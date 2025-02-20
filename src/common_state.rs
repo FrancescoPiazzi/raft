@@ -86,6 +86,7 @@ impl<SM, SMin, SMout> CommonState<SM, SMin, SMout> {
             tracing::debug!("New term: {}", new_term);
             self.current_term = new_term;
             self.voted_for = None;
+            self.leader_id = None;
             true
         } else {
             false
