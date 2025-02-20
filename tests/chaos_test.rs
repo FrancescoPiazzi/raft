@@ -28,7 +28,7 @@ async fn chaos_test_inner(
         n_servers,
         TestStateMachine::new(),
         Some(Duration::from_millis(350)..Duration::from_millis(550)),
-        Some(Duration::from_millis(50)),
+        Some(Duration::from_millis(100)),
         Some(n_servers),
     );
 
@@ -107,7 +107,7 @@ async fn chaos_test() {
             Duration::from_millis(500*SLOW_FACTOR), 
             Duration::from_secs(3*SLOW_FACTOR), 
             Duration::from_secs(5*SLOW_FACTOR), 
-            0.05
+            0.3
         ).await;
         tracing::info!("chaos test iteration {} passed", i);
     }

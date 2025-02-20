@@ -312,7 +312,6 @@ where
     SMout: Send + Debug + 'static,
 {
     let mut output_vec;
-    let mut rng = rand::thread_rng();
     let mut idx = 0;
     let mut leader = server_refs[idx].clone();
     

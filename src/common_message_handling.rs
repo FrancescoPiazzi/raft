@@ -89,7 +89,7 @@ where
     SMin: Clone + Send + 'static,
     SMout: Send + 'static,
 {
-    let step_down = if common_state.update_term(request.term) {
+    let new_term_triggered = if common_state.update_term(request.term) {
         // tracing::trace!("new term: {}, new leader: {}", request.term, request.leader_id);
         assert!(common_state.leader_id.is_none());
         true
@@ -116,38 +116,26 @@ where
         if let Some(sender_ref) = common_state.peers.get_mut(&request.leader_id) {
             let _ = sender_ref.try_send(reply.into());
         }
-        return step_down;
+        return new_term_triggered;
     }
 
-    /*
-    assert_ne!(
-        state,
-        RaftState::Leader,
-        "two leaders with the same term detected: {} and {} (me)",
-        request.leader_id,
-        common_state.me
-    );
-    if let Some(leader_id) = common_state.leader_id.as_ref() {
-        assert_eq!(
-            request.leader_id, *leader_id,
-            "two leaders with the same term detected: {} and {}",
-            request.leader_id, *leader_id
-        );
-    }
-    */
-    if state == RaftState::Leader {
-        tracing::error!(
-            "two leaders with the same term detected: {} and {} (me)",
-            request.leader_id,
-            common_state.me
-        );
-    }
-    if let Some(leader_id) = common_state.leader_id.as_ref() {
-        if request.leader_id != *leader_id {
+    if !new_term_triggered{
+        if state == RaftState::Leader {
             tracing::error!(
-                "two leaders with the same term detected: {} and {}, req term: {}, my term: {}",
-                request.leader_id, *leader_id, request.term, common_state.current_term
+                "two leaders with the same term detected: {} and {} (me)",
+                request.leader_id,
+                common_state.me
             );
+        }
+        // would also be ok to check this outside of the new_term_triggered block, because if a new term was triggered,
+        // leader_id is set to None by update term
+        if let Some(leader_id) = common_state.leader_id.as_ref() {
+            if request.leader_id != *leader_id {
+                tracing::error!(
+                    "two leaders with the same term detected: {} and {}, req term: {}, my term: {}",
+                    request.leader_id, *leader_id, request.term, common_state.current_term
+                );
+            }
         }
     }
 
@@ -175,7 +163,7 @@ where
             if let Some(sender_ref) = common_state.peers.get_mut(&request.leader_id) {
                 let _ = sender_ref.try_send(reply.into());
             }
-            return step_down;
+            return new_term_triggered;
         }
         // TLA: 331
         if request.prev_log_term != common_state.log.get_term(request.prev_log_index as usize) {
@@ -189,7 +177,7 @@ where
                 reply.last_log_index-=1;
                 let _ = sender_ref.try_send(reply.into());
             }
-            return step_down;
+            return new_term_triggered;
         }
     }
 
@@ -214,7 +202,7 @@ where
 
     assert_eq!(common_state.current_term, request.term);
 
-    step_down
+    new_term_triggered
 }
 
 #[cfg(test)]
@@ -538,4 +526,6 @@ mod tests {
 
         common_state.check_validity();
     }
+
+    // TODO: test leader stepping down after getting an append entries request with a higher term
 }
