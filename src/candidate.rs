@@ -64,7 +64,7 @@ where
             match timeout(remaining_time_to_wait, cell.recv()).await {
                 Ok(message) => match message {
                     Recv::Message(message) => {
-                        tracing::trace!(message = ?message);
+                        // tracing::trace!(message = ?message);
 
                         match message {
                             RaftMessage::RequestVoteReply(reply) => {
@@ -164,11 +164,13 @@ where
     let n_votes_against = votes_from_others.values().filter(|granted| !**granted).count();
 
     if n_granted_votes_including_self > common_state.peers.len() / 2 {
+        tracing::trace!("election won");
         HandleRequestVoteReplyResult::Won
     } else if n_votes_against > common_state.peers.len() / 2 {
         tracing::trace!("too many votes against, election lost");
         HandleRequestVoteReplyResult::Lost
     } else {
+        tracing::trace!("election ongoing, votes for me: {}/{}", n_granted_votes_including_self, common_state.peers.len());
         HandleRequestVoteReplyResult::Ongoing
     }
 }

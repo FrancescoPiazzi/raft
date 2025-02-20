@@ -83,6 +83,7 @@ impl<SM, SMin, SMout> CommonState<SM, SMin, SMout> {
     #[must_use]
     pub fn update_term(&mut self, new_term: u64) -> bool {
         if new_term > self.current_term {
+            tracing::debug!("New term: {}", new_term);
             self.current_term = new_term;
             self.voted_for = None;
             true

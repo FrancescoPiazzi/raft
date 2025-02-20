@@ -158,7 +158,7 @@ where
     SMin: Send + Clone + 'static,
     SMout: Send + 'static,
 {
-    tracing::trace!(message = ?message);
+    // tracing::trace!(message = ?message);
 
     match message {
         RaftMessage::AppendEntriesClientRequest(append_entries_client) => {

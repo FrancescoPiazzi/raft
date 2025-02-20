@@ -281,9 +281,9 @@ pub async fn run_testkit_until_actor_returns_and_drop_messages<SMin, SMout>(
                             RaftMessage::AddPeer(_) => {}
                             // Temporarily let client requests as well
                             RaftMessage::AppendEntriesClientRequest(_) => {}
-                            _ => {
+                            message => {
                                 if rand::random::<f64>() < message_drop_probability {
-                                    tracing::warn!("dropping message");
+                                    tracing::warn!("dropping message {:?}", message);
                                     inner.discard();
                                 }
                             }
@@ -330,17 +330,19 @@ where
         'inner: while output_vec.len() < entries.len() {
             match tokio::time::timeout(request_timeout, rx.recv()).await {
                 Ok(Some(AppendEntriesClientResponse(Ok(output)))) => {
-                    tracing::debug!("entry has been successfully replicated");
+                    tracing::debug!("✅ entry has been successfully replicated");
                     output_vec.push(output);
                 }
                 Ok(Some(AppendEntriesClientResponse(Err(Some(new_leader_ref))))) => {
                     tracing::debug!("this server is not the leader: switching to the provided leader");
                     leader = new_leader_ref;
+                    break 'inner;
                 }
                 Ok(Some(AppendEntriesClientResponse(Err(None)))) | Err(_) => {
                     tracing::debug!("this server did not answer or does not know who the leader is: \
                         switching to another random server");
                     leader = server_refs.iter().choose(&mut rng).unwrap().clone();
+                    break 'inner;
                 }
                 Ok(None) => {
                     tracing::debug!("channel closed (probably the request was dropped), retrying");

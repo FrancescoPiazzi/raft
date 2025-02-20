@@ -82,12 +82,11 @@ async fn chaos_test_inner(
 #[tokio::test]
 async fn chaos_test() {
     const SLOW_FACTOR: u64 = 1;
-    let n_servers = 5;
+    let n_servers = 3;
 
     #[allow(unused_variables)]
     let guards;
     if USE_FILE_LOGS {
-        // #[allow(unused_assignments)] // commented because it is experimental
         guards = split_file_logs(n_servers);
     } else {
         tracing_subscriber::fmt()
@@ -109,7 +108,7 @@ async fn chaos_test() {
             Duration::from_millis(500*SLOW_FACTOR), 
             Duration::from_secs(3*SLOW_FACTOR), 
             Duration::from_secs(5*SLOW_FACTOR), 
-            0.15
+            0.2
         ).await;
         tracing::info!("chaos test iteration {} passed", i);
     }

@@ -27,7 +27,7 @@ impl StateMachine<u64, usize> for ExampleStateMachine {
 #[tokio::main]
 async fn main() {
     let n_servers = 5;
-    let separate_file_logs = true;
+    let separate_file_logs = false;
 
     #[allow(unused_variables)]
     let guards;

@@ -63,7 +63,7 @@ where
 
         match timeout(election_timeout, cell.recv()).await {
             Ok(Recv::Message(message)) => {
-                tracing::trace!(message = ?message);
+                // tracing::trace!(message = ?message);
 
                 match message {
                     RaftMessage::AppendEntriesRequest(request) => {
@@ -127,15 +127,15 @@ fn handle_append_entries_client_request<SMin, SMout>(
 {
     if let Some(leader_id) = leader_id {
         if let Some(leader_ref) = peers.get_mut(leader_id) {
-            tracing::debug!("redirecting the client to leader {}", leader_id);
+            tracing::trace!("redirecting the client to leader {}", leader_id);
             let reply = Err(Some(leader_ref.clone()));
             let _ = request.reply_to.try_send(AppendEntriesClientResponse(reply));
         } else {
-            tracing::debug!("no leader to redirect the client to");
+            tracing::trace!("no leader to redirect the client to");
             let _ = request.reply_to.try_send(AppendEntriesClientResponse(Err(None)));
         }
     } else {
-        tracing::debug!("no leader to redirect the client to");
+        tracing::trace!("no leader to redirect the client to");
         let _ = request.reply_to.try_send(AppendEntriesClientResponse(Err(None)));
     }
 }
