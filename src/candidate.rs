@@ -55,7 +55,10 @@ where
         };
 
         for peer in common_state.peers.values_mut() {
-            let _ = peer.try_send(request.clone().into());
+            let res = peer.try_send(request.clone().into());
+            if let Err(_) = res {
+                tracing::error!("failed to send RequestVoteRequest to peer");
+            }
         }
 
         'current_election: loop {

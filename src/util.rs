@@ -14,6 +14,7 @@ use actum::prelude::*;
 use actum::testkit::{testkit, Testkit};
 use itertools::izip;
 use rand::prelude::IteratorRandom;
+use rand::Rng;
 use tokio::task::JoinHandle;
 use tokio::time::Duration;
 use tokio::sync::mpsc;
@@ -283,7 +284,7 @@ pub async fn run_testkit_until_actor_returns_and_drop_messages<SMin, SMout>(
                             RaftMessage::AppendEntriesClientRequest(_) => {}
                             message => {
                                 if rand::random::<f64>() < message_drop_probability {
-                                    tracing::warn!("dropping message {:?}", message);
+                                    tracing::trace!("🔥 dropping message {:?}", message);
                                     inner.discard();
                                 }
                             }
@@ -312,10 +313,11 @@ where
 {
     let mut output_vec;
     let mut rng = rand::thread_rng();
-    let mut leader = server_refs[0].clone();
+    let mut idx = 0;
+    let mut leader = server_refs[idx].clone();
     
     'outer: loop{
-        tracing::debug!("sending entries to replicate");
+        tracing::debug!("sending entries to replicate to server {}", idx);
         output_vec = Vec::with_capacity(entries.len());
         
         // channel to receive the outputs of the state machine.
@@ -336,16 +338,14 @@ where
                 Ok(Some(AppendEntriesClientResponse(Err(Some(new_leader_ref))))) => {
                     tracing::debug!("this server is not the leader: switching to the provided leader");
                     leader = new_leader_ref;
+                    idx = server_refs.iter().position(|x| x == &leader).unwrap();
                     break 'inner;
                 }
-                Ok(Some(AppendEntriesClientResponse(Err(None)))) | Err(_) => {
+                Ok(Some(AppendEntriesClientResponse(Err(None)))) | Err(_) | Ok(None)=> {
                     tracing::debug!("this server did not answer or does not know who the leader is: \
-                        switching to another random server");
-                    leader = server_refs.iter().choose(&mut rng).unwrap().clone();
-                    break 'inner;
-                }
-                Ok(None) => {
-                    tracing::debug!("channel closed (probably the request was dropped), retrying");
+                        switching to another server");
+                    idx = (idx+1)%server_refs.len();
+                    leader = server_refs[idx].clone();
                     break 'inner;
                 }
             }

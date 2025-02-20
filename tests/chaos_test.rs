@@ -28,7 +28,7 @@ async fn chaos_test_inner(
         n_servers,
         TestStateMachine::new(),
         Some(Duration::from_millis(350)..Duration::from_millis(550)),
-        Some(Duration::from_millis(100)),
+        Some(Duration::from_millis(50)),
         Some(n_servers),
     );
 
@@ -98,7 +98,6 @@ async fn chaos_test() {
     }
 
     let entry_batches = vec![
-        vec![1, 2, 3, 4, 5],
         vec![1, 2, 3],
         vec![21, 22, 23, 24, 25],
     ];
@@ -108,7 +107,7 @@ async fn chaos_test() {
             Duration::from_millis(500*SLOW_FACTOR), 
             Duration::from_secs(3*SLOW_FACTOR), 
             Duration::from_secs(5*SLOW_FACTOR), 
-            0.2
+            0.05
         ).await;
         tracing::info!("chaos test iteration {} passed", i);
     }

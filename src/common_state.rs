@@ -93,10 +93,10 @@ impl<SM, SMin, SMout> CommonState<SM, SMin, SMout> {
     }
 
     /// Returns true if the server can vote for the candidate with the given id, false otherwise.
-    // TLA: 288-290, except for "m.mterm = currentTerm[i]", which doesn't make any sense to me,
-    // under normal operation the term of the candidate is one grater than mine.
+    // TLA: 288-290
     pub fn can_grant_vote(&self, request: &RequestVoteRequest) -> bool {
-        self.log.is_log_ok(request)
+        tracing::trace!("log ok for {}? {}", request.candidate_id, self.log.is_log_ok(request));
+        request.term == self.current_term && self.log.is_log_ok(request)
             && (self.voted_for.is_none() || self.voted_for.is_some_and(|id| id == request.candidate_id))
     }
 

@@ -36,6 +36,9 @@ where
     SMin: Clone + Send + 'static,
     SMout: Send + 'static,
 {
+    // shouldn't be neeeded but just to be sure
+    common_state.leader_id = Some(common_state.me);
+
     let mut peers_state = BTreeMap::new();
     for (id, _) in common_state.peers.iter_mut() {
         // TLA: 233-234 would want initial_next_index to be log.len()+1, however I think that in my version this might

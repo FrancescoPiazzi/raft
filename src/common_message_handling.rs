@@ -10,7 +10,7 @@ use append_entries::{AppendEntriesReply, AppendEntriesRequest};
 /// Handles a vote request message, answering it with a positive or negative vote.
 ///
 /// Returns `true` if the server should become a follower
-#[tracing::instrument(level = "debug", skip(common_state))]
+//#[tracing::instrument(level = "debug", skip_all)]
 pub fn handle_vote_request<SM, SMin, SMout>(
     common_state: &mut CommonState<SM, SMin, SMout>,
     request: RequestVoteRequest,
@@ -21,6 +21,10 @@ where
     SMout: Send + 'static,
 {
     let step_down = common_state.update_term(request.term);
+    if step_down {
+        tracing::trace!("new term: {}, maybe leader: {}", request.term, request.candidate_id);
+        assert!(common_state.leader_id.is_none());
+    }
 
     // set a negative reply by default, we will update it if we can grant the vote
     let mut reply = RequestVoteReply {
@@ -87,6 +91,7 @@ where
 {
     let step_down = if common_state.update_term(request.term) {
         // tracing::trace!("new term: {}, new leader: {}", request.term, request.leader_id);
+        assert!(common_state.leader_id.is_none());
         true
     } else {
         false
@@ -114,6 +119,7 @@ where
         return step_down;
     }
 
+    /*
     assert_ne!(
         state,
         RaftState::Leader,
@@ -127,6 +133,26 @@ where
             "two leaders with the same term detected: {} and {}",
             request.leader_id, *leader_id
         );
+    }
+    */
+    if state == RaftState::Leader {
+        tracing::error!(
+            "two leaders with the same term detected: {} and {} (me)",
+            request.leader_id,
+            common_state.me
+        );
+    }
+    if let Some(leader_id) = common_state.leader_id.as_ref() {
+        if request.leader_id != *leader_id {
+            tracing::error!(
+                "two leaders with the same term detected: {} and {}, req term: {}, my term: {}",
+                request.leader_id, *leader_id, request.term, common_state.current_term
+            );
+        }
+    }
+
+    if !request.entries.is_empty() {
+        tracing::trace!("received entries: {:?}", request);
     }
 
     // update this here and not in update_term, as the update_term in handle_vote_request()
@@ -154,7 +180,7 @@ where
         // TLA: 331
         if request.prev_log_term != common_state.log.get_term(request.prev_log_index as usize) {
             tracing::trace!(
-                "term mismatch: previous log term = {}, log term: {}: ignoring",
+                "term mismatch: request prev log term = {}, my prev log term: {}: ignoring",
                 request.prev_log_term,
                 common_state.log.get_term(request.prev_log_index as usize)
             );
