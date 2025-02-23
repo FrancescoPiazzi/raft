@@ -11,29 +11,15 @@ use tracing::{info_span, Instrument};
 mod test_state_machine;
 
 use crate::test_state_machine::TestStateMachine;
-use oxidized_float::util::run_testkit_until_actor_returns;
 
 const USE_FILE_LOGS: bool = false;
 
-async fn dropped_messages_replication(
+async fn dropped_messages_replication_inner(
     n_servers: usize,
     time_to_elect_leader: Duration,
-    time_to_replicate_entry: Duration,
+    time_to_converge_after_last_request: Duration,
+    drop_probability: f64,
 ) {
-    #[allow(unused_variables)]
-    let guards;
-    if USE_FILE_LOGS {
-        // #[allow(unused_assignments)] // commented because it is experimental
-        guards = split_file_logs(n_servers);
-    } else {
-        tracing_subscriber::fmt()
-            .with_span_events(tracing_subscriber::fmt::format::FmtSpan::NONE)
-            .with_target(false)
-            .with_line_number(false)
-            .with_max_level(tracing::Level::WARN)
-            .init();
-    }
-
     // spawn all followers with the utility function
     let SplitServersWithTestkit {
         mut server_id_vec,
@@ -44,7 +30,7 @@ async fn dropped_messages_replication(
     } = spawn_raft_servers_testkit(
         n_servers - 1,
         TestStateMachine::new(),
-        Some(Duration::from_millis(1000)..Duration::from_millis(2000)),
+        Some(Duration::from_secs(10)..Duration::from_secs(20)),
         None, // heartbeat period does not matter, these will be followers
         Some(n_servers),
     );
@@ -58,7 +44,7 @@ async fn dropped_messages_replication(
             n_servers - 1,
             TestStateMachine::new(),
             Duration::from_millis(100)..Duration::from_millis(101),
-            Duration::from_millis(20),
+            Duration::from_millis(30),
         )
         .await
     });
@@ -73,7 +59,8 @@ async fn dropped_messages_replication(
 
     let mut testkit_handles = Vec::with_capacity(n_servers);
     for (i, testkit) in testkit_vec.into_iter().enumerate() {
-        let handle = tokio::spawn(run_testkit_until_actor_returns(testkit).instrument(info_span!("testkit", i)));
+        let handle = tokio::spawn(run_testkit_until_actor_returns_and_drop_messages(testkit, drop_probability)
+        .instrument(info_span!("testkit", i)));
         testkit_handles.push(handle);
     }
 
@@ -91,11 +78,10 @@ async fn dropped_messages_replication(
     };
     leader_ref.try_send(msg.into()).unwrap();
 
-    tracing::debug!("sleeping for {}, so that servers can the entry can be replicated", time_to_replicate_entry.as_secs());
-    sleep(time_to_replicate_entry).await;
-
     let recv = rx.recv().await.unwrap();
     assert!(matches!(recv, AppendEntriesClientResponse(Ok(1))));
+
+    sleep(time_to_converge_after_last_request).await;
 
     tracing::debug!("dropping actor guards");
     for guard in guard_vec {
@@ -119,6 +105,27 @@ async fn dropped_messages_replication(
 }
 
 #[tokio::test]
-async fn dropped_messages_replication_wrap() {
-    dropped_messages_replication(5, Duration::from_millis(500), Duration::from_millis(200)).await;
+async fn dropped_messages_replication() {
+    let n_servers = 5;
+
+    #[allow(unused_variables)]
+    let guards;
+    if USE_FILE_LOGS {
+        // #[allow(unused_assignments)] // commented because it is experimental
+        guards = split_file_logs(n_servers);
+    } else {
+        tracing_subscriber::fmt()
+            .with_span_events(tracing_subscriber::fmt::format::FmtSpan::NONE)
+            .with_target(false)
+            .with_line_number(false)
+            .with_max_level(tracing::Level::TRACE)
+            .init();
+    }
+
+    dropped_messages_replication_inner(
+        n_servers, 
+        Duration::from_millis(1000), 
+        Duration::from_millis(1000), 
+        0.1
+    ).await;
 }

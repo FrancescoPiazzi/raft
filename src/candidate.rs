@@ -55,10 +55,7 @@ where
         };
 
         for peer in common_state.peers.values_mut() {
-            let res = peer.try_send(request.clone().into());
-            if let Err(_) = res {
-                tracing::error!("failed to send RequestVoteRequest to peer");
-            }
+            let _ = peer.try_send(request.clone().into());
         }
 
         'current_election: loop {
@@ -164,15 +161,16 @@ where
 
     votes_from_others.insert(reply.from, reply.vote_granted);
     let n_granted_votes_including_self = votes_from_others.values().filter(|granted| **granted).count() + 1;
-    let n_votes_against = votes_from_others.values().filter(|granted| !**granted).count();
+    // not really needed, switching to follower early has no advantage
+    // let n_votes_against = votes_from_others.values().filter(|granted| !**granted).count();
 
     if n_granted_votes_including_self > common_state.peers.len() / 2 {
         tracing::trace!("election won");
         HandleRequestVoteReplyResult::Won
-    } else if n_votes_against > common_state.peers.len() / 2 {
+    }/* else if n_votes_against > common_state.peers.len() / 2 {
         tracing::trace!("too many votes against, election lost");
         HandleRequestVoteReplyResult::Lost
-    } else {
+    }*/ else {
         tracing::trace!("election ongoing, votes for me: {}/{}", n_granted_votes_including_self, common_state.peers.len());
         HandleRequestVoteReplyResult::Ongoing
     }
@@ -239,6 +237,7 @@ mod tests {
         common_state.check_validity();
     }
 
+    /*
     #[test]
     fn test_handle_request_vote_reply_result_lost() {
         let n_servers = 5;
@@ -264,6 +263,7 @@ mod tests {
 
         common_state.check_validity();
     }
+    */
 
     #[test]
     fn test_handle_request_vote_reply_discard_vote() {

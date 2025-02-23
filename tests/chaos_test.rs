@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use oxidized_float::prelude::*;
 use rand::seq::SliceRandom;
+use tokio::time::timeout;
 use tracing::{info_span, Instrument};
 
 mod test_state_machine;
@@ -18,6 +19,7 @@ async fn chaos_test_inner(
     test_duration: Duration,
     message_drop_probability: f64,
 ) {
+    const MAX_TIME_TO_REPLICATE: Duration = Duration::from_secs(5);
     let SplitServersWithTestkit {
         server_id_vec,
         server_ref_vec,
@@ -27,8 +29,8 @@ async fn chaos_test_inner(
     } = spawn_raft_servers_testkit(
         n_servers,
         TestStateMachine::new(),
-        Some(Duration::from_millis(350)..Duration::from_millis(550)),
-        Some(Duration::from_millis(100)),
+        Some(Duration::from_millis(250)..Duration::from_millis(450)),
+        Some(Duration::from_millis(80)),
         Some(n_servers),
     );
 
@@ -50,9 +52,18 @@ async fn chaos_test_inner(
     let replication_start_timestamp = tokio::time::Instant::now();
     while tokio::time::Instant::now() - replication_start_timestamp < test_duration {
         let batch_to_replicate = entry_batches.choose(&mut rand::thread_rng()).unwrap();
-        request_entry_replication::<TestStateMachine, u64, usize>(
+        let replication_handle = request_entry_replication::<TestStateMachine, u64, usize>(
             &server_ref_vec, batch_to_replicate.clone(), request_timeout
-        ).instrument(info_span!("replicator")).await;
+        ).instrument(info_span!("replicator"));
+
+        match timeout(MAX_TIME_TO_REPLICATE, replication_handle).await {
+            Ok(_) => {}
+            Err(_) => {
+                tracing::error!("replication request timed out");
+                panic!("replication request timed out");
+                break;
+            }
+        }
         // tokio::time::sleep(request_interval).await;
     }
     tokio::time::sleep(time_to_converge_after_last_request).await;
@@ -86,6 +97,7 @@ async fn chaos_test() {
 
     #[allow(unused_variables)]
     let guards;
+
     if USE_FILE_LOGS {
         guards = split_file_logs(n_servers);
     } else {
@@ -93,22 +105,23 @@ async fn chaos_test() {
             .with_span_events(tracing_subscriber::fmt::format::FmtSpan::NONE)
             .with_target(false)
             .with_line_number(false)
+            // .without_time()
             .with_max_level(tracing::Level::TRACE)
             .init();
     }
 
     let entry_batches = vec![
-        vec![1, 2, 3],
-        vec![21, 22, 23, 24, 25],
+        vec![1],
+        vec![21, 22, 23],
     ];
 
-    for i in 1..=10{
+    for i in 0..100 {
+        tracing::info!("chaos test iteration {}", i);
         chaos_test_inner(n_servers, entry_batches.clone(), 
             Duration::from_millis(500*SLOW_FACTOR), 
+            Duration::from_secs(1*SLOW_FACTOR), 
             Duration::from_secs(3*SLOW_FACTOR), 
-            Duration::from_secs(5*SLOW_FACTOR), 
-            0.3
+            0.1
         ).await;
-        tracing::info!("chaos test iteration {} passed", i);
     }
 }

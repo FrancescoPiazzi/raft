@@ -100,6 +100,11 @@ impl<SMin> Log<SMin> {
 
     #[tracing::instrument(level = "trace", skip(entries))]
     pub fn insert(&mut self, mut entries: Vec<SMin>, prev_log_index: u64, term: u64) {
+        // TODO: should not be needed, but see if it works with it and not without
+        if entries.is_empty() {
+            return;
+        }
+
         assert!(prev_log_index as usize <= self.log.len(), "Raft logs cannot have holes");
 
         let insert_index = prev_log_index as usize;

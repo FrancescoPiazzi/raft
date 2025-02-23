@@ -71,18 +71,18 @@ where
 
         match candidate_result {
             CandidateResult::ElectionWon => {
-                tracing::debug!("transition: candidate → leader");
-                tracing::info!("-------> I am the leader, term: {}", common_state.current_term);
+                tracing::debug!("⏩ transition: candidate → leader");
+                let current_term = common_state.current_term;
                 let leader_result = leader_behavior(&mut cell, &mut common_state, heartbeat_period)
-                    .instrument(info_span!("leader👑"))
+                    .instrument(info_span!("leader👑()", term=current_term))
                     .await;
 
                 match leader_result {
-                    LeaderResult::Deposed => tracing::debug!("transition: leader → follower"),
+                    LeaderResult::Deposed => tracing::debug!("⏩ transition: leader → follower"),
                     LeaderResult::Stopped | LeaderResult::NoMoreSenders => break,
                 }
             }
-            CandidateResult::ElectionLost => tracing::debug!("transition: candidate → follower"),
+            CandidateResult::ElectionLost => tracing::debug!("⏩ transition: candidate → follower"),
             CandidateResult::Stopped | CandidateResult::NoMoreSenders => break,
         }
     }

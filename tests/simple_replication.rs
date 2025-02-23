@@ -10,6 +10,14 @@ use crate::test_state_machine::TestStateMachine;
 
 #[tokio::test]
 async fn simple_replication_random_leader() {
+    tracing_subscriber::fmt()
+        .with_span_events(tracing_subscriber::fmt::format::FmtSpan::NONE)
+        .with_target(false)
+        .with_line_number(false)
+        // .without_time()
+        .with_max_level(tracing::Level::TRACE)
+        .init();
+
     let n_servers = 5;
     let time_to_elect_leader = Duration::from_millis(300);
     let time_to_agree_on_value = Duration::from_millis(200);
@@ -22,7 +30,7 @@ async fn simple_replication_random_leader() {
     } = spawn_raft_servers(
         n_servers,
         TestStateMachine::new(),
-        Some(Duration::from_millis(100)..Duration::from_millis(200)),
+        Some(Duration::from_millis(100)..Duration::from_millis(250)),
         Some(Duration::from_millis(50)),
     );
 

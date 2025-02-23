@@ -274,17 +274,16 @@ fn commit_log_entries_replicated_on_majority<SM, SMin, SMout>(
     SMin: Clone,
 {
     // TLA: 259-276, the implementation is different from how the TLA describes it, but it should be equivalent
-    let mut n = common_state.commit_index;
+    let mut n = common_state.commit_index + 1;
     // this could be optimized for large groups of entries being sent together
     // by getting the median match_index instead of checking all of them
-    #[allow(clippy::int_plus_one)] // imo it's more clear this way: the next n (n+1), must be in the log's bounds
-    while n + 1 <= common_state.log.len()
-        && common_state.log.get_term(n + 1) == common_state.current_term
-        && majority_of_servers_have_log_entry(peers_state, n as u64 + 1)
+    while n <= common_state.log.len()
+        && common_state.log.get_term(n) == common_state.current_term
+        && majority_of_servers_have_log_entry(peers_state, n as u64)
     {
         n += 1;
     }
-    common_state.commit_index = n;
+    common_state.commit_index = n - 1;  // n made us go one too far
 
     let old_last_applied = common_state.last_applied;
 

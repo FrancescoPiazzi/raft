@@ -1,6 +1,6 @@
 use std::cmp::min;
 
-use crate::common_state::CommonState;
+use crate::common_state::{self, CommonState};
 use crate::messages::request_vote::{RequestVoteReply, RequestVoteRequest};
 use crate::messages::*;
 use crate::state_machine::StateMachine;
@@ -90,7 +90,7 @@ where
     SMout: Send + 'static,
 {
     let new_term_triggered = if common_state.update_term(request.term) {
-        // tracing::trace!("new term: {}, new leader: {}", request.term, request.leader_id);
+        tracing::trace!("new term: {}, new leader: {}", request.term, request.leader_id);
         assert!(common_state.leader_id.is_none());
         true
     } else {
@@ -126,6 +126,7 @@ where
                 request.leader_id,
                 common_state.me
             );
+            panic!("two leaders with the same term detected");
         }
         // would also be ok to check this outside of the new_term_triggered block, because if a new term was triggered,
         // leader_id is set to None by update term
@@ -135,19 +136,22 @@ where
                     "two leaders with the same term detected: {} and {}, req term: {}, my term: {}",
                     request.leader_id, *leader_id, request.term, common_state.current_term
                 );
+                panic!("two leaders with the same term detected");
             }
         }
     }
 
     if !request.entries.is_empty() {
-        tracing::trace!("received entries: {:?}", request);
+        tracing::trace!("📝 received {} entries to replicate", request.entries.len());
     }
 
-    // update this here and not in update_term, as the update_term in handle_vote_request()
-    // might have already updated the term, causing the update_term here to never return true
-    // leaving us with the correct term, but no leader_id. We also can't set the leader_id in update_term itself
-    // as we can't know whether the candidate that sent the request
+    // update this here and not in the if block what calls update_term, as the update_term in handle_vote_request()
+    // might have already updated the term, causing the call to update_term here to return false
+    // We also can't set the leader_id inside update_term as we can't know whether the candidate that sent the request
     // (in case it is called after a request vote request) will win the election
+    if common_state.leader_id.is_none() {
+        tracing::debug!("new leader: {}", request.leader_id);
+    }
     common_state.leader_id = Some(request.leader_id);
 
     // TLA: 329
@@ -197,6 +201,7 @@ where
 
     if let Some(leader_ref) = common_state.peers.get_mut(&request.leader_id) {
         reply.success = true;
+        reply.last_log_index = common_state.log.len() as u64;   // set it to the log len after adding the entries
         let _ = leader_ref.try_send(reply.into());
     }
 

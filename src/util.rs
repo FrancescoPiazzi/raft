@@ -331,7 +331,7 @@ where
         'inner: while output_vec.len() < entries.len() {
             match tokio::time::timeout(request_timeout, rx.recv()).await {
                 Ok(Some(AppendEntriesClientResponse(Ok(output)))) => {
-                    tracing::debug!("✅ entry has been successfully replicated");
+                    tracing::debug!("entry has been successfully replicated");
                     output_vec.push(output);
                 }
                 Ok(Some(AppendEntriesClientResponse(Err(Some(new_leader_ref))))) => {
@@ -349,11 +349,12 @@ where
                 }
             }
         }
+        // sleep or the log fills too fast to be red
+        tokio::time::sleep(Duration::from_millis(1000)).await;
         if output_vec.len() == entries.len() {
-            tracing::debug!("all entries have been successfully replicated");
+            tracing::debug!("✅ all entries have been successfully replicated");
             break 'outer;
         }
-        tokio::time::sleep(Duration::from_millis(1000)).await;
     }
 
     output_vec
